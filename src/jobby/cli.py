@@ -265,6 +265,21 @@ def show_providers() -> None:
     console.print(table)
 
 
+@app.command("login")
+def login(
+    service: str = typer.Argument("wttj", help="Service à connecter : 'wttj' (Welcome to the Jungle via Gmail SSO) ou 'linkedin'"),
+) -> None:
+    """Ouvre un navigateur sécurisé pour connecter votre compte via Google/Gmail ou mot de passe."""
+    from jobby.auth import AuthManager
+    auth = AuthManager()
+    if service.lower() == "wttj":
+        auth.login_wttj_interactive()
+    elif service.lower() == "linkedin":
+        auth.login_linkedin_interactive()
+    else:
+        console.print(f"[red]Service inconnu : {service}. Choisissez 'wttj' ou 'linkedin'.[/red]")
+
+
 @app.command("ui")
 def start_ui(
     host: str = typer.Option("127.0.0.1", "--host", "-h", help="Adresse IP d'écoute"),

@@ -89,6 +89,33 @@ def get_stats() -> Dict[str, Any]:
     return storage.get_stats()
 
 
+@app.get("/api/auth/status")
+def auth_status() -> Dict[str, Any]:
+    config = load_config()
+    return {
+        "linkedin_connected": bool(config.linkedin_li_at),
+        "wttj_connected": bool(config.wttj_session_cookie or config.wttj_auth_token),
+    }
+
+
+@app.post("/api/auth/login-wttj")
+def trigger_wttj_login() -> Dict[str, Any]:
+    import threading
+    from jobby.auth import AuthManager
+    auth = AuthManager()
+    threading.Thread(target=auth.login_wttj_interactive, daemon=True).start()
+    return {"status": "started", "message": "Le navigateur de connexion WTTJ (Google/Gmail SSO) a été lancé."}
+
+
+@app.post("/api/auth/login-linkedin")
+def trigger_linkedin_login() -> Dict[str, Any]:
+    import threading
+    from jobby.auth import AuthManager
+    auth = AuthManager()
+    threading.Thread(target=auth.login_linkedin_interactive, daemon=True).start()
+    return {"status": "started", "message": "Le navigateur de connexion LinkedIn a été lancé."}
+
+
 @app.get("/api/opportunities")
 def list_opportunities(
     status: Optional[str] = None,
