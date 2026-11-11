@@ -248,3 +248,124 @@ export function formatSourceLabel(opp) {
       ? String(opp.source)
       : 'Offre';
 }
+
+/**
+ * Displays a sober Warm Porcelain toast notification, optionally with an action button.
+ */
+export function showToast(message, variant = 'info', options = {}) {
+  const container = document.getElementById('toast-container');
+  if (!container || !message) return null;
+
+  const { actionLabel = null, onAction = null, duration = 5000 } = options || {};
+
+  const toast = document.createElement('div');
+  const variantClass =
+    variant === 'error'
+      ? 'jp-toast jp-toast-error'
+      : variant === 'success'
+        ? 'jp-toast jp-toast-success'
+        : 'jp-toast';
+  toast.className = variantClass;
+
+  const textSpan = document.createElement('span');
+  textSpan.textContent = String(message);
+
+  const actionsWrap = document.createElement('div');
+  actionsWrap.className = 'flex items-center gap-2 shrink-0';
+
+  let cleanupTimer = () => {};
+
+  if (actionLabel && typeof onAction === 'function') {
+    const actionBtn = document.createElement('button');
+    actionBtn.type = 'button';
+    actionBtn.className = 'jp-toast-action';
+    actionBtn.setAttribute('data-toast-action', '');
+    actionBtn.textContent = String(actionLabel);
+    let actionTriggered = false;
+    actionBtn.addEventListener('click', () => {
+      if (actionTriggered) return;
+      actionTriggered = true;
+      cleanupTimer();
+      toast.remove();
+      onAction();
+    });
+    actionsWrap.appendChild(actionBtn);
+  }
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'jp-label shrink-0 cursor-pointer bg-transparent border-0 p-0 text-current';
+  closeBtn.setAttribute('aria-label', 'Fermer la notification');
+  closeBtn.textContent = 'Fermer';
+  closeBtn.addEventListener('click', () => {
+    cleanupTimer();
+    toast.remove();
+  });
+  actionsWrap.appendChild(closeBtn);
+
+  toast.appendChild(textSpan);
+  toast.appendChild(actionsWrap);
+  container.appendChild(toast);
+
+  const MAX_TIMEOUT_MS = 2147483647;
+  if (Number.isFinite(duration) && duration > 0) {
+    let remainingMs = Math.min(Number(duration), MAX_TIMEOUT_MS);
+    let timerId = null;
+    let startedAt = 0;
+    let isPaused = false;
+
+    const clearTimer = () => {
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+        timerId = null;
+      }
+    };
+    cleanupTimer = clearTimer;
+
+    const scheduleTimer = () => {
+      clearTimer();
+      if (isPaused || !toast.isConnected) return;
+      if (remainingMs <= 0) {
+        toast.remove();
+        return;
+      }
+      startedAt = Date.now();
+      timerId = window.setTimeout(() => {
+        timerId = null;
+        if (toast.isConnected && !isPaused) {
+          toast.remove();
+        }
+      }, remainingMs);
+    };
+
+    const pauseTimer = () => {
+      if (isPaused) return;
+      isPaused = true;
+      if (timerId !== null) {
+        remainingMs = Math.max(0, remainingMs - (Date.now() - startedAt));
+        clearTimer();
+      }
+    };
+
+    const resumeTimer = () => {
+      if (!isPaused || !toast.isConnected) return;
+      if (toast.matches(':hover') || toast.contains(document.activeElement)) return;
+      isPaused = false;
+      scheduleTimer();
+    };
+
+    toast.addEventListener('mouseenter', pauseTimer);
+    toast.addEventListener('mouseleave', resumeTimer);
+    toast.addEventListener('focusin', pauseTimer);
+    toast.addEventListener('focusout', () => {
+      window.setTimeout(() => {
+        if (toast.isConnected && !toast.contains(document.activeElement) && !toast.matches(':hover')) {
+          resumeTimer();
+        }
+      }, 0);
+    });
+
+    scheduleTimer();
+  }
+  return toast;
+}

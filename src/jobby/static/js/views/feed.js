@@ -1,4 +1,9 @@
-import { fetchOpportunities, markAllOpportunitiesSeen } from '../api.js';
+import {
+  fetchOpportunities,
+  markAllOpportunitiesSeen,
+  markOpportunitySeen,
+  updateOpportunityStatus,
+} from '../api.js';
 import {
   createDefaultFeedFilters,
   getState,
@@ -12,12 +17,15 @@ import {
   setOnlyNew,
   setOpportunities,
   subscribe,
+  syncOpportunitySeen,
+  syncOpportunityStatus,
   toggleFeedMode,
   toggleFeedRegion,
   toggleFeedSource,
 } from '../state.js';
 import {
   FEED_SOURCES,
+  ICONS,
   detectClientRemotePolicy,
   detectOpportunityRegion,
   escapeHtml,
@@ -25,6 +33,7 @@ import {
   formatSourceLabel,
   isAlternanceOrStage,
   sanitizeUrl,
+  showToast,
 } from '../utils.js';
 
 const REMOTE_LABELS = Object.freeze(
@@ -54,13 +63,17 @@ const REGION_SORT_RANK = Object.freeze(
 
 const STATUS_CHIPS = Object.freeze(
   Object.assign(Object.create(null), {
-    kept: '<span class="jp-pill jp-pill-sage">Gardé</span>',
     applied: '<span class="jp-pill">Candidaté</span>',
     interview: '<span class="jp-pill">Entretien</span>',
   })
 );
 
 let isMarkingAllSeen = false;
+const openAccordionIds = new Set();
+const transientOnlyNewOpenIds = new Set();
+const seenPendingIds = new Set();
+const statusPendingRequests = new Map();
+let pendingFocusTarget = null;
 
 function resolveOpportunityDate(opp) {
   for (const candidate of [opp?.published_at, opp?.discovered_at]) {
@@ -146,7 +159,11 @@ export function computeFeedViewModel(snapshot = getState()) {
     if (filters.hideAlternance && isAlternanceOrStage(opp)) {
       return false;
     }
-    if (filters.onlyNew && Boolean(opp.is_seen)) {
+    if (
+      filters.onlyNew &&
+      Boolean(opp.is_seen) &&
+      !(transientOnlyNewOpenIds.has(opp.id) && openAccordionIds.has(opp.id))
+    ) {
       return false;
     }
     if (filters.sources.length > 0) {
@@ -190,7 +207,53 @@ export function computeFeedViewModel(snapshot = getState()) {
   };
 }
 
+function renderScoreBadge(opp) {
+  const rawScore = opp?.score;
+  if (rawScore === null || rawScore === undefined || rawScore === '') return '';
+  const numScore = Number(rawScore);
+  if (!Number.isFinite(numScore) || numScore <= 0) return '';
+  const rounded = Math.round(numScore);
+  if (rounded <= 0) return '';
+
+  const tierClass =
+    rounded >= 85
+      ? 'jp-score-badge jp-score-high'
+      : rounded >= 60
+        ? 'jp-score-badge jp-score-mid'
+        : 'jp-score-badge jp-score-low';
+  return `<span class="${tierClass}" data-score-badge>${rounded}% Match</span>`;
+}
+
+function resolveSynthesis(opp) {
+  const aiMatch = opp?.raw_metadata?.ai_match;
+  const matchVerdict =
+    aiMatch && typeof aiMatch.verdict === 'string' ? aiMatch.verdict.trim() : '';
+  if (matchVerdict) {
+    const isRealGemini =
+      (aiMatch.provider_used === 'gemini' || aiMatch.provider === 'gemini') &&
+      aiMatch.used_fallback !== true;
+    return {
+      label: isRealGemini ? 'Gemini' : 'Synthèse',
+      text: matchVerdict,
+    };
+  }
+
+  const summary = typeof opp?.ai_summary === 'string' ? opp.ai_summary.trim() : '';
+  if (summary) {
+    const isRealGemini =
+      opp?.raw_metadata?.ai_provider === 'gemini' &&
+      opp?.raw_metadata?.used_fallback !== true;
+    return {
+      label: isRealGemini ? 'Gemini' : 'Synthèse',
+      text: summary,
+    };
+  }
+  return null;
+}
+
 function renderOpportunityRow(opp) {
+  const oppId = opp.id || '';
+  const escapedId = escapeHtml(oppId);
   const rawTitle = opp.title || 'Opportunité sans titre';
   const rawCompany = opp.company || 'Entreprise non précisée';
   const title = escapeHtml(rawTitle);
@@ -217,38 +280,99 @@ function renderOpportunityRow(opp) {
     : `<span class="jp-new-badge" data-new-badge><span class="jp-dot-sage" aria-hidden="true"></span><span>Nouveau</span></span>`;
 
   const statusKey = String(opp.status || 'new').trim().toLowerCase();
-  const statusChip = Object.hasOwn(STATUS_CHIPS, statusKey)
-    ? STATUS_CHIPS[statusKey]
-    : '<span class="jp-label">Disponible</span>';
+  const statusChip = Object.hasOwn(STATUS_CHIPS, statusKey) ? STATUS_CHIPS[statusKey] : '';
+  const scoreBadgeHtml = renderScoreBadge(opp);
+  const rightMetaHtml = [statusChip, scoreBadgeHtml].filter(Boolean).join('');
 
   const isPost = opp.opportunity_type === 'post';
+  const authorParts = [];
+  if (opp.company || !isPost || !opp.author_name) {
+    authorParts.push(`<span class="font-medium text-[#1C1917]">${company}</span>`);
+  }
+  if (isPost && opp.author_name) {
+    const authorDisplay = opp.author_title
+      ? `${opp.author_name} — ${opp.author_title}`
+      : opp.author_name;
+    authorParts.push(`<span data-opp-author>Par ${escapeHtml(authorDisplay)}</span>`);
+  }
+  if (locationText) {
+    authorParts.push(`<span>${locationText}</span>`);
+  }
+
+  const synthesis = resolveSynthesis(opp);
+  const synthesisHtml = synthesis
+    ? `<div class="jp-ai-callout" data-ai-callout><strong>${escapeHtml(synthesis.label)} :</strong> ${escapeHtml(synthesis.text)}</div>`
+    : '';
+
+  const isOpen = openAccordionIds.has(oppId);
+  const rawDescription = typeof opp.description === 'string' ? opp.description.trim() : '';
+  const salaryHtml = opp.salary_raw
+    ? `<p class="jp-label mb-2">Rémunération : ${escapeHtml(opp.salary_raw)}</p>`
+    : '';
+  const descriptionContent = rawDescription
+    ? escapeHtml(rawDescription)
+    : 'Aucune description détaillée fournie.';
+
+  const isKept = statusKey === 'kept';
+  const isProgressed = statusKey === 'applied' || statusKey === 'interview';
+  const isStatusPending = statusPendingRequests.has(oppId);
+
+  let keepContent;
+  let keepAriaLabel;
+  if (isProgressed) {
+    const progressedLabel = statusKey === 'interview' ? 'Entretien' : 'Candidaté';
+    keepContent = `${ICONS.check('w-3.5 h-3.5')}<span>${progressedLabel}</span>`;
+    keepAriaLabel = escapeHtml(`${progressedLabel} — déjà suivi dans le Kanban : ${rawTitle}`);
+  } else if (isKept) {
+    keepContent = `${ICONS.check('w-3.5 h-3.5')}<span>Gardé</span>`;
+    keepAriaLabel = escapeHtml(`Retirer des opportunités gardées : ${rawTitle}`);
+  } else {
+    keepContent = '<span>Je garde</span>';
+    keepAriaLabel = escapeHtml(`Garder l'opportunité : ${rawTitle}`);
+  }
+
+  const keepDisabledAttr = isProgressed || isStatusPending ? ' disabled' : '';
+  const archiveDisabledAttr = isStatusPending ? ' disabled' : '';
+  const busyAttr = isStatusPending ? ' aria-busy="true"' : '';
+  const archiveAriaLabel = escapeHtml(`Archiver l'opportunité : ${rawTitle}`);
+
   const ctaText = isPost ? 'Voir le post &rarr;' : "Voir l'offre &rarr;";
   const ariaAction = isPost ? 'Voir le post' : "Voir l'offre";
   const ctaAriaLabel = escapeHtml(`${ariaAction} : ${rawTitle} — ${rawCompany}`);
 
   const linkHtml = safeUrl
-    ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" class="jp-btn-primary shrink-0" aria-label="${ctaAriaLabel}">${ctaText}</a>`
+    ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" data-action="open-link" class="jp-btn-primary shrink-0" aria-label="${ctaAriaLabel}">${ctaText}</a>`
     : '<span class="jp-label">Lien indisponible</span>';
 
   return `
-    <article class="jp-card flex flex-col gap-3" data-opp-id="${escapeHtml(opp.id || '')}" data-is-seen="${opp.is_seen ? 'true' : 'false'}">
+    <article class="jp-card flex flex-col gap-3" data-opp-id="${escapedId}" data-is-seen="${opp.is_seen ? 'true' : 'false'}">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="jp-label flex flex-wrap items-center gap-2 min-w-0">
           ${newBadgeHtml}
           <span>${metaParts.join(' &bull; ')}</span>
         </div>
-        ${statusChip}
+        ${rightMetaHtml ? `<div class="flex items-center gap-2 shrink-0">${rightMetaHtml}</div>` : ''}
       </div>
 
       <div class="min-w-0">
         <h2 class="jp-card-title break-words">${title}</h2>
         <p class="jp-body mt-0.5 break-words">
-          <span class="font-medium text-[#1C1917]">${company}</span>${locationText ? ` &bull; <span>${locationText}</span>` : ''}
+          ${authorParts.join(' &bull; ')}
         </p>
       </div>
 
-      <div class="flex items-center justify-between gap-3 pt-3 border-t border-[#E7E5E4]">
-        <span class="jp-label">${isPost ? 'Post réseau' : 'Offre'}</span>
+      ${synthesisHtml}
+
+      <details class="jp-accordion" data-opp-accordion="${escapedId}"${isOpen ? ' open data-restored-open="1"' : ''}>
+        <summary>Voir le détail de l'annonce</summary>
+        <div class="jp-accordion-body">${salaryHtml}${descriptionContent}</div>
+      </details>
+
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#E7E5E4]">
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" data-action="toggle-keep" class="jp-btn-secondary jp-btn-keep${isKept ? ' is-kept' : ''}" aria-pressed="${isKept ? 'true' : 'false'}" aria-label="${keepAriaLabel}"${keepDisabledAttr}${busyAttr}>${keepContent}</button>
+          <button type="button" data-action="archive" class="jp-btn-ghost" aria-label="${archiveAriaLabel}"${archiveDisabledAttr}${busyAttr}>Archiver</button>
+        </div>
         ${linkHtml}
       </div>
     </article>
@@ -331,6 +455,59 @@ function syncFilterBarDom(filters, newCount, sourceCounts) {
   }
 }
 
+function captureInlineFeedFocus(listEl) {
+  const activeEl = document.activeElement;
+  if (!(activeEl instanceof HTMLElement) || !listEl.contains(activeEl)) {
+    return null;
+  }
+  const oppId = activeEl.closest('[data-opp-id]')?.getAttribute('data-opp-id') || null;
+  if (!oppId) return null;
+
+  if (activeEl.tagName === 'SUMMARY') {
+    return { type: 'summary', oppId };
+  }
+  const actionEl = activeEl.closest('[data-action]');
+  const action = actionEl?.getAttribute('data-action');
+  if (action) {
+    return { type: 'action', oppId, action };
+  }
+  return null;
+}
+
+function restoreFeedFocus(listEl, inlineFocus) {
+  if (inlineFocus?.type === 'summary') {
+    const matchingCard = Array.from(listEl.children).find(
+      (el) => el.getAttribute('data-opp-id') === inlineFocus.oppId
+    );
+    const summaryEl = matchingCard?.querySelector('details.jp-accordion > summary');
+    if (summaryEl instanceof HTMLElement) {
+      summaryEl.focus({ preventScroll: true });
+    }
+    return;
+  }
+
+  let target = null;
+  if (pendingFocusTarget && !statusPendingRequests.has(pendingFocusTarget.oppId)) {
+    target = pendingFocusTarget;
+    pendingFocusTarget = null;
+  } else if (inlineFocus?.type === 'action' && !statusPendingRequests.has(inlineFocus.oppId)) {
+    target = inlineFocus;
+  }
+
+  if (!target) return;
+
+  const matchingCard = Array.from(listEl.children).find(
+    (el) => el.getAttribute('data-opp-id') === target.oppId
+  );
+  const actionBtn = matchingCard?.querySelector(`[data-action="${target.action}"]`);
+  if (actionBtn instanceof HTMLElement && !actionBtn.hasAttribute('disabled')) {
+    actionBtn.focus({ preventScroll: true });
+    return;
+  }
+
+  document.getElementById('filter-only-new')?.focus({ preventScroll: true });
+}
+
 export function renderFeedView(snapshot = getState()) {
   const listEl = document.getElementById('feed-list');
   const countEl = document.getElementById('feed-count');
@@ -355,6 +532,8 @@ export function renderFeedView(snapshot = getState()) {
     }
   }
 
+  const inlineFocus = captureInlineFeedFocus(listEl);
+
   if (snapshot.isLoadingFeed && totalActive === 0) {
     listEl.innerHTML = `
       <div class="jp-card jp-body text-center py-8" role="status">
@@ -371,6 +550,7 @@ export function renderFeedView(snapshot = getState()) {
         <button type="button" id="btn-retry-feed" class="jp-btn-secondary">Réessayer</button>
       </div>
     `;
+    restoreFeedFocus(listEl, inlineFocus);
     return;
   }
 
@@ -380,6 +560,7 @@ export function renderFeedView(snapshot = getState()) {
         Aucune opportunité disponible pour le moment.
       </div>
     `;
+    restoreFeedFocus(listEl, inlineFocus);
     return;
   }
 
@@ -390,10 +571,12 @@ export function renderFeedView(snapshot = getState()) {
         <button type="button" id="btn-reset-filters" class="jp-btn-secondary">Réinitialiser les filtres</button>
       </div>
     `;
+    restoreFeedFocus(listEl, inlineFocus);
     return;
   }
 
   listEl.innerHTML = model.filteredOpportunities.map(renderOpportunityRow).join('');
+  restoreFeedFocus(listEl, inlineFocus);
 }
 
 async function reloadFeed() {
@@ -420,6 +603,7 @@ async function handleMarkAllSeen() {
   const prevSeenMap = new Map(opportunities.map((opp) => [opp.id, Boolean(opp.is_seen)]));
 
   isMarkingAllSeen = true;
+  transientOnlyNewOpenIds.clear();
   syncMarkAllSeenDisabled(0);
   markAllOpportunitiesSeenInState();
 
@@ -559,9 +743,224 @@ function bindFilterBarEvents() {
   });
 }
 
+async function markSeenExplicitly(oppId) {
+  if (!oppId || seenPendingIds.has(oppId)) return;
+  const opp = getState().opportunities.find((o) => o.id === oppId);
+  if (!opp || opp.is_seen) return;
+
+  seenPendingIds.add(oppId);
+  syncOpportunitySeen(oppId, true);
+  try {
+    await markOpportunitySeen(oppId, true);
+  } catch {
+    const currentOpp = getState().opportunities.find((o) => o.id === oppId);
+    if (currentOpp && currentOpp.status === 'new') {
+      syncOpportunitySeen(oppId, false);
+    }
+  } finally {
+    seenPendingIds.delete(oppId);
+  }
+}
+
+function recordActionFocusIfActive(oppId, action) {
+  const activeEl = document.activeElement;
+  if (!(activeEl instanceof HTMLElement)) return;
+  const activeCard = activeEl.closest('[data-opp-id]');
+  if (activeCard?.getAttribute('data-opp-id') !== oppId) return;
+  if (activeEl.closest('[data-action]')?.getAttribute('data-action') === action) {
+    pendingFocusTarget = { oppId, action };
+  }
+}
+
+async function handleToggleKeep(oppId) {
+  if (!oppId || statusPendingRequests.has(oppId)) return;
+  const opp = getState().opportunities.find((o) => o.id === oppId);
+  if (!opp) return;
+
+  const prevStatus = opp.status || 'new';
+  if (prevStatus === 'applied' || prevStatus === 'interview') return;
+
+  const prevSeen = Boolean(opp.is_seen);
+  const existingApp = getState().applications.find((a) => a.opportunity_id === oppId);
+  const prevApp = existingApp ? { ...existingApp } : null;
+  const nextStatus = prevStatus === 'kept' ? 'new' : 'kept';
+
+  recordActionFocusIfActive(oppId, 'toggle-keep');
+
+  let resolvePromise;
+  const reqPromise = new Promise((resolve) => {
+    resolvePromise = resolve;
+  });
+  statusPendingRequests.set(oppId, reqPromise);
+  syncOpportunityStatus(oppId, nextStatus);
+
+  try {
+    const res = await updateOpportunityStatus(oppId, nextStatus);
+    if (res && typeof res.is_seen === 'boolean') {
+      syncOpportunitySeen(oppId, res.is_seen);
+    }
+    if (nextStatus === 'new' && !res?.is_seen) {
+      try {
+        await markOpportunitySeen(oppId, true);
+        syncOpportunitySeen(oppId, true);
+      } catch {
+        // Error toast emitted by api.js; keep existing is_seen state unchanged.
+      }
+    }
+  } catch {
+    syncOpportunityStatus(oppId, prevStatus, {
+      isSeen: prevSeen,
+      restoreApplication: prevApp,
+    });
+  } finally {
+    statusPendingRequests.delete(oppId);
+    renderFeedView(getState());
+    resolvePromise();
+  }
+}
+
+async function handleUndoArchive(oppId, prevStatus, prevSeen, prevApp, inFlightArchive) {
+  if (inFlightArchive) {
+    const archiveSucceeded = await inFlightArchive;
+    if (!archiveSucceeded) return;
+  }
+
+  const targetStatus =
+    prevStatus === 'archived' || prevStatus === 'rejected' ? 'new' : prevStatus;
+  const restoreAppArg =
+    prevApp !== null ? prevApp : targetStatus === 'new' ? null : undefined;
+
+  let resolveUndo;
+  const undoPromise = new Promise((resolve) => {
+    resolveUndo = resolve;
+  });
+  statusPendingRequests.set(oppId, undoPromise);
+
+  syncOpportunityStatus(oppId, targetStatus, {
+    isSeen: prevSeen,
+    restoreApplication: restoreAppArg,
+  });
+
+  try {
+    const res = await updateOpportunityStatus(oppId, targetStatus);
+    if (!prevSeen) {
+      await markOpportunitySeen(oppId, false);
+      syncOpportunitySeen(oppId, false);
+    } else if (res && typeof res.is_seen === 'boolean') {
+      syncOpportunitySeen(oppId, res.is_seen);
+    }
+  } catch {
+    syncOpportunityStatus(oppId, 'archived', {
+      isSeen: true,
+      restoreApplication: prevApp ? { ...prevApp, status: 'rejected' } : undefined,
+    });
+  } finally {
+    statusPendingRequests.delete(oppId);
+    renderFeedView(getState());
+    resolveUndo();
+  }
+}
+
+async function handleArchiveOpportunity(oppId) {
+  if (!oppId || statusPendingRequests.has(oppId)) return;
+  const opp = getState().opportunities.find((o) => o.id === oppId);
+  if (!opp) return;
+
+  const prevStatus = opp.status || 'new';
+  const prevSeen = Boolean(opp.is_seen);
+  const existingApp = getState().applications.find((a) => a.opportunity_id === oppId);
+  const prevApp = existingApp ? { ...existingApp } : null;
+  const wasAccordionOpen = openAccordionIds.has(oppId);
+  const wasTransientOnlyNew = transientOnlyNewOpenIds.has(oppId);
+
+  recordActionFocusIfActive(oppId, 'archive');
+  openAccordionIds.delete(oppId);
+  transientOnlyNewOpenIds.delete(oppId);
+
+  let resolveReq;
+  const reqTracker = new Promise((resolve) => {
+    resolveReq = resolve;
+  });
+  statusPendingRequests.set(oppId, reqTracker);
+  syncOpportunityStatus(oppId, 'archived');
+
+  const archiveToast = showToast('Opportunité archivée.', 'info', {
+    actionLabel: 'Annuler',
+    onAction: () => handleUndoArchive(oppId, prevStatus, prevSeen, prevApp, reqTracker),
+  });
+
+  let ok = false;
+  try {
+    await updateOpportunityStatus(oppId, 'archived');
+    ok = true;
+  } catch {
+    if (archiveToast && archiveToast.isConnected) {
+      archiveToast.remove();
+    }
+    if (wasAccordionOpen) openAccordionIds.add(oppId);
+    if (wasTransientOnlyNew) transientOnlyNewOpenIds.add(oppId);
+    syncOpportunityStatus(oppId, prevStatus, {
+      isSeen: prevSeen,
+      restoreApplication: prevApp,
+    });
+  } finally {
+    statusPendingRequests.delete(oppId);
+    renderFeedView(getState());
+    resolveReq(ok);
+  }
+}
+
 export function initFeedView() {
+  openAccordionIds.clear();
+  transientOnlyNewOpenIds.clear();
+  seenPendingIds.clear();
+  statusPendingRequests.clear();
+  pendingFocusTarget = null;
+
   const listEl = document.getElementById('feed-list');
   if (listEl) {
+    listEl.addEventListener(
+      'toggle',
+      (event) => {
+        const details = event.target;
+        if (!(details instanceof HTMLDetailsElement) || !details.matches('.jp-accordion')) {
+          return;
+        }
+        const card = details.closest('[data-opp-id]');
+        const oppId = card?.getAttribute('data-opp-id');
+        if (!oppId) return;
+
+        if (details.open) {
+          if (details.hasAttribute('data-restored-open')) {
+            details.removeAttribute('data-restored-open');
+            return;
+          }
+          openAccordionIds.add(oppId);
+          if (getState().feedFilters?.onlyNew) {
+            transientOnlyNewOpenIds.add(oppId);
+          }
+          markSeenExplicitly(oppId);
+        } else {
+          details.removeAttribute('data-restored-open');
+          openAccordionIds.delete(oppId);
+          if (transientOnlyNewOpenIds.delete(oppId)) {
+            renderFeedView(getState());
+          }
+        }
+      },
+      true
+    );
+
+    listEl.addEventListener('auxclick', (event) => {
+      if (event.button !== 1) return;
+      const linkEl = event.target.closest('[data-action="open-link"]');
+      if (!linkEl) return;
+      const oppId = linkEl.closest('[data-opp-id]')?.getAttribute('data-opp-id');
+      if (oppId) {
+        markSeenExplicitly(oppId);
+      }
+    });
+
     listEl.addEventListener('click', (event) => {
       const retryBtn = event.target.closest('#btn-retry-feed');
       if (retryBtn) {
@@ -571,8 +970,26 @@ export function initFeedView() {
 
       const resetBtn = event.target.closest('#btn-reset-filters');
       if (resetBtn) {
+        transientOnlyNewOpenIds.clear();
         resetFeedFilters();
         document.getElementById('filter-only-new')?.focus();
+        return;
+      }
+
+      const actionEl = event.target.closest('[data-action]');
+      if (!actionEl) return;
+
+      const card = actionEl.closest('[data-opp-id]');
+      const oppId = card?.getAttribute('data-opp-id');
+      if (!oppId) return;
+
+      const action = actionEl.getAttribute('data-action');
+      if (action === 'open-link') {
+        markSeenExplicitly(oppId);
+      } else if (action === 'toggle-keep') {
+        handleToggleKeep(oppId);
+      } else if (action === 'archive') {
+        handleArchiveOpportunity(oppId);
       }
     });
   }
@@ -583,6 +1000,9 @@ export function initFeedView() {
   subscribe((snapshot) => {
     if (snapshot.activeView !== prev.activeView && snapshot.activeView !== 'feed') {
       setSourcesPopoverOpen(false);
+    }
+    if (snapshot.feedFilters !== prev.feedFilters) {
+      transientOnlyNewOpenIds.clear();
     }
     const changed =
       snapshot.opportunities !== prev.opportunities ||

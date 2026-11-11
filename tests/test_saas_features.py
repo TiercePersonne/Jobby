@@ -138,9 +138,11 @@ def test_kanban_auto_sync_from_triage(client):
     )
     storage.upsert_opportunity(opp)
 
-    # 1. User clicks 'Je garde' -> status becomes 'kept'
-    patch_resp = client.patch(f"/api/opportunities/{opp.id}/status", json={"status": "kept"})
+    # 1. User clicks 'Je garde' -> status becomes 'kept' (legacy 'favorite'/'saved' also canonicalize to 'kept')
+    patch_resp = client.patch(f"/api/opportunities/{opp.id}/status", json={"status": "favorite"})
     assert patch_resp.status_code == 200
+    assert patch_resp.json()["new_status"] == "kept"
+    assert patch_resp.json()["is_seen"] is True
 
     # Must appear in Kanban list under 'saved'
     kanban_resp = client.get("/api/applications")
@@ -149,10 +151,13 @@ def test_kanban_auto_sync_from_triage(client):
     sync_app = next((a for a in apps if a["opportunity_id"] == opp.id), None)
     assert sync_app is not None
     assert sync_app["status"] == "saved"
+    assert sync_app["opportunity"]["status"] == "kept"
 
     # 2. User clicks 'Archiver' -> status becomes 'archived'
     patch_resp2 = client.patch(f"/api/opportunities/{opp.id}/status", json={"status": "archived"})
     assert patch_resp2.status_code == 200
+    assert patch_resp2.json()["new_status"] == "archived"
+    assert patch_resp2.json()["is_seen"] is True
 
     # Must appear in Kanban list under 'rejected' (Archivés)
     kanban_resp2 = client.get("/api/applications")
@@ -161,9 +166,11 @@ def test_kanban_auto_sync_from_triage(client):
     assert sync_app2 is not None
     assert sync_app2["status"] == "rejected"
 
-    # 3. User un-marks -> status becomes 'new'
+    # 3. User un-marks -> status becomes 'new' and keeps is_seen=True
     patch_resp3 = client.patch(f"/api/opportunities/{opp.id}/status", json={"status": "new"})
     assert patch_resp3.status_code == 200
+    assert patch_resp3.json()["new_status"] == "new"
+    assert patch_resp3.json()["is_seen"] is True
 
     kanban_resp3 = client.get("/api/applications")
     apps3 = kanban_resp3.json()

@@ -10,18 +10,72 @@
       </button>
     </div>
 
-    <div class="p-5 flex flex-col gap-3">
-      <p class="jp-body">
-        Le déclenchement de la collecte multi-sources avec sélection des mots-clés et connecteurs sera raccordé ici lors de la Story 1.3.
-      </p>
-      <div id="modal-hunt-preview" class="jp-surface-subtle px-3.5 py-2.5 jp-label">
-        Configuration en attente de chargement...
-      </div>
-    </div>
+    <form id="hunt-form" class="flex flex-col flex-1 min-h-0" novalidate>
+      <div class="p-5 flex flex-col gap-4 overflow-y-auto">
+        <div id="modal-hunt-preview" class="jp-surface-subtle px-3.5 py-2.5 jp-label">
+          Configuration en attente de chargement...
+        </div>
 
-    <div class="px-5 py-3 border-t border-[#E7E5E4] bg-[#F7F5F0] flex items-center justify-end gap-2">
-      <button type="button" data-modal-close="modal-hunt" class="jp-btn-secondary">Fermer</button>
-    </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="hunt-keywords" class="jp-label">Mots-clés (séparés par des virgules)</label>
+          <input id="hunt-keywords" name="keywords" type="text" class="jp-input" placeholder="Ex. Product Designer, Lead UX, Python">
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="hunt-location" class="jp-label">Localisation</label>
+          <input id="hunt-location" name="location" type="text" class="jp-input" placeholder="Ex. France, Paris, Remote">
+        </div>
+
+        <label class="jp-filter-checkbox" for="hunt-remote-only">
+          <input type="checkbox" id="hunt-remote-only" name="remote_only">
+          <span>100 % Remote uniquement</span>
+        </label>
+
+        <fieldset class="border border-[#E7E5E4] rounded-[10px] p-3 flex flex-col gap-2 m-0">
+          <legend class="jp-label px-1">Sources actives</legend>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <label class="jp-hunt-source-option">
+              <input type="checkbox" name="hunt-source" value="linkedin" data-hunt-source="linkedin" checked>
+              <span>LinkedIn</span>
+            </label>
+            <label class="jp-hunt-source-option">
+              <input type="checkbox" name="hunt-source" value="wttj" data-hunt-source="wttj" checked>
+              <span>WTTJ</span>
+            </label>
+            <label class="jp-hunt-source-option">
+              <input type="checkbox" name="hunt-source" value="indeed" data-hunt-source="indeed" checked>
+              <span>Indeed</span>
+            </label>
+            <label class="jp-hunt-source-option">
+              <input type="checkbox" name="hunt-source" value="hellowork" data-hunt-source="hellowork" checked>
+              <span>HelloWork</span>
+            </label>
+            <label class="jp-hunt-source-option">
+              <input type="checkbox" name="hunt-source" value="glassdoor" data-hunt-source="glassdoor" checked>
+              <span>Glassdoor</span>
+            </label>
+            <label class="jp-hunt-source-option">
+              <input type="checkbox" name="hunt-source" value="teamtailor" data-hunt-source="teamtailor" checked>
+              <span>Teamtailor</span>
+            </label>
+            <label class="jp-hunt-source-option">
+              <input type="checkbox" name="hunt-source" value="jobgether" data-hunt-source="jobgether" checked>
+              <span>Jobgether</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <label class="jp-filter-checkbox" for="hunt-include-posts">
+          <input type="checkbox" id="hunt-include-posts" name="include_posts" checked>
+          <span>Posts LinkedIn</span>
+        </label>
+      </div>
+
+      <div class="px-5 py-3 border-t border-[#E7E5E4] bg-[#F7F5F0] flex items-center justify-end gap-2 shrink-0">
+        <button type="button" data-modal-close="modal-hunt" class="jp-btn-secondary">Fermer</button>
+        <button type="submit" id="btn-submit-hunt" class="jp-btn-primary">Lancer la chasse</button>
+      </div>
+    </form>
   </div>
 </div>
 

@@ -12,6 +12,18 @@ from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from jobby.models import Application, ApplicationStatus, JobOpportunity, MatchEvaluation, OpportunityType, User, UserProfile
 
+KEPT_STATUS_ALIASES = frozenset({"favorite", "saved", "kept"})
+
+
+def normalize_opportunity_status(raw_status: Optional[str]) -> str:
+    """Canonicalizes legacy kept aliases ('favorite', 'saved') to 'kept'."""
+    if not raw_status:
+        return "new"
+    cleaned = str(raw_status).strip().lower()
+    if not cleaned:
+        return "new"
+    return "kept" if cleaned in KEPT_STATUS_ALIASES else cleaned
+
 
 class Storage:
     """Handles local SQLite storage and queries for job opportunities."""
@@ -169,7 +181,7 @@ class Storage:
                 ).fetchone()
                 
                 is_new = existing is None
-                status = existing["status"] if existing else opp.status
+                status = normalize_opportunity_status(existing["status"] if existing else opp.status)
                 score = opp.score if opp.score is not None else (existing["score"] if existing else None)
                 is_seen = bool(existing["is_seen"]) if existing else bool(opp.is_seen)
 
@@ -256,9 +268,13 @@ class Storage:
         if source:
             query += " AND source = ?"
             params.append(source)
-        if status:
-            query += " AND status = ?"
-            params.append(status)
+        if status and status.strip():
+            norm_filter = normalize_opportunity_status(status)
+            if norm_filter == "kept":
+                query += " AND LOWER(TRIM(status)) IN ('kept', 'saved', 'favorite')"
+            else:
+                query += " AND LOWER(TRIM(status)) = ?"
+                params.append(norm_filter)
         if min_score is not None:
             query += " AND score >= ?"
             params.append(min_score)
@@ -274,16 +290,17 @@ class Storage:
             return [self._row_to_opportunity(r) for r in rows]
 
     def update_status(self, opp_id: str, new_status: str) -> bool:
+        canonical_status = normalize_opportunity_status(new_status)
         with self._connection() as conn:
-            if new_status != "new":
+            if canonical_status != "new":
                 cur = conn.execute(
                     "UPDATE opportunities SET status = ?, is_seen = 1 WHERE id = ?",
-                    (new_status, opp_id),
+                    (canonical_status, opp_id),
                 )
             else:
                 cur = conn.execute(
                     "UPDATE opportunities SET status = ? WHERE id = ?",
-                    (new_status, opp_id),
+                    (canonical_status, opp_id),
                 )
             conn.commit()
             return cur.rowcount > 0
@@ -312,7 +329,11 @@ class Storage:
             total = conn.execute("SELECT COUNT(*) FROM opportunities").fetchone()[0]
             by_source = dict(conn.execute("SELECT source, COUNT(*) FROM opportunities GROUP BY source").fetchall())
             by_type = dict(conn.execute("SELECT opportunity_type, COUNT(*) FROM opportunities GROUP BY opportunity_type").fetchall())
-            by_status = dict(conn.execute("SELECT status, COUNT(*) FROM opportunities GROUP BY status").fetchall())
+            raw_by_status = conn.execute("SELECT status, COUNT(*) FROM opportunities GROUP BY status").fetchall()
+            by_status: Dict[str, int] = {}
+            for raw_st, count in raw_by_status:
+                canon_st = normalize_opportunity_status(raw_st)
+                by_status[canon_st] = by_status.get(canon_st, 0) + count
             return {
                 "total": total,
                 "by_source": by_source,
@@ -351,7 +372,7 @@ class Storage:
             score=row["score"],
             score_reasons=reasons,
             tags=tags,
-            status=row["status"],
+            status=normalize_opportunity_status(row["status"]),
             is_seen=is_seen,
             raw_metadata=raw_meta,
             post_intent=post_intent,
@@ -524,6 +545,7 @@ class Storage:
         return app
 
     def get_applications(self, user_id: str) -> List[Application]:
+        now_iso = datetime.now(timezone.utc).isoformat()
         with self._connection() as conn:
             # Auto-sync any opportunities marked by the user in hunt view that don't yet have an application entry
             conn.execute(
@@ -538,7 +560,7 @@ class Storage:
                     'saved',
                     '',
                     o.author_name,
-                    CURRENT_TIMESTAMP
+                    ?
                 FROM opportunities o
                 WHERE o.status IN ('kept', 'saved', 'favorite')
                   AND NOT EXISTS (
@@ -546,7 +568,7 @@ class Storage:
                       WHERE a.user_id = ? AND a.opportunity_id = o.id
                   )
                 """,
-                (user_id, user_id, user_id),
+                (user_id, user_id, now_iso, user_id),
             )
             conn.execute(
                 """
@@ -560,7 +582,7 @@ class Storage:
                     'rejected',
                     'Archivé depuis le flux',
                     o.author_name,
-                    CURRENT_TIMESTAMP
+                    ?
                 FROM opportunities o
                 WHERE o.status = 'archived'
                   AND NOT EXISTS (
@@ -568,7 +590,7 @@ class Storage:
                       WHERE a.user_id = ? AND a.opportunity_id = o.id
                   )
                 """,
-                (user_id, user_id, user_id),
+                (user_id, user_id, now_iso, user_id),
             )
             conn.commit()
 
@@ -670,35 +692,48 @@ class Storage:
             )
 
     def sync_opportunity_to_application(
-        self, opportunity_id: str, user_id: str, status: ApplicationStatus, notes: Optional[str] = None
+        self, opportunity_id: str, user_id: str, status: ApplicationStatus | str, notes: Optional[str] = None
     ) -> Optional[Application]:
+        status_enum = status if isinstance(status, ApplicationStatus) else ApplicationStatus(str(status).strip().lower())
+        now_iso = datetime.now(timezone.utc).isoformat()
+        applied_at = now_iso if status_enum == ApplicationStatus.APPLIED else None
+
         with self._connection() as conn:
-            opp = self.get_opportunity(opportunity_id)
-            contact_name = opp.author_name if opp else None
-            app_id = f"app_{user_id}_{opportunity_id}"
-            
-            applied_at = datetime.now(timezone.utc).isoformat() if status == ApplicationStatus.APPLIED else None
+            opp_row = conn.execute(
+                "SELECT author_name FROM opportunities WHERE id = ?",
+                (opportunity_id,),
+            ).fetchone()
+            if not opp_row:
+                return None
+
+            existing_app = conn.execute(
+                "SELECT id FROM applications WHERE opportunity_id = ? AND user_id = ?",
+                (opportunity_id, user_id),
+            ).fetchone()
+            app_id = existing_app["id"] if existing_app else f"app_{user_id}_{opportunity_id}"
+            contact_name = opp_row["author_name"]
 
             conn.execute(
                 """
                 INSERT INTO applications (
                     id, user_id, opportunity_id, status, notes, contact_name, applied_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, COALESCE(?, ''), ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, COALESCE(?, ''), ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     notes = CASE WHEN excluded.notes != '' THEN excluded.notes ELSE applications.notes END,
-                    applied_at = CASE WHEN excluded.status = 'applied' THEN CURRENT_TIMESTAMP ELSE applications.applied_at END,
-                    updated_at = CURRENT_TIMESTAMP
+                    applied_at = CASE WHEN excluded.status = 'applied' THEN COALESCE(applications.applied_at, excluded.applied_at) ELSE applications.applied_at END,
+                    updated_at = excluded.updated_at
                 """,
                 (
                     app_id,
                     user_id,
                     opportunity_id,
-                    status.value,
+                    status_enum.value,
                     notes or "",
                     contact_name,
                     applied_at,
+                    now_iso,
                 ),
             )
             conn.commit()
@@ -714,30 +749,39 @@ class Storage:
             return cur.rowcount > 0
 
     def update_application_status(self, app_id: str, status: str, user_id: str) -> bool:
+        now_iso = datetime.now(timezone.utc).isoformat()
         with self._connection() as conn:
-            applied_at_clause = ""
             if status == ApplicationStatus.APPLIED.value:
-                applied_at_clause = ", applied_at = CURRENT_TIMESTAMP"
-            cur = conn.execute(
-                f"""
-                UPDATE applications
-                SET status = ?, updated_at = CURRENT_TIMESTAMP {applied_at_clause}
-                WHERE id = ? AND user_id = ?
-                """,
-                (status, app_id, user_id),
-            )
+                cur = conn.execute(
+                    """
+                    UPDATE applications
+                    SET status = ?, updated_at = ?, applied_at = COALESCE(applied_at, ?)
+                    WHERE id = ? AND user_id = ?
+                    """,
+                    (status, now_iso, now_iso, app_id, user_id),
+                )
+            else:
+                cur = conn.execute(
+                    """
+                    UPDATE applications
+                    SET status = ?, updated_at = ?
+                    WHERE id = ? AND user_id = ?
+                    """,
+                    (status, now_iso, app_id, user_id),
+                )
             conn.commit()
             return cur.rowcount > 0
 
     def update_application_notes(self, app_id: str, notes: str, user_id: str) -> bool:
+        now_iso = datetime.now(timezone.utc).isoformat()
         with self._connection() as conn:
             cur = conn.execute(
                 """
                 UPDATE applications
-                SET notes = ?, updated_at = CURRENT_TIMESTAMP
+                SET notes = ?, updated_at = ?
                 WHERE id = ? AND user_id = ?
                 """,
-                (notes, app_id, user_id),
+                (notes, now_iso, app_id, user_id),
             )
             conn.commit()
             return cur.rowcount > 0

@@ -259,4 +259,285 @@ def test_feed_filter_bar_warm_porcelain_markup(client):
     assert 'type="search"' not in filter_section
 
 
+def test_opportunity_status_canonicalization_and_seen_flag(client, monkeypatch, tmp_path):
+    db_path = tmp_path / "server_status.db"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+
+    storage = Storage(db_path=db_path)
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="st-1",
+            source="wttj",
+            title="Lead Designer",
+            url="https://wttj.co/jobs/st-1",
+            status="new",
+            is_seen=False,
+        )
+    )
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="st-2",
+            source="linkedin",
+            title="Staff Engineer",
+            url="https://linkedin.com/jobs/view/st-2",
+            status="new",
+            is_seen=False,
+        )
+    )
+
+    # Seed legacy SQLite rows with 'favorite' and 'saved' directly
+    with storage._connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO opportunities (
+                id, source, opportunity_type, title, url, discovered_at, status, is_seen, dedup_key
+            ) VALUES
+                ('legacy-fav', 'indeed', 'offer', 'Legacy Fav', 'https://example.com/fav', '2026-11-11T10:00:00+00:00', 'favorite', 1, 'a:fav'),
+                ('legacy-sav', 'indeed', 'offer', 'Legacy Sav', 'https://example.com/sav', '2026-11-11T10:00:00+00:00', 'saved', 1, 'a:sav')
+            """
+        )
+        conn.commit()
+
+    # Reading back from Storage / API normalizes favorite/saved -> kept
+    by_id = {item["id"]: item for item in client.get("/api/opportunities").json()}
+    assert by_id["legacy-fav"]["status"] == "kept"
+    assert by_id["legacy-sav"]["status"] == "kept"
+    kept_list = storage.list_opportunities(status="kept")
+    assert {o.id for o in kept_list} == {"legacy-fav", "legacy-sav"}
+
+    # Invalid status -> 400; missing opp -> 404
+    assert client.patch("/api/opportunities/st-1/status", json={"status": "invalid"}).status_code == 400
+    assert client.patch("/api/opportunities/missing/status", json={"status": "kept"}).status_code == 404
+
+    # 'favorite' and 'saved' on PATCH /status canonicalize to 'kept' and set is_seen=True
+    fav_resp = client.patch("/api/opportunities/st-1/status", json={"status": "favorite"})
+    assert fav_resp.status_code == 200
+    assert fav_resp.json() == {
+        "status": "updated",
+        "id": "st-1",
+        "new_status": "kept",
+        "is_seen": True,
+    }
+    assert storage.get_opportunity("st-1").status == "kept"
+    assert storage.get_opportunity("st-1").is_seen is True
+
+    sav_resp = client.patch("/api/opportunities/st-2/status", json={"status": "saved"})
+    assert sav_resp.status_code == 200
+    assert sav_resp.json() == {
+        "status": "updated",
+        "id": "st-2",
+        "new_status": "kept",
+        "is_seen": True,
+    }
+
+    # Resetting to 'new' returns new_status='new' and preserves is_seen=True
+    reset_resp = client.patch("/api/opportunities/st-1/status", json={"status": "new"})
+    assert reset_resp.status_code == 200
+    assert reset_resp.json() == {
+        "status": "updated",
+        "id": "st-1",
+        "new_status": "new",
+        "is_seen": True,
+    }
+
+
+def test_search_endpoint_validation_and_scoring(client, monkeypatch, tmp_path):
+    from jobby.config import JobbyConfig, save_config
+    from jobby.providers import registry
+
+    db_path = tmp_path / "search.db"
+    cfg_path = tmp_path / "jobby_config.yaml"
+    digest_path = tmp_path / "digest.md"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    save_config(
+        JobbyConfig(
+            target_roles=["Product Designer"],
+            preferred_locations=["Paris"],
+            database_path=str(db_path),
+            digest_output_path=str(digest_path),
+        ),
+        config_path=cfg_path,
+    )
+
+    # Validation bounds [1, 200] for max_results -> 422
+    assert client.post("/api/search", json={"max_results": 0}).status_code == 422
+    assert client.post("/api/search", json={"max_results": 201}).status_code == 422
+    assert client.post("/api/search", json={"max_results": -1}).status_code == 422
+
+    captured = {}
+
+    async def fake_search_all(params, source_names=None, fail_silently=True):
+        captured["params"] = params
+        captured["source_names"] = source_names
+        return [
+            JobOpportunity(
+                id="search-opp-1",
+                source="wttj",
+                title="Lead Product Designer",
+                company="Porcelain Studio",
+                location="Paris, France",
+                remote_policy="full",
+                url="https://wttj.co/jobs/search-1",
+                description="Design System Figma en full remote.",
+            )
+        ]
+
+    monkeypatch.setattr(registry, "search_all", fake_search_all)
+
+    resp = client.post(
+        "/api/search",
+        json={
+            "keywords": ["Product Designer"],
+            "location": "Paris",
+            "remote_only": False,
+            "max_results": 25,
+            "sources": ["wttj", "linkedin"],
+            "include_posts": False,
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["total_found"] == 1
+    assert payload["new_count"] == 1
+    assert captured["source_names"] == ["wttj", "linkedin"]
+    assert captured["params"].include_posts is False
+    assert payload["opportunities"][0]["score"] is not None
+    assert payload["opportunities"][0]["score"] > 0
+    assert len(payload["opportunities"][0]["score_reasons"]) >= 1
+
+    # Persisted with assigned score and is_seen=False in SQLite
+    stored = client.get("/api/opportunities").json()
+    assert len(stored) == 1
+    assert stored[0]["id"] == "search-opp-1"
+    assert stored[0]["score"] == payload["opportunities"][0]["score"]
+    assert stored[0]["is_seen"] is False
+
+    # Repeat scrape returns new_count == 0
+    repeat_resp = client.post(
+        "/api/search",
+        json={"keywords": ["Product Designer"], "location": "Paris", "sources": ["wttj"]},
+    )
+    assert repeat_resp.status_code == 200
+    assert repeat_resp.json()["total_found"] == 1
+    assert repeat_resp.json()["new_count"] == 0
+
+    # Whitespace keywords/location fall back to config defaults on SearchParams
+    ws_resp = client.post(
+        "/api/search",
+        json={"keywords": ["   ", ""], "location": "   ", "sources": ["wttj"]},
+    )
+    assert ws_resp.status_code == 200
+    assert captured["params"].keywords == ["Product Designer"]
+    assert captured["params"].location == "Paris"
+
+    # remote_only=True applies remote_only scoring rule (+30 on full remote, -30 on non-remote)
+    async def fake_search_remote(params, source_names=None, fail_silently=True):
+        captured["params"] = params
+        return [
+            JobOpportunity(
+                id="search-onsite-1",
+                source="wttj",
+                title="Lead Product Designer",
+                company="OnSite Co",
+                location="Paris, France",
+                remote_policy="onsite",
+                url="https://wttj.co/jobs/onsite-1",
+                description="Présentiel 5j/5.",
+            )
+        ]
+
+    monkeypatch.setattr(registry, "search_all", fake_search_remote)
+    remote_resp = client.post(
+        "/api/search",
+        json={
+            "keywords": ["Product Designer"],
+            "location": "Paris",
+            "remote_only": True,
+            "sources": ["wttj"],
+        },
+    )
+    assert remote_resp.status_code == 200
+    assert remote_resp.json()["opportunities"][0]["score"] == 25.0  # 55 (role) - 30 (not remote)
+
+    # sources: [] returns empty immediately without calling registry.search_all
+    called_with_empty = {"called": False}
+
+    async def fail_if_called(*args, **kwargs):
+        called_with_empty["called"] = True
+        return []
+
+    monkeypatch.setattr(registry, "search_all", fail_if_called)
+    empty_src_resp = client.post("/api/search", json={"sources": []})
+    assert empty_src_resp.status_code == 200
+    assert empty_src_resp.json() == {"total_found": 0, "new_count": 0, "opportunities": []}
+    assert called_with_empty["called"] is False
+
+
+def test_webhook_trigger_search_persists_score_and_stats_merges_kept(client, monkeypatch, tmp_path):
+    from jobby.config import JobbyConfig, save_config
+    from jobby.providers import registry
+
+    db_path = tmp_path / "webhook_stats.db"
+    cfg_path = tmp_path / "webhook_config.yaml"
+    digest_path = tmp_path / "webhook_digest.md"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    monkeypatch.delenv("JOBBY_WEBHOOK_SECRET", raising=False)
+    save_config(
+        JobbyConfig(
+            target_roles=["Product Designer"],
+            preferred_locations=["Paris"],
+            database_path=str(db_path),
+            digest_output_path=str(digest_path),
+        ),
+        config_path=cfg_path,
+    )
+
+    async def fake_webhook_search(params, source_names=None, fail_silently=True):
+        return [
+            JobOpportunity(
+                id="wh-opp-1",
+                source="wttj",
+                title="Lead Product Designer",
+                company="Studio Hook",
+                location="Paris, France",
+                url="https://wttj.co/jobs/wh-1",
+                description="Design System en Python & Figma.",
+            )
+        ]
+
+    monkeypatch.setattr(registry, "search_all", fake_webhook_search)
+
+    wh_resp = client.post("/api/webhooks/trigger-search")
+    assert wh_resp.status_code == 200
+    assert wh_resp.json()["total_scraped"] == 1
+    assert wh_resp.json()["new_opportunities"] == 1
+
+    storage = Storage(db_path=db_path)
+    saved_opp = storage.get_opportunity("wh-opp-1")
+    assert saved_opp is not None
+    assert saved_opp.score is not None and saved_opp.score > 0
+    assert len(saved_opp.score_reasons) >= 1
+
+    # Seed legacy favorite/saved rows and verify GET /api/stats merges them into 'kept'
+    with storage._connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO opportunities (
+                id, source, opportunity_type, title, url, discovered_at, status, is_seen, dedup_key
+            ) VALUES
+                ('st-fav', 'linkedin', 'offer', 'Fav', 'https://example.com/1', '2026-11-11T10:00:00+00:00', 'favorite', 1, 'a:1'),
+                ('st-sav', 'linkedin', 'offer', 'Sav', 'https://example.com/2', '2026-11-11T10:00:00+00:00', 'saved', 1, 'a:2')
+            """
+        )
+        conn.commit()
+    storage.update_status("wh-opp-1", "kept")
+
+    stats = client.get("/api/stats").json()
+    assert stats["by_status"]["kept"] == 3
+    assert "favorite" not in stats["by_status"]
+    assert "saved" not in stats["by_status"]
+
+
 

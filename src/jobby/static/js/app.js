@@ -3,6 +3,7 @@ import {
   fetchConfig,
   fetchOpportunities,
   setApiToastNotifier,
+  triggerSearch,
 } from './api.js';
 import {
   VALID_VIEWS,
@@ -17,51 +18,18 @@ import {
   setOpportunities,
   subscribe,
 } from './state.js';
+import { showToast } from './utils.js';
 import { initFeedView } from './views/feed.js';
 import { initKanbanView } from './views/kanban.js';
 import { initProfileView } from './views/profile.js';
 import { initSettingsView } from './views/settings.js';
 
+export { showToast };
+
 let lastFocusedElement = null;
-
-/**
- * Displays a sober Warm Porcelain toast message.
- */
-export function showToast(message, variant = 'info') {
-  const container = document.getElementById('toast-container');
-  if (!container || !message) return;
-
-  const toast = document.createElement('div');
-  const variantClass =
-    variant === 'error'
-      ? 'jp-toast jp-toast-error'
-      : variant === 'success'
-        ? 'jp-toast jp-toast-success'
-        : 'jp-toast';
-  toast.className = variantClass;
-
-  const textSpan = document.createElement('span');
-  textSpan.textContent = String(message);
-
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'jp-label shrink-0 cursor-pointer bg-transparent border-0 p-0 text-current';
-  closeBtn.setAttribute('aria-label', 'Fermer la notification');
-  closeBtn.textContent = 'Fermer';
-  closeBtn.addEventListener('click', () => {
-    toast.remove();
-  });
-
-  toast.appendChild(textSpan);
-  toast.appendChild(closeBtn);
-  container.appendChild(toast);
-
-  window.setTimeout(() => {
-    if (toast.isConnected) {
-      toast.remove();
-    }
-  }, 5000);
-}
+let huntFormDirty = false;
+let isSearchingHunt = false;
+let lastIncludePostsBeforeDisable = true;
 
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
@@ -113,21 +81,176 @@ function syncKanbanBadge(applications) {
   badgeEl.textContent = String(getActiveKanbanCount(applications));
 }
 
+function syncLinkedInPostsToggle() {
+  const linkedinCb = document.querySelector('#hunt-form input[data-hunt-source="linkedin"]');
+  const includePostsEl = document.getElementById('hunt-include-posts');
+  if (!linkedinCb || !includePostsEl) return;
+
+  const linkedinSelected = Boolean(linkedinCb.checked);
+  if (!linkedinSelected) {
+    if (!includePostsEl.disabled) {
+      lastIncludePostsBeforeDisable = Boolean(includePostsEl.checked);
+    }
+    includePostsEl.disabled = true;
+    includePostsEl.checked = false;
+  } else {
+    const wasDisabled = includePostsEl.disabled;
+    includePostsEl.disabled = false;
+    if (wasDisabled) {
+      includePostsEl.checked = lastIncludePostsBeforeDisable;
+    }
+  }
+}
+
 function syncHuntModalPreview(config, configError) {
   const previewEl = document.getElementById('modal-hunt-preview');
-  if (!previewEl) return;
-  if (configError) {
-    previewEl.textContent = 'Configuration indisponible pour le moment.';
+  if (previewEl) {
+    if (configError) {
+      previewEl.textContent = 'Configuration indisponible pour le moment.';
+    } else if (!config) {
+      previewEl.textContent = 'Configuration en attente de chargement...';
+    } else {
+      const roles = Array.isArray(config.target_roles) && config.target_roles.length > 0
+        ? config.target_roles.join(', ')
+        : 'Aucun rôle cible défini';
+      previewEl.textContent = `Rôles configurés : ${roles}`;
+    }
+  }
+
+  if (!config || configError || huntFormDirty) {
+    syncLinkedInPostsToggle();
     return;
   }
-  if (!config) {
-    previewEl.textContent = 'Configuration en attente de chargement...';
+
+  const keywordsEl = document.getElementById('hunt-keywords');
+  if (keywordsEl) {
+    keywordsEl.value = Array.isArray(config.target_roles) ? config.target_roles.join(', ') : '';
+  }
+
+  const locationEl = document.getElementById('hunt-location');
+  if (locationEl) {
+    locationEl.value =
+      Array.isArray(config.preferred_locations) && config.preferred_locations.length > 0
+        ? config.preferred_locations[0]
+        : '';
+  }
+
+  const remoteEl = document.getElementById('hunt-remote-only');
+  if (remoteEl) {
+    remoteEl.checked = Boolean(config.remote_only);
+  }
+
+  const includePostsEl = document.getElementById('hunt-include-posts');
+  if (includePostsEl && config.linkedin_include_posts !== undefined) {
+    lastIncludePostsBeforeDisable = Boolean(config.linkedin_include_posts);
+    includePostsEl.checked = lastIncludePostsBeforeDisable;
+  }
+
+  syncLinkedInPostsToggle();
+}
+
+async function handleHuntSubmit() {
+  if (isSearchingHunt) return;
+
+  const keywordsEl = document.getElementById('hunt-keywords');
+  const locationEl = document.getElementById('hunt-location');
+  const remoteEl = document.getElementById('hunt-remote-only');
+  const includePostsEl = document.getElementById('hunt-include-posts');
+  const submitBtn = document.getElementById('btn-submit-hunt');
+  const headerBtn = document.getElementById('btn-open-hunt-modal');
+
+  const selectedSources = Array.from(
+    document.querySelectorAll('#hunt-form input[data-hunt-source]:checked')
+  ).map((input) => input.value);
+
+  if (selectedSources.length === 0) {
+    showToast('Sélectionnez au moins une source pour lancer la chasse.', 'error');
     return;
   }
-  const roles = Array.isArray(config.target_roles) && config.target_roles.length > 0
-    ? config.target_roles.join(', ')
-    : 'Aucun rôle cible défini';
-  previewEl.textContent = `Rôles configurés : ${roles}`;
+
+  const keywords = (keywordsEl?.value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const location = (locationEl?.value || '').trim() || null;
+  const remoteOnly = Boolean(remoteEl?.checked);
+  const includePosts =
+    includePostsEl && !includePostsEl.disabled ? Boolean(includePostsEl.checked) : false;
+
+  isSearchingHunt = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Chasse en cours...';
+  }
+  if (headerBtn) {
+    headerBtn.setAttribute('aria-busy', 'true');
+  }
+
+  try {
+    let searchResult;
+    try {
+      searchResult = await triggerSearch({
+        keywords,
+        location,
+        remote_only: remoteOnly,
+        max_results: 30,
+        sources: selectedSources,
+        include_posts: includePosts,
+        include_offers: true,
+      });
+    } catch {
+      // Error toast emitted by api.js; keep modal open so user can retry or cancel.
+      return;
+    }
+
+    let refreshFailed = false;
+    try {
+      const freshOpportunities = await fetchOpportunities({ limit: 100 });
+      setOpportunities(freshOpportunities);
+    } catch {
+      refreshFailed = true;
+      const incoming = Array.isArray(searchResult?.opportunities)
+        ? searchResult.opportunities
+        : [];
+      if (incoming.length > 0) {
+        const existing = getState().opportunities || [];
+        const incomingIds = new Set(incoming.map((opp) => opp?.id).filter(Boolean));
+        setOpportunities([
+          ...incoming,
+          ...existing.filter((opp) => !incomingIds.has(opp?.id)),
+        ]);
+      }
+    }
+
+    if (getState().activeModal === 'modal-hunt') {
+      closeActiveModal();
+    }
+
+    const totalFound = Number(searchResult?.total_found ?? 0);
+    const newCount = Number(searchResult?.new_count ?? 0);
+    const foundLabel = `${totalFound} opportunité${totalFound > 1 ? 's' : ''}`;
+    const newLabel = `${newCount} nouvelle${newCount > 1 ? 's' : ''}`;
+    if (refreshFailed) {
+      showToast(
+        `Chasse terminée (${foundLabel}, ${newLabel}), mais le rafraîchissement complet du flux a échoué.`,
+        'info'
+      );
+    } else {
+      showToast(
+        `Chasse terminée : ${foundLabel} trouvée${totalFound > 1 ? 's' : ''}, ${newLabel}.`,
+        'success'
+      );
+    }
+  } finally {
+    isSearchingHunt = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Lancer la chasse';
+    }
+    if (headerBtn) {
+      headerBtn.removeAttribute('aria-busy');
+    }
+  }
 }
 
 export function navigateTo(requestedView, { syncHash = true, replaceHash = false } = {}) {
@@ -250,6 +373,28 @@ function bindModalAndKeyboardEvents() {
     });
   }
 
+  const huntForm = document.getElementById('hunt-form');
+  if (huntForm) {
+    huntForm.addEventListener('input', () => {
+      huntFormDirty = true;
+    });
+    huntForm.addEventListener('change', (event) => {
+      huntFormDirty = true;
+      const target = event.target;
+      if (target instanceof HTMLInputElement) {
+        if (target.matches('input[data-hunt-source="linkedin"]')) {
+          syncLinkedInPostsToggle();
+        } else if (target.id === 'hunt-include-posts' && !target.disabled) {
+          lastIncludePostsBeforeDisable = Boolean(target.checked);
+        }
+      }
+    });
+    huntForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await handleHuntSubmit();
+    });
+  }
+
   document.querySelectorAll('[data-modal-close]').forEach((closeBtn) => {
     closeBtn.addEventListener('click', () => {
       closeActiveModal();
@@ -336,6 +481,10 @@ async function hydrateInitialData() {
 }
 
 export async function initApp() {
+  huntFormDirty = false;
+  isSearchingHunt = false;
+  lastIncludePostsBeforeDisable = true;
+
   setApiToastNotifier((message, variant) => {
     showToast(message, variant);
   });

@@ -191,3 +191,59 @@ def test_update_status_sets_is_seen_when_leaving_new(tmp_path):
     # Resetting back to 'new' does not crash and updates status
     assert storage.update_status(opp.id, "new") is True
     assert storage.get_opportunity(opp.id).status == "new"
+
+
+def test_list_opportunities_status_whitespace_stats_and_applied_at(tmp_path):
+    from jobby.models import ApplicationStatus, User
+
+    db_path = tmp_path / "storage_fixes.db"
+    storage = Storage(db_path=db_path)
+
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="st-new",
+            source="wttj",
+            title="New Role",
+            url="https://wttj.co/jobs/st-new",
+            status="new",
+        )
+    )
+    with storage._connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO opportunities (
+                id, source, opportunity_type, title, url, discovered_at, status, is_seen, dedup_key
+            ) VALUES
+                ('st-fav', 'wttj', 'offer', 'Fav Role', 'https://wttj.co/jobs/fav', '2026-11-11T10:00:00+00:00', 'favorite', 1, 'c:fav'),
+                ('st-sav', 'wttj', 'offer', 'Sav Role', 'https://wttj.co/jobs/sav', '2026-11-11T10:00:00+00:00', 'saved', 1, 'c:sav'),
+                ('st-arch', 'wttj', 'offer', 'Arch Role', 'https://wttj.co/jobs/arch', '2026-11-11T10:00:00+00:00', '  ARCHIVED  ', 1, 'c:arch')
+            """
+        )
+        conn.commit()
+
+    # Whitespace-only status filter should NOT be coerced into 'new'
+    all_items = storage.list_opportunities(status="   ")
+    assert {o.id for o in all_items} == {"st-new", "st-fav", "st-sav", "st-arch"}
+
+    # Non-kept statuses still match case/whitespace-insensitively
+    archived_items = storage.list_opportunities(status="archived")
+    assert [o.id for o in archived_items] == ["st-arch"]
+
+    # get_stats merges favorite + saved -> kept
+    stats = storage.get_stats()
+    assert stats["by_status"]["kept"] == 2
+    assert "favorite" not in stats["by_status"]
+    assert "saved" not in stats["by_status"]
+
+    # sync_opportunity_to_application preserves existing applied_at & uses ISO UTC timestamps
+    user = User(id="u1", email="u1@example.com", password_hash="x")
+    storage.create_user(user)
+    app1 = storage.sync_opportunity_to_application("st-fav", user.id, ApplicationStatus.APPLIED)
+    assert app1 is not None and app1.applied_at is not None
+    first_applied_at = app1.applied_at
+
+    storage.sync_opportunity_to_application("st-fav", user.id, ApplicationStatus.INTERVIEW)
+    app2 = storage.sync_opportunity_to_application("st-fav", user.id, ApplicationStatus.APPLIED)
+    assert app2 is not None
+    assert app2.applied_at == first_applied_at
+    assert "T" in app2.updated_at.isoformat()

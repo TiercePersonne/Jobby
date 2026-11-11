@@ -170,56 +170,81 @@ export function getActiveKanbanCount(applications = state.applications) {
 }
 
 /**
- * Updates an opportunity status and keeps the Kanban applications list synchronized.
+ * Updates an opportunity status (plus is_seen) and keeps the Kanban applications list synchronized.
+ * Passing `isSeen` and/or `restoreApplication` supports exact optimistic rollbacks.
  */
-export function syncOpportunityStatus(oppId, rawStatus) {
+export function syncOpportunityStatus(
+  oppId,
+  rawStatus,
+  { isSeen, restoreApplication } = {}
+) {
   const canonicalStatus = normalizeOpportunityStatus(rawStatus);
   let matchedOpp = null;
 
   const nextOpportunities = state.opportunities.map((opp) => {
     if (opp.id !== oppId) return opp;
-    matchedOpp = { ...opp, status: canonicalStatus };
+    const nextSeen =
+      isSeen !== undefined
+        ? Boolean(isSeen)
+        : canonicalStatus !== 'new'
+          ? true
+          : Boolean(opp.is_seen);
+    matchedOpp = { ...opp, status: canonicalStatus, is_seen: nextSeen };
     return matchedOpp;
   });
 
-  let nextApplications = state.applications.slice();
-  const existingIdx = nextApplications.findIndex((app) => app.opportunity_id === oppId);
+  let nextApplications;
+  if (restoreApplication !== undefined) {
+    nextApplications = state.applications.filter((app) => app.opportunity_id !== oppId);
+    if (restoreApplication) {
+      nextApplications.push({ ...restoreApplication });
+    }
+  } else {
+    nextApplications = state.applications.slice();
+    const existingIdx = nextApplications.findIndex((app) => app.opportunity_id === oppId);
+    const updateExistingApp = (statusValue) => {
+      const existing = nextApplications[existingIdx];
+      nextApplications[existingIdx] = matchedOpp
+        ? { ...existing, status: statusValue, opportunity: matchedOpp }
+        : { ...existing, status: statusValue };
+    };
 
-  if (canonicalStatus === 'kept') {
-    if (existingIdx >= 0) {
-      nextApplications[existingIdx] = { ...nextApplications[existingIdx], status: 'saved' };
-    } else {
-      nextApplications.push({
-        id: `app_optimistic_${oppId}`,
-        opportunity_id: oppId,
-        status: 'saved',
-        opportunity: matchedOpp || undefined,
-      });
+    if (canonicalStatus === 'kept') {
+      if (existingIdx >= 0) {
+        updateExistingApp('saved');
+      } else {
+        nextApplications.push({
+          id: `app_optimistic_${oppId}`,
+          opportunity_id: oppId,
+          status: 'saved',
+          opportunity: matchedOpp || undefined,
+        });
+      }
+    } else if (canonicalStatus === 'archived' || canonicalStatus === 'rejected') {
+      if (existingIdx >= 0) {
+        updateExistingApp('rejected');
+      } else {
+        nextApplications.push({
+          id: `app_optimistic_${oppId}`,
+          opportunity_id: oppId,
+          status: 'rejected',
+          opportunity: matchedOpp || undefined,
+        });
+      }
+    } else if (canonicalStatus === 'applied' || canonicalStatus === 'interview') {
+      if (existingIdx >= 0) {
+        updateExistingApp(canonicalStatus);
+      } else {
+        nextApplications.push({
+          id: `app_optimistic_${oppId}`,
+          opportunity_id: oppId,
+          status: canonicalStatus,
+          opportunity: matchedOpp || undefined,
+        });
+      }
+    } else if (canonicalStatus === 'new') {
+      nextApplications = nextApplications.filter((app) => app.opportunity_id !== oppId);
     }
-  } else if (canonicalStatus === 'archived' || canonicalStatus === 'rejected') {
-    if (existingIdx >= 0) {
-      nextApplications[existingIdx] = { ...nextApplications[existingIdx], status: 'rejected' };
-    } else {
-      nextApplications.push({
-        id: `app_optimistic_${oppId}`,
-        opportunity_id: oppId,
-        status: 'rejected',
-        opportunity: matchedOpp || undefined,
-      });
-    }
-  } else if (canonicalStatus === 'applied' || canonicalStatus === 'interview') {
-    if (existingIdx >= 0) {
-      nextApplications[existingIdx] = { ...nextApplications[existingIdx], status: canonicalStatus };
-    } else {
-      nextApplications.push({
-        id: `app_optimistic_${oppId}`,
-        opportunity_id: oppId,
-        status: canonicalStatus,
-        opportunity: matchedOpp || undefined,
-      });
-    }
-  } else if (canonicalStatus === 'new') {
-    nextApplications = nextApplications.filter((app) => app.opportunity_id !== oppId);
   }
 
   state = {

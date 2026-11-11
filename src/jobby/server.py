@@ -32,7 +32,7 @@ from jobby.engine import DeduplicationEngine, ScoringEngine
 from jobby.models import Application, ApplicationStatus, MatchEvaluation, OpportunityType, SearchParams, User, UserProfile
 from jobby.providers import registry
 from jobby.reporter import Reporter
-from jobby.storage import Storage
+from jobby.storage import Storage, normalize_opportunity_status
 from jobby.user_auth import create_session_token, delete_session_token, hash_password, validate_session_token, verify_password
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ class SearchRequest(BaseModel):
     location: Optional[str] = None
     remote_only: bool = False
     min_salary: Optional[int] = None
-    max_results: int = 30
+    max_results: int = Field(default=30, ge=1, le=200)
     sources: Optional[List[str]] = None
     include_posts: bool = True
     include_offers: bool = True
@@ -268,27 +268,31 @@ def set_status(opp_id: str, body: StatusUpdateRequest, request: Request) -> Dict
     config = load_config()
     storage = Storage(config.database_path)
     valid_statuses = ["new", "saved", "favorite", "kept", "applied", "interview", "archived", "rejected"]
-    if body.status not in valid_statuses:
+    raw_status = body.status.strip().lower()
+    if raw_status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Status must be one of {valid_statuses}")
 
-    success = storage.update_status(opp_id, body.status)
+    canonical_status = normalize_opportunity_status(raw_status)
+    success = storage.update_status(opp_id, canonical_status)
     if not success:
         raise HTTPException(status_code=404, detail="Opportunity not found")
 
     # Synchronize with embedded application kanban pipeline
     user = get_current_user_or_default(request, storage)
-    if body.status in ["saved", "kept", "favorite"]:
+    if canonical_status == "kept":
         storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.SAVED)
-    elif body.status in ["archived", "rejected"]:
+    elif canonical_status in ["archived", "rejected"]:
         storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.REJECTED)
-    elif body.status == "applied":
+    elif canonical_status == "applied":
         storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.APPLIED)
-    elif body.status == "interview":
+    elif canonical_status == "interview":
         storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.INTERVIEW)
-    elif body.status == "new":
+    elif canonical_status == "new":
         storage.delete_application_for_opportunity(opp_id, user.id)
 
-    return {"status": "updated", "id": opp_id, "new_status": body.status}
+    updated_opp = storage.get_opportunity(opp_id)
+    is_seen = bool(updated_opp.is_seen) if updated_opp else (canonical_status != "new")
+    return {"status": "updated", "id": opp_id, "new_status": canonical_status, "is_seen": is_seen}
 
 
 @app.patch("/api/opportunities/{opp_id}/seen")
@@ -317,18 +321,27 @@ def mark_all_opportunities_seen() -> Dict[str, Any]:
 
 @app.post("/api/search")
 async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
+    if req.sources is not None and len(req.sources) == 0:
+        return {"total_found": 0, "new_count": 0, "opportunities": []}
+
     config = load_config()
     storage = Storage(config.database_path)
 
-    # If min_salary is provided, update config temporarily for scoring
+    cleaned_keywords = [k.strip() for k in req.keywords if k and k.strip()]
+    cleaned_location = (req.location or "").strip()
+
+    # Apply transient search parameters onto config for ScoringEngine
     if req.min_salary:
         config.min_salary = req.min_salary
+    config.remote_only = req.remote_only
+    if cleaned_location:
+        config.preferred_locations = [cleaned_location]
 
     scoring = ScoringEngine(config)
 
     params = SearchParams(
-        keywords=req.keywords if req.keywords else config.target_roles,
-        location=req.location or (config.preferred_locations[0] if config.preferred_locations else "France"),
+        keywords=cleaned_keywords if cleaned_keywords else config.target_roles,
+        location=cleaned_location or (config.preferred_locations[0] if config.preferred_locations else "France"),
         remote_only=req.remote_only,
         max_results=req.max_results,
         include_posts=req.include_posts,
@@ -345,7 +358,9 @@ async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
     # Save to SQLite & evaluate intelligence
     new_count = 0
     for opp in deduped:
-        scoring.score_opportunity(opp, active_keywords=params.keywords)
+        score, reasons = scoring.score_opportunity(opp, active_keywords=params.keywords)
+        opp.score = score
+        opp.score_reasons = reasons
         is_new, _ = storage.upsert_opportunity(opp)
         if is_new:
             new_count += 1
@@ -892,7 +907,9 @@ async def webhook_trigger_search(request: Request) -> Dict[str, Any]:
 
     new_opps = []
     for opp in deduped:
-        scoring.score_opportunity(opp)
+        score, reasons = scoring.score_opportunity(opp)
+        opp.score = score
+        opp.score_reasons = reasons
         is_new, _ = storage.upsert_opportunity(opp)
         if is_new:
             new_opps.append(opp)

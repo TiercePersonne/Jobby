@@ -210,3 +210,26 @@ export function updateApplicationStatus(appId, status) {
     body: { status },
   });
 }
+
+export function triggerSearch({
+  keywords = [],
+  location = null,
+  remote_only = false,
+  max_results = 30,
+  sources = null,
+  include_posts = true,
+  include_offers = true,
+} = {}) {
+  return request('/api/search', {
+    method: 'POST',
+    body: {
+      keywords: Array.isArray(keywords) ? keywords : [],
+      location: location || null,
+      remote_only: Boolean(remote_only),
+      max_results,
+      sources: Array.isArray(sources) ? sources : null,
+      include_posts: Boolean(include_posts),
+      include_offers: Boolean(include_offers),
+    },
+  });
+}

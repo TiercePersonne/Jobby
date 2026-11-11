@@ -228,8 +228,12 @@ def test_modal_keyboard_esc_tab_and_backdrop(browser, live_server_url):
 
         # Boundary Tab / Shift+Tab wrap-around inside modal
         assert page.evaluate("() => document.activeElement?.getAttribute('aria-label')") == "Fermer la fenêtre"
+        page.keyboard.press("Tab")
+        assert page.evaluate("() => document.activeElement?.id") == "hunt-keywords"
         page.keyboard.press("Shift+Tab")
-        assert page.evaluate("() => document.activeElement?.textContent?.trim()") == "Fermer"
+        assert page.evaluate("() => document.activeElement?.getAttribute('aria-label')") == "Fermer la fenêtre"
+        page.keyboard.press("Shift+Tab")
+        assert page.evaluate("() => document.activeElement?.textContent?.trim()") == "Lancer la chasse"
         page.keyboard.press("Tab")
         assert page.evaluate("() => document.activeElement?.getAttribute('aria-label')") == "Fermer la fenêtre"
 
@@ -1332,3 +1336,839 @@ def test_sort_date_score_tiebreak_and_invalid_published_at(browser, live_server_
         assert ids_after_reset == ["s-1", "s-2", "s-3", "s-4"]
     finally:
         context.close()
+
+
+def test_ux_dr6_cards_scoring_synthesis_accordion_and_scroll_neutrality(browser, live_server_url):
+    context, page = _new_isolated_page(browser, width=1440, height=900)
+    seen_calls = []
+    page.route(
+        "**/api/opportunities/*/seen",
+        lambda route: (seen_calls.append(route.request.url), route.fulfill(status=200, content_type="application/json", body='{"status":"updated","is_seen":true}')),
+    )
+
+    opps = [
+        {
+            "id": "card-high",
+            "source": "wttj",
+            "opportunity_type": "offer",
+            "title": "Lead Product Designer",
+            "company": "Alan",
+            "location": "Paris, France",
+            "remote_policy": "full",
+            "salary_raw": "75k€",
+            "description": "Pilotage du Design System\n\nCollaboration produit.",
+            "published_at": "2026-11-11T12:00:00+00:00",
+            "discovered_at": "2026-11-11T12:00:00+00:00",
+            "url": "https://example.com/high",
+            "score": 92,
+            "tags": ["Figma", "Design System", "Remote"],
+            "raw_metadata": {
+                "ai_match": {
+                    "verdict": "Match sémantique (2 mots-clés alignés)",
+                }
+            },
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "card-post-mid",
+            "source": "linkedin",
+            "opportunity_type": "post",
+            "title": "Directeur Artistique Senior",
+            "company": "Studio Koto",
+            "author_name": "Marc Vance",
+            "author_title": "Fondateur",
+            "location": "Berlin, Germany",
+            "remote_policy": "hybrid",
+            "description": "Nous cherchons un DA senior autonome.",
+            "published_at": "2026-11-11T11:00:00+00:00",
+            "discovered_at": "2026-11-11T11:00:00+00:00",
+            "url": "https://example.com/post",
+            "score": 72,
+            "ai_summary": "Recrutement : Marc Vance recrute un DA senior.",
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "card-low-gemini",
+            "source": "indeed",
+            "opportunity_type": "offer",
+            "title": "Brand Designer",
+            "company": "Swile",
+            "location": "Paris, France",
+            "remote_policy": "onsite",
+            "description": "Identité de marque.",
+            "published_at": "2026-11-11T10:00:00+00:00",
+            "discovered_at": "2026-11-11T10:00:00+00:00",
+            "url": "https://example.com/low",
+            "score": 45,
+            "raw_metadata": {
+                "ai_match": {
+                    "verdict": "Adéquation partielle sur le rythme sur site.",
+                    "provider_used": "gemini",
+                    "used_fallback": False,
+                }
+            },
+            "status": "new",
+            "is_seen": True,
+        },
+        {
+            "id": "card-zero-score",
+            "source": "hellowork",
+            "opportunity_type": "offer",
+            "title": "Graphic Designer",
+            "company": "Atelier",
+            "location": "Lyon, France",
+            "description": "Création print et web.",
+            "published_at": "2026-11-11T09:00:00+00:00",
+            "discovered_at": "2026-11-11T09:00:00+00:00",
+            "url": "https://example.com/zero",
+            "score": 0,
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "card-null-score",
+            "source": "jobgether",
+            "opportunity_type": "offer",
+            "title": "UI Designer",
+            "company": "RemoteCo",
+            "location": "New York, USA",
+            "description": "   ",
+            "published_at": "2026-11-11T08:00:00+00:00",
+            "discovered_at": "2026-11-11T08:00:00+00:00",
+            "url": "https://example.com/null",
+            "score": None,
+            "status": "new",
+            "is_seen": True,
+        },
+    ]
+    _mock_base_apis(page, opps=opps)
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+
+        # High score badge (>= 85 -> #F0FDF4 / #14532D), zero tag stack, heuristic NOT labeled Gemini
+        high_card = page.locator('[data-opp-id="card-high"]')
+        high_badge = high_card.locator("[data-score-badge]")
+        assert high_badge.inner_text() == "92% Match"
+        assert high_badge.evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(240, 253, 244)"
+        assert high_badge.evaluate("el => getComputedStyle(el).color") == "rgb(20, 83, 45)"
+        assert "Figma" not in high_card.inner_text()
+        assert "Design System" not in high_card.locator(".jp-label").first.inner_text()
+        high_callout = high_card.locator("[data-ai-callout]")
+        assert "Synthèse :" in high_callout.inner_text()
+        assert "Gemini" not in high_callout.inner_text()
+
+        # Post network author & mid score (#FEFCE8 / #713F12) & ai_summary
+        post_card = page.locator('[data-opp-id="card-post-mid"]')
+        mid_badge = post_card.locator("[data-score-badge]")
+        assert mid_badge.inner_text() == "72% Match"
+        assert mid_badge.evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(254, 252, 232)"
+        assert mid_badge.evaluate("el => getComputedStyle(el).color") == "rgb(113, 63, 18)"
+        assert "Marc Vance — Fondateur" in post_card.locator("[data-opp-author]").inner_text()
+        assert "Synthèse :" in post_card.locator("[data-ai-callout]").inner_text()
+        assert "Gemini" not in post_card.locator("[data-ai-callout]").inner_text()
+
+        # Low score (< 60 -> #F5F5F4) & explicit Gemini provider_used=gemini
+        low_card = page.locator('[data-opp-id="card-low-gemini"]')
+        low_badge = low_card.locator("[data-score-badge]")
+        assert low_badge.inner_text() == "45% Match"
+        assert low_badge.evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(245, 245, 244)"
+        assert "Gemini :" in low_card.locator("[data-ai-callout]").inner_text()
+
+        # Score 0 and None omit badge; card without verdict/ai_summary omits callout
+        assert page.locator('[data-opp-id="card-zero-score"] [data-score-badge]').count() == 0
+        assert page.locator('[data-opp-id="card-zero-score"] [data-ai-callout]').count() == 0
+        assert page.locator('[data-opp-id="card-null-score"] [data-score-badge]').count() == 0
+
+        # Accordion body includes salary_raw when provided and fallback copy when description is empty
+        assert "Rémunération : 75k€" in page.locator('[data-opp-id="card-high"] .jp-accordion-body').text_content()
+        assert "Aucune description détaillée fournie." in page.locator('[data-opp-id="card-null-score"] .jp-accordion-body').text_content()
+
+        # Accordion collapsed by default; strictly 3 actions (no Lettre IA); zero box-shadow
+        for card_id, expected_cta in [
+            ("card-high", "Voir l'offre"),
+            ("card-post-mid", "Voir le post"),
+        ]:
+            card = page.locator(f'[data-opp-id="{card_id}"]')
+            assert card.evaluate("el => getComputedStyle(el).boxShadow") == "none"
+            assert card.locator("details.jp-accordion").get_attribute("open") is None
+            assert card.locator('[data-action="toggle-keep"]').is_visible()
+            assert card.locator('[data-action="archive"]').is_visible()
+            assert expected_cta in card.locator('[data-action="open-link"]').inner_text()
+            assert card.locator('[data-action]').count() == 3
+            assert "Lettre IA" not in card.inner_text()
+
+        # Scroll down and up: zero /seen calls and unseen cards remain is_seen=false
+        page.evaluate("() => { window.scrollTo(0, 600); window.scrollTo(0, 1200); window.scrollTo(0, 0); }")
+        page.wait_for_timeout(150)
+        assert seen_calls == []
+        assert page.locator('[data-opp-id="card-high"]').get_attribute("data-is-seen") == "false"
+        assert page.locator('[data-opp-id="card-high"] [data-new-badge]').is_visible()
+        assert page.locator("#filter-new-count").inner_text() == "3"
+
+        # Responsive 375px check: zero horizontal overflow and min font >= 12px
+        page.set_viewport_size({"width": 375, "height": 812})
+        assert not page.evaluate("() => document.documentElement.scrollWidth > window.innerWidth")
+        min_font = page.evaluate(
+            """() => {
+                let minPx = 999;
+                for (const el of document.querySelectorAll('body *')) {
+                    const style = getComputedStyle(el);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    const hasDirectText = Array.from(el.childNodes).some(
+                        n => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 0
+                    );
+                    if (hasDirectText) {
+                        minPx = Math.min(minPx, parseFloat(style.fontSize));
+                    }
+                }
+                return minPx;
+            }"""
+        )
+        assert min_font >= 12.0
+    finally:
+        context.close()
+
+
+def test_explicit_is_seen_accordion_link_and_rollback(browser, live_server_url):
+    context, page = _new_isolated_page(browser)
+    context.route("https://example.com/**", lambda route: route.fulfill(status=200, body="ok", content_type="text/html"))
+
+    seen_requests = []
+    fail_mode = {"fail": False}
+
+    def handle_seen(route):
+        opp_id = route.request.url.split("/api/opportunities/")[1].split("/seen")[0]
+        body = route.request.post_data_json
+        seen_requests.append((opp_id, body))
+        if fail_mode["fail"]:
+            route.fulfill(status=500, content_type="application/json", body='{"detail":"Seen API down"}')
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"status": "updated", "id": opp_id, "is_seen": True}),
+        )
+
+    page.route("**/api/opportunities/*/seen", handle_seen)
+
+    opps = [
+        {
+            "id": "seen-acc-1",
+            "source": "wttj",
+            "opportunity_type": "offer",
+            "title": "Design Ops Lead",
+            "company": "Porcelain",
+            "location": "Paris, France",
+            "description": "Détails complets du poste Design Ops.",
+            "published_at": "2026-11-11T12:00:00+00:00",
+            "discovered_at": "2026-11-11T12:00:00+00:00",
+            "url": "https://example.com/acc-1",
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "seen-link-2",
+            "source": "linkedin",
+            "opportunity_type": "offer",
+            "title": "Staff Product Designer",
+            "company": "WarmLab",
+            "location": "Paris, France",
+            "description": "Description détaillée.",
+            "published_at": "2026-11-11T11:00:00+00:00",
+            "discovered_at": "2026-11-11T11:00:00+00:00",
+            "url": "https://example.com/link-2",
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "seen-err-3",
+            "source": "indeed",
+            "opportunity_type": "offer",
+            "title": "Brand Lead",
+            "company": "Studio Err",
+            "location": "Paris, France",
+            "description": "Contenu affiché malgré erreur.",
+            "published_at": "2026-11-11T10:00:00+00:00",
+            "discovered_at": "2026-11-11T10:00:00+00:00",
+            "url": "https://example.com/err-3",
+            "status": "new",
+            "is_seen": False,
+        },
+    ]
+    _mock_base_apis(page, opps=opps)
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+        assert page.locator("#filter-new-count").inner_text() == "3"
+
+        # 1. Opening <details> via keyboard sends PATCH /seen, keeps <summary> focus, keeps <details open>
+        acc1_summary = page.locator('[data-opp-id="seen-acc-1"] details.jp-accordion > summary')
+        acc1_summary.focus()
+        with page.expect_response("**/api/opportunities/seen-acc-1/seen"):
+            acc1_summary.press("Enter")
+
+        assert page.locator('[data-opp-id="seen-acc-1"] details.jp-accordion').evaluate("el => el.open") is True
+        assert page.evaluate(
+            "() => document.activeElement?.tagName === 'SUMMARY' && document.activeElement.closest('[data-opp-id]')?.getAttribute('data-opp-id') === 'seen-acc-1'"
+        )
+        assert "Détails complets du poste Design Ops." in page.locator('[data-opp-id="seen-acc-1"] .jp-accordion-body').inner_text()
+        assert page.locator('[data-opp-id="seen-acc-1"] [data-new-badge]').count() == 0
+        assert page.locator("#filter-new-count").inner_text() == "2"
+        assert seen_requests == [("seen-acc-1", {"is_seen": True})]
+
+        # 2. Closing <details> does NOT trigger /seen
+        page.click('[data-opp-id="seen-acc-1"] details.jp-accordion > summary')
+        page.wait_for_timeout(100)
+        assert page.locator('[data-opp-id="seen-acc-1"] details.jp-accordion').evaluate("el => el.open") is False
+        assert len(seen_requests) == 1
+
+        # Re-open first card so we confirm a second render keeps it open
+        page.click('[data-opp-id="seen-acc-1"] details.jp-accordion > summary')
+        assert page.locator('[data-opp-id="seen-acc-1"] details.jp-accordion').evaluate("el => el.open") is True
+        assert len(seen_requests) == 1  # already seen, no duplicate request
+
+        # 3. Clicking external link marks seen explicitly and keeps first card's <details open>
+        with page.expect_popup() as popup_info:
+            with page.expect_response("**/api/opportunities/seen-link-2/seen"):
+                page.click('[data-opp-id="seen-link-2"] [data-action="open-link"]')
+        popup_info.value.close()
+
+        assert page.locator('[data-opp-id="seen-link-2"] [data-new-badge]').count() == 0
+        assert page.locator("#filter-new-count").inner_text() == "1"
+        assert page.locator('[data-opp-id="seen-acc-1"] details.jp-accordion').evaluate("el => el.open") is True
+
+        # 4. API failure on /seen rolls back is_seen + shows toast while keeping <details> open
+        fail_mode["fail"] = True
+        with page.expect_response("**/api/opportunities/seen-err-3/seen"):
+            page.click('[data-opp-id="seen-err-3"] details.jp-accordion > summary')
+
+        toast = page.locator("#toast-container .jp-toast-error")
+        toast.first.wait_for(state="visible")
+        assert "Seen API down" in toast.first.inner_text()
+        assert page.locator('[data-opp-id="seen-err-3"] details.jp-accordion').evaluate("el => el.open") is True
+        assert page.locator('[data-opp-id="seen-err-3"] [data-new-badge]').is_visible()
+        assert page.locator("#filter-new-count").inner_text() == "1"
+
+        # 5. Opening <details> while onlyNew is active keeps that card visible until collapsed,
+        # and middle-click (auxclick button=1) on open-link triggers /seen
+        fail_mode["fail"] = False
+        page.click("#filter-only-new")
+        assert page.locator('[data-opp-id="seen-err-3"]').is_visible()
+        # Close seen-err-3 first, then re-open under onlyNew
+        page.click('[data-opp-id="seen-err-3"] details.jp-accordion > summary')
+        with page.expect_response("**/api/opportunities/seen-err-3/seen"):
+            page.click('[data-opp-id="seen-err-3"] details.jp-accordion > summary')
+        assert page.locator('[data-opp-id="seen-err-3"]').is_visible()
+        assert page.locator('[data-opp-id="seen-err-3"] details.jp-accordion').evaluate("el => el.open") is True
+        assert page.locator("#filter-new-count").inner_text() == "0"
+        # Collapse <details> -> card now leaves onlyNew view (toggle event is queued asynchronously by browser)
+        page.click('[data-opp-id="seen-err-3"] details.jp-accordion > summary')
+        page.locator('[data-opp-id="seen-err-3"]').wait_for(state="detached")
+        assert page.locator('[data-opp-id="seen-err-3"]').count() == 0
+
+        # Middle-click (auxclick button=1) on an unseen link triggers /seen
+        page.evaluate(
+            """async () => {
+                const { setOpportunities, setOnlyNew } = await import('/static/js/state.js');
+                setOnlyNew(false);
+                setOpportunities([{
+                    id: 'seen-aux-4',
+                    source: 'wttj',
+                    opportunity_type: 'offer',
+                    title: 'Middle Click Role',
+                    company: 'AuxCo',
+                    location: 'Paris',
+                    url: 'https://example.com/aux-4',
+                    status: 'new',
+                    is_seen: false,
+                }]);
+            }"""
+        )
+        with page.expect_response("**/api/opportunities/seen-aux-4/seen"):
+            with context.expect_page() as aux_popup:
+                page.locator('[data-opp-id="seen-aux-4"] [data-action="open-link"]').click(button="middle")
+        aux_popup.value.close()
+        assert page.locator('[data-opp-id="seen-aux-4"] [data-new-badge]').count() == 0
+    finally:
+        context.close()
+
+
+def test_triage_keep_archive_undo_kanban_persistence_and_rollback(browser, live_server_url, monkeypatch, tmp_path):
+    db_path = tmp_path / "e2e_triage.db"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+
+    storage = Storage(db_path=db_path)
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="tr-1",
+            source="wttj",
+            title="Design Director",
+            company="Porcelain Co",
+            location="Paris, France",
+            url="https://wttj.co/jobs/tr-1",
+            score=91,
+            status="new",
+            is_seen=False,
+        )
+    )
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="tr-2",
+            source="linkedin",
+            title="Product Lead",
+            company="Studio B",
+            location="Paris, France",
+            url="https://linkedin.com/jobs/view/tr-2",
+            score=76,
+            status="new",
+            is_seen=False,
+        )
+    )
+
+    # Part A: Full SQLite E2E persistence across F5 reload (Je garde, toggle new, Archiver + Annuler)
+    context, page = _new_isolated_page(browser)
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+        assert page.locator("#kanban-badge").inner_text() == "0"
+        assert page.locator("#filter-new-count").inner_text() == "2"
+
+        # 1. Press Enter on Je garde on tr-1 -> optimistic 'Gardé', focus stays on button, persists in SQLite
+        keep_btn = page.locator('[data-opp-id="tr-1"] [data-action="toggle-keep"]')
+        keep_btn.focus()
+        with page.expect_response("**/api/opportunities/tr-1/status"):
+            keep_btn.press("Enter")
+
+        assert "Gardé" in keep_btn.inner_text()
+        assert keep_btn.get_attribute("aria-pressed") == "true"
+        assert page.evaluate(
+            "() => document.activeElement?.getAttribute('data-action') === 'toggle-keep' && document.activeElement.closest('[data-opp-id]')?.getAttribute('data-opp-id') === 'tr-1'"
+        )
+        assert page.locator('[data-opp-id="tr-1"] [data-new-badge]').count() == 0
+        assert page.locator("#filter-new-count").inner_text() == "1"
+        assert page.locator("#kanban-badge").inner_text() == "1"
+        assert page.locator('[data-kanban-col-count="saved"]').inner_text() == "1"
+
+        page.reload(wait_until="networkidle")
+        assert "Gardé" in page.locator('[data-opp-id="tr-1"] [data-action="toggle-keep"]').inner_text()
+        assert page.locator("#kanban-badge").inner_text() == "1"
+        assert storage.get_opportunity("tr-1").status == "kept"
+        assert storage.get_opportunity("tr-1").is_seen is True
+
+        # 2. Click Gardé again -> toggles kept -> new (removes saved application, badge -1)
+        with page.expect_response("**/api/opportunities/tr-1/status"):
+            page.click('[data-opp-id="tr-1"] [data-action="toggle-keep"]')
+
+        assert "Je garde" in page.locator('[data-opp-id="tr-1"] [data-action="toggle-keep"]').inner_text()
+        assert page.locator("#kanban-badge").inner_text() == "0"
+        assert page.locator('[data-kanban-col-count="saved"]').inner_text() == "0"
+        assert storage.get_opportunity("tr-1").status == "new"
+        assert storage.get_opportunity("tr-1").is_seen is True
+
+        # 3. Keep tr-1 again, then Archiver -> hidden + toast Annuler -> Annuler restores 'kept'
+        with page.expect_response("**/api/opportunities/tr-1/status"):
+            page.click('[data-opp-id="tr-1"] [data-action="toggle-keep"]')
+        assert page.locator("#kanban-badge").inner_text() == "1"
+
+        with page.expect_response("**/api/opportunities/tr-1/status"):
+            page.click('[data-opp-id="tr-1"] [data-action="archive"]')
+
+        assert page.locator('[data-opp-id="tr-1"]').count() == 0
+        assert page.locator("#kanban-badge").inner_text() == "0"
+        assert storage.get_opportunity("tr-1").status == "archived"
+
+        undo_btn = page.locator("#toast-container [data-toast-action]")
+        undo_btn.first.wait_for(state="visible")
+        assert undo_btn.first.inner_text() == "Annuler"
+
+        with page.expect_response("**/api/opportunities/tr-1/status"):
+            undo_btn.first.click()
+
+        page.locator('[data-opp-id="tr-1"]').wait_for(state="visible")
+        assert "Gardé" in page.locator('[data-opp-id="tr-1"] [data-action="toggle-keep"]').inner_text()
+        assert page.locator("#kanban-badge").inner_text() == "1"
+
+        page.reload(wait_until="networkidle")
+        assert page.locator('[data-opp-id="tr-1"]').is_visible()
+        assert "Gardé" in page.locator('[data-opp-id="tr-1"] [data-action="toggle-keep"]').inner_text()
+        assert page.locator("#kanban-badge").inner_text() == "1"
+        assert storage.get_opportunity("tr-1").status == "kept"
+
+        # 4. Archiver on unseen tr-2 -> Annuler restores Nouveau badge & SQLite is_seen=False
+        with page.expect_response("**/api/opportunities/tr-2/status"):
+            page.click('[data-opp-id="tr-2"] [data-action="archive"]')
+
+        assert page.locator('[data-opp-id="tr-2"]').count() == 0
+        undo_tr2 = page.locator("#toast-container [data-toast-action]").last
+        undo_tr2.wait_for(state="visible")
+        with page.expect_response("**/api/opportunities/tr-2/seen"):
+            undo_tr2.click()
+
+        page.locator('[data-opp-id="tr-2"]').wait_for(state="visible")
+        assert page.locator('[data-opp-id="tr-2"] [data-new-badge]').is_visible()
+        assert storage.get_opportunity("tr-2").status == "new"
+        assert storage.get_opportunity("tr-2").is_seen is False
+
+        page.reload(wait_until="networkidle")
+        assert page.locator('[data-opp-id="tr-2"] [data-new-badge]').is_visible()
+        assert storage.get_opportunity("tr-2").is_seen is False
+
+        # Re-archive tr-2 and verify persistence
+        with page.expect_response("**/api/opportunities/tr-2/status"):
+            page.click('[data-opp-id="tr-2"] [data-action="archive"]')
+
+        assert page.locator('[data-opp-id="tr-2"]').count() == 0
+        assert page.locator("#filter-new-count").inner_text() == "0"
+        assert storage.get_opportunity("tr-2").status == "archived"
+        assert storage.get_opportunity("tr-2").is_seen is True
+
+        page.reload(wait_until="networkidle")
+        assert page.locator('[data-opp-id="tr-2"]').count() == 0
+        assert page.locator("#feed-count").inner_text() == "1 opportunité"
+    finally:
+        context.close()
+
+    # Part B: Rollback + toast when /status API fails (Je garde, Archiver, Annuler) + applied/interview guard
+    context_err, page_err = _new_isolated_page(browser)
+    status_calls = []
+    fail_status = {"fail": True}
+
+    def handle_err_status(route):
+        opp_id = route.request.url.split("/api/opportunities/")[1].split("/status")[0]
+        body = route.request.post_data_json
+        status_calls.append((opp_id, body))
+        if fail_status["fail"]:
+            route.fulfill(
+                status=500,
+                content_type="application/json",
+                body='{"detail":"Erreur triage serveur"}',
+            )
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"status": "updated", "id": opp_id, "new_status": body["status"], "is_seen": True}),
+        )
+
+    _mock_base_apis(
+        page_err,
+        opps=[
+            {
+                "id": "rb-tr-1",
+                "source": "wttj",
+                "opportunity_type": "offer",
+                "title": "Rollback Triage",
+                "company": "Co",
+                "location": "Paris",
+                "url": "https://example.com/rb-tr-1",
+                "status": "new",
+                "is_seen": False,
+            },
+            {
+                "id": "prog-app-2",
+                "source": "linkedin",
+                "opportunity_type": "offer",
+                "title": "Already Applied",
+                "company": "Co2",
+                "location": "Paris",
+                "url": "https://example.com/prog-2",
+                "status": "applied",
+                "is_seen": True,
+            },
+        ],
+    )
+    page_err.route("**/api/opportunities/*/status", handle_err_status)
+
+    try:
+        page_err.goto(live_server_url, wait_until="networkidle")
+
+        # Applied/interview guard: toggle-keep button is disabled and does NOT demote or fire PATCH
+        prog_btn = page_err.locator('[data-opp-id="prog-app-2"] [data-action="toggle-keep"]')
+        assert prog_btn.is_disabled()
+        assert "Candidaté" in prog_btn.inner_text()
+        page_err.evaluate(
+            """async () => {
+                const { default: _unused } = await import('/static/js/views/feed.js').catch(() => ({}));
+                document.querySelector('[data-opp-id="prog-app-2"] [data-action="toggle-keep"]')?.click();
+            }"""
+        )
+        assert status_calls == []
+
+        # Je garde fails -> rolls back status='new', is_seen=False (Nouveau restored), kanban=0
+        with page_err.expect_response("**/api/opportunities/rb-tr-1/status"):
+            page_err.click('[data-opp-id="rb-tr-1"] [data-action="toggle-keep"]')
+
+        err_toast = page_err.locator("#toast-container .jp-toast-error")
+        err_toast.first.wait_for(state="visible")
+        assert "Erreur triage serveur" in err_toast.first.inner_text()
+        assert "Je garde" in page_err.locator('[data-opp-id="rb-tr-1"] [data-action="toggle-keep"]').inner_text()
+        assert page_err.locator('[data-opp-id="rb-tr-1"] [data-new-badge]').is_visible()
+        assert page_err.locator("#kanban-badge").inner_text() == "0"
+        assert page_err.locator("#filter-new-count").inner_text() == "1"
+
+        # Archiver fails -> card reinserted, undo toast removed, error toast shown, is_seen=False
+        with page_err.expect_response("**/api/opportunities/rb-tr-1/status"):
+            page_err.click('[data-opp-id="rb-tr-1"] [data-action="archive"]')
+
+        page_err.locator('[data-opp-id="rb-tr-1"]').wait_for(state="visible")
+        assert page_err.locator("#toast-container [data-toast-action]").count() == 0
+        assert page_err.locator('[data-opp-id="rb-tr-1"] [data-new-badge]').is_visible()
+        assert page_err.locator("#kanban-badge").inner_text() == "0"
+
+        # Archiver succeeds, then Annuler PATCH fails -> rolls back card removal, badge, and emits error toast
+        fail_status["fail"] = False
+        with page_err.expect_response("**/api/opportunities/rb-tr-1/status"):
+            page_err.click('[data-opp-id="rb-tr-1"] [data-action="archive"]')
+        assert page_err.locator('[data-opp-id="rb-tr-1"]').count() == 0
+
+        fail_status["fail"] = True
+        undo_btn_err = page_err.locator("#toast-container [data-toast-action]").first
+        with page_err.expect_response("**/api/opportunities/rb-tr-1/status"):
+            undo_btn_err.click()
+
+        assert page_err.locator('[data-opp-id="rb-tr-1"]').count() == 0
+        assert page_err.locator("#kanban-badge").inner_text() == "0"
+        assert page_err.locator("#toast-container .jp-toast-error").count() >= 1
+    finally:
+        context_err.close()
+
+
+def test_modal_hunt_prefill_submit_refetch_and_errors(browser, live_server_url):
+    context, page = _new_isolated_page(browser)
+    search_requests = []
+    opps_fetches = {"count": 0}
+    search_mode = {"status": 200}
+
+    initial_opps = [
+        {
+            "id": "existing-1",
+            "source": "wttj",
+            "opportunity_type": "offer",
+            "title": "Existing Offer",
+            "company": "Alpha",
+            "location": "Paris",
+            "url": "https://example.com/existing-1",
+            "status": "new",
+            "is_seen": True,
+        }
+    ]
+    refetched_opps = [
+        {
+            "id": "hunted-new-1",
+            "source": "linkedin",
+            "opportunity_type": "offer",
+            "title": "Lead Product Designer",
+            "company": "Nova",
+            "location": "Paris, France",
+            "url": "https://example.com/hunted-1",
+            "score": 88,
+            "status": "new",
+            "is_seen": False,
+        },
+        *initial_opps,
+    ]
+
+    def handle_opps(route):
+        opps_fetches["count"] += 1
+        payload = initial_opps if opps_fetches["count"] == 1 else refetched_opps
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+    def handle_search(route):
+        search_requests.append(
+            {
+                "url": route.request.url,
+                "body": route.request.post_data_json,
+                "existing_still_visible": page.locator('[data-opp-id="existing-1"]').is_visible(),
+            }
+        )
+        if search_mode["status"] == 422:
+            route.fulfill(
+                status=422,
+                content_type="application/json",
+                body='{"detail":[{"msg":"max_results invalide"}]}',
+            )
+            return
+        if search_mode["status"] == 500:
+            route.fulfill(status=500, content_type="application/json", body='{"detail":"Erreur collecte"}')
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"total_found": 2, "new_count": 1, "opportunities": refetched_opps}),
+        )
+
+    page.route("**/api/opportunities*", handle_opps)
+    page.route("**/api/applications*", lambda r: r.fulfill(status=200, content_type="application/json", body="[]"))
+    page.route(
+        "**/api/config",
+        lambda r: r.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "target_roles": ["Product Designer", "Art Director"],
+                    "preferred_locations": ["Lyon"],
+                    "remote_only": True,
+                    "linkedin_include_posts": False,
+                }
+            ),
+        ),
+    )
+    page.route("**/api/search", handle_search)
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+        assert page.locator('[data-opp-id="existing-1"]').is_visible()
+
+        # Open hunt modal -> pre-filled from state.config & LinkedIn toggle disables Posts LinkedIn
+        page.click("#btn-open-hunt-modal")
+        assert page.locator("#modal-hunt").is_visible()
+        assert page.locator("#hunt-keywords").input_value() == "Product Designer, Art Director"
+        assert page.locator("#hunt-location").input_value() == "Lyon"
+        assert page.locator("#hunt-remote-only").is_checked() is True
+        assert page.locator("#hunt-include-posts").is_checked() is False
+        assert page.locator('#hunt-form input[data-hunt-source]:checked').count() == 7
+
+        # Unchecking LinkedIn disables & unchecks #hunt-include-posts; re-checking restores it
+        page.check("#hunt-include-posts")
+        page.uncheck('#hunt-form input[data-hunt-source="linkedin"]')
+        assert page.locator("#hunt-include-posts").is_disabled()
+        assert page.locator("#hunt-include-posts").is_checked() is False
+        page.check('#hunt-form input[data-hunt-source="linkedin"]')
+        assert page.locator("#hunt-include-posts").is_enabled()
+        assert page.locator("#hunt-include-posts").is_checked() is True
+
+        # Unchecking all 7 sources -> error toast and zero /api/search requests
+        for src in ["linkedin", "wttj", "indeed", "hellowork", "glassdoor", "teamtailor", "jobgether"]:
+            page.uncheck(f'#hunt-form input[data-hunt-source="{src}"]')
+        page.click("#btn-submit-hunt")
+        assert page.locator("#toast-container .jp-toast-error").is_visible()
+        assert len(search_requests) == 0
+        for src in ["linkedin", "wttj", "indeed", "hellowork", "glassdoor", "teamtailor", "jobgether"]:
+            page.check(f'#hunt-form input[data-hunt-source="{src}"]')
+
+        # Modify fields, submit -> POST /api/search, re-fetch limit=100, existing kept, modal closed + toast
+        page.fill("#hunt-keywords", "Design System, Lead UX")
+        page.fill("#hunt-location", "Paris")
+        page.uncheck('#hunt-form input[data-hunt-source="glassdoor"]')
+        page.check("#hunt-include-posts")
+
+        with page.expect_response("**/api/opportunities?limit=100"):
+            page.click("#btn-submit-hunt")
+
+        assert len(search_requests) == 1
+        assert search_requests[0]["existing_still_visible"] is True
+        assert search_requests[0]["body"] == {
+            "keywords": ["Design System", "Lead UX"],
+            "location": "Paris",
+            "remote_only": True,
+            "max_results": 30,
+            "sources": ["linkedin", "wttj", "indeed", "hellowork", "teamtailor", "jobgether"],
+            "include_posts": True,
+            "include_offers": True,
+        }
+        assert not page.locator("#modal-hunt").is_visible()
+        assert page.locator('[data-opp-id="hunted-new-1"]').is_visible()
+        assert page.locator('[data-opp-id="hunted-new-1"] [data-score-badge]').inner_text() == "88% Match"
+        assert page.locator('[data-opp-id="existing-1"]').is_visible()
+        assert page.locator("#toast-container .jp-toast-success").is_visible()
+
+        # 422 error -> toast shown, existing offers intact, submit re-enabled
+        search_mode["status"] = 422
+        page.click("#btn-open-hunt-modal")
+        with page.expect_response("**/api/search"):
+            page.click("#btn-submit-hunt")
+        err_toast = page.locator("#toast-container .jp-toast-error")
+        err_toast.last.wait_for(state="visible")
+        assert "max_results invalide" in err_toast.last.inner_text()
+        assert page.locator("#modal-hunt").is_visible()
+        assert page.locator("#btn-submit-hunt").is_enabled()
+        assert page.locator('[data-opp-id="hunted-new-1"]').count() == 1
+        page.keyboard.press("Escape")
+    finally:
+        context.close()
+
+    # Pending single-flight guard + post-search fetchOpportunities 500 fallback merge
+    ctx_pending, page_pending = _new_isolated_page(browser)
+    pending_calls = {"search": 0, "opps": 0}
+    held_routes = []
+
+    def handle_pending_opps(route):
+        pending_calls["opps"] += 1
+        if pending_calls["opps"] == 1:
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(initial_opps))
+            return
+        route.fulfill(status=500, content_type="application/json", body='{"detail":"refresh failed"}')
+
+    def handle_pending_search(route):
+        pending_calls["search"] += 1
+        held_routes.append(route)
+
+    page_pending.route("**/api/opportunities*", handle_pending_opps)
+    page_pending.route("**/api/applications*", lambda r: r.fulfill(status=200, content_type="application/json", body="[]"))
+    page_pending.route("**/api/config", lambda r: r.fulfill(status=200, content_type="application/json", body='{"target_roles":["Designer"]}'))
+    page_pending.route("**/api/search", handle_pending_search)
+
+    try:
+        page_pending.goto(live_server_url, wait_until="networkidle")
+        page_pending.click("#btn-open-hunt-modal")
+        page_pending.click("#btn-submit-hunt")
+
+        # While in flight: submit disabled, text 'Chasse en cours...', header aria-busy="true"
+        page_pending.wait_for_function("() => document.getElementById('btn-submit-hunt')?.disabled === true")
+        assert page_pending.locator("#btn-submit-hunt").inner_text() == "Chasse en cours..."
+        assert page_pending.locator("#btn-open-hunt-modal").get_attribute("aria-busy") == "true"
+
+        # Duplicate submit while in flight is ignored (single-flight)
+        page_pending.evaluate("() => document.getElementById('hunt-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))")
+        page_pending.wait_for_timeout(60)
+        assert pending_calls["search"] == 1
+        assert len(held_routes) == 1
+
+        held_routes[0].fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"total_found": 1, "new_count": 1, "opportunities": refetched_opps[:1]}),
+        )
+        page_pending.locator('[data-opp-id="hunted-new-1"]').wait_for(state="visible")
+        assert not page_pending.locator("#modal-hunt").is_visible()
+        assert page_pending.locator('[data-opp-id="existing-1"]').is_visible()
+        assert page_pending.locator("#btn-open-hunt-modal").get_attribute("aria-busy") is None
+        assert "rafraîchissement" in page_pending.locator("#toast-container .jp-toast:not(.jp-toast-error)").last.inner_text()
+    finally:
+        ctx_pending.close()
+
+    # Mobile 375px + configError free submission check
+    ctx_err, page_err = _new_isolated_page(browser, width=375, height=812)
+    err_searches = []
+    page_err.route("**/api/opportunities*", lambda r: r.fulfill(status=200, content_type="application/json", body="[]"))
+    page_err.route("**/api/applications*", lambda r: r.fulfill(status=200, content_type="application/json", body="[]"))
+    page_err.route("**/api/config", lambda r: r.fulfill(status=500, content_type="application/json", body='{"detail":"config down"}'))
+    page_err.route(
+        "**/api/search",
+        lambda r: (
+            err_searches.append(r.request.post_data_json),
+            r.fulfill(status=200, content_type="application/json", body='{"total_found":0,"new_count":0,"opportunities":[]}'),
+        ),
+    )
+
+    try:
+        page_err.goto(live_server_url, wait_until="networkidle")
+        page_err.click("#btn-open-hunt-modal")
+        assert page_err.locator("#modal-hunt").is_visible()
+        assert page_err.locator("#modal-hunt-preview").inner_text() == "Configuration indisponible pour le moment."
+        assert not page_err.evaluate("() => document.documentElement.scrollWidth > window.innerWidth")
+
+        page_err.fill("#hunt-keywords", "Python")
+        page_err.fill("#hunt-location", "Remote")
+        with page_err.expect_response("**/api/opportunities?limit=100"):
+            page_err.click("#btn-submit-hunt")
+
+        assert len(err_searches) == 1
+        assert err_searches[0]["keywords"] == ["Python"]
+        assert err_searches[0]["location"] == "Remote"
+        assert not page_err.locator("#modal-hunt").is_visible()
+    finally:
+        ctx_err.close()
