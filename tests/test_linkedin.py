@@ -39,22 +39,20 @@ def test_parse_linkedin_job_cards():
 
 
 @pytest.mark.anyio
-async def test_linkedin_search_posts_fallback():
+async def test_linkedin_search_posts_unauthenticated_returns_empty():
     provider = LinkedInProvider()
     params = SearchParams(keywords=["Python", "FastAPI"], location="Paris")
-    posts = await provider._search_posts_fallback(params)
+    posts = await provider._search_social_posts(params)
 
-    assert len(posts) == 1
-    post = posts[0]
-    assert post.opportunity_type == OpportunityType.POST
-    assert "https://www.linkedin.com/search/results/content/" in post.url
-    assert "recruiter-posts" in post.tags
+    # Must NOT return fake feed link, returns empty if unauthenticated
+    assert len(posts) == 0
 
 
-def test_parse_voyager_posts_structure():
+def test_parse_voyager_posts_strict_keyword_filtering():
     provider = LinkedInProvider(li_at="test_token")
     mock_payload = {
         "included": [
+            # Post 1: Recruiter hiring for Python in commentary -> MATCH
             {
                 "$type": "com.linkedin.voyager.feed.Update",
                 "urn": "urn:li:activity:789123456",
@@ -68,13 +66,31 @@ def test_parse_voyager_posts_structure():
                     "subDescription": {"text": "Tech Recruiter @ ScaleUp"},
                     "navigationUrl": "https://www.linkedin.com/in/claire-martin",
                 },
+            },
+            # Post 2: Author title mentions Python, but post is about marketing/coffee -> MUST BE EXCLUDED!
+            {
+                "$type": "com.linkedin.voyager.feed.Update",
+                "urn": "urn:li:activity:999888777",
+                "commentary": {
+                    "text": {
+                        "text": "Superbe conférence sur le design hier avec l'équipe ! Très inspirant."
+                    }
+                },
+                "actor": {
+                    "name": {"text": "Jean Dupont"},
+                    "subDescription": {"text": "Senior Python Architect @ BigCorp"},
+                    "navigationUrl": "https://www.linkedin.com/in/jean-dupont",
+                },
             }
         ]
     }
-    posts = provider._parse_voyager_posts(mock_payload)
+    params = SearchParams(keywords=["Python"])
+    posts = provider._parse_voyager_posts(mock_payload, params=params)
+    
+    # Only Post 1 should be matched, Post 2 must be excluded despite author headline
     assert len(posts) == 1
     post = posts[0]
     assert post.author_name == "Claire Martin"
     assert post.author_title == "Tech Recruiter @ ScaleUp"
-    assert "https://www.linkedin.com/feed/update/urn:li:activity:789123456" == post.url
-    assert "On recrute un Lead Dev Python" in post.title
+    assert post.url == "https://www.linkedin.com/feed/update/urn:li:activity:789123456"
+    assert "On recrute un Lead Dev Python" in post.description

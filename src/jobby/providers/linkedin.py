@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import random
 import re
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote, urljoin
 
@@ -18,6 +21,7 @@ import httpx
 from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 
+from jobby.config import load_config
 from jobby.models import JobOpportunity, OpportunityType, SearchParams
 from jobby.providers.base import JobSourceProvider
 
@@ -248,18 +252,31 @@ class LinkedInProvider(JobSourceProvider):
     async def _search_social_posts(self, params: SearchParams) -> List[JobOpportunity]:
         """
         Search LinkedIn social posts (recruiter & network hiring announcements).
-        If li_at cookie is configured, calls LinkedIn Voyager API.
-        Otherwise, builds high-intent dorking & search queries.
+        If user has connected their LinkedIn session (li_at or browser profile),
+        extracts individual posts card by card.
         """
-        if self.li_at:
-            return await self._search_posts_with_voyager(params)
-        else:
-            return await self._search_posts_fallback(params)
+        li_at = self.li_at or load_config().linkedin_li_at or os.environ.get("LINKEDIN_LI_AT")
+        profile_dir = Path("_bmad-output/browser_profiles/linkedin")
 
-    async def _search_posts_with_voyager(self, params: SearchParams) -> List[JobOpportunity]:
+        # 1. Try Voyager API if li_at cookie is configured
+        if li_at:
+            voyager_posts = await self._search_posts_with_voyager(params, li_at=li_at)
+            if voyager_posts:
+                return voyager_posts
+
+        # 2. Try Playwright browser session if persistent profile exists or li_at is set
+        if profile_dir.exists() or li_at:
+            browser_posts = await asyncio.to_thread(self._scrape_posts_with_browser_sync, params, li_at)
+            if browser_posts:
+                return browser_posts
+
+        logger.info("LinkedIn post search: unauthenticated. Connect in 'Comptes' to enable post-by-post extraction.")
+        return []
+
+    async def _search_posts_with_voyager(self, params: SearchParams, li_at: str) -> List[JobOpportunity]:
         """Direct authenticated query to LinkedIn Voyager Content Search."""
         triggers = " OR ".join(HIRING_TRIGGERS_FR[:3] + HIRING_TRIGGERS_EN[:2])
-        keywords = " ".join(params.keywords) if params.keywords else "developer"
+        keywords = " ".join([f'"{k}"' for k in params.keywords]) if params.keywords else "developer"
         query_string = f"({triggers}) {keywords}"
         if params.location:
             query_string += f" {params.location}"
@@ -267,7 +284,7 @@ class LinkedInProvider(JobSourceProvider):
         url = "https://www.linkedin.com/voyager/api/search/dash/clusters"
         headers = {
             "User-Agent": random.choice(USER_AGENTS),
-            "Cookie": f'li_at={self.li_at}; JSESSIONID="ajax:1234567890"',
+            "Cookie": f'li_at={li_at}; JSESSIONID="ajax:1234567890"',
             "csrf-token": "ajax:1234567890",
             "x-restli-protocol-version": "2.0.0",
             "Accept": "application/vnd.linkedin.normalized+json+2.1",
@@ -278,7 +295,7 @@ class LinkedInProvider(JobSourceProvider):
             "q": "all",
             "query": f"(keywords:{quote(query_string)},flagshipSearchIntent:SEARCH_SRP)",
             "start": 0,
-            "count": min(params.max_results, 25),
+            "count": min(params.max_results, 30),
         }
 
         results: List[JobOpportunity] = []
@@ -287,17 +304,15 @@ class LinkedInProvider(JobSourceProvider):
                 resp = await client.get(url, params=query_params)
                 if resp.status_code == 200:
                     data = resp.json()
-                    results = self._parse_voyager_posts(data)
+                    results = self._parse_voyager_posts(data, params=params)
                 else:
-                    logger.warning(f"Voyager API returned status {resp.status_code}, falling back.")
-                    return await self._search_posts_fallback(params)
+                    logger.warning(f"Voyager API returned status {resp.status_code}")
         except Exception as e:
             logger.error(f"Voyager query failed: {e}")
-            return await self._search_posts_fallback(params)
 
         return results
 
-    def _parse_voyager_posts(self, data: Dict[str, Any]) -> List[JobOpportunity]:
+    def _parse_voyager_posts(self, data: Dict[str, Any], params: Optional[SearchParams] = None) -> List[JobOpportunity]:
         """Extract posts, author name, author title, text and direct link from Voyager response."""
         posts: List[JobOpportunity] = []
         included = data.get("included", [])
@@ -306,8 +321,16 @@ class LinkedInProvider(JobSourceProvider):
             type_str = item.get("$type", "")
             if "Update" in type_str or "FeedComponent" in type_str:
                 commentary = item.get("commentary", {}).get("text", {}).get("text", "")
-                if not commentary or len(commentary) < 20:
+                if not commentary or len(commentary) < 25:
                     continue
+
+                # STRICT USER REQUIREMENT:
+                # Exclude author's title / position / headline from matching!
+                # Target keywords MUST appear directly inside the post commentary!
+                if params and params.keywords:
+                    comm_lower = commentary.lower()
+                    if not any(k.lower() in comm_lower for k in params.keywords):
+                        continue
 
                 urn = item.get("urn", "")
                 post_url = f"https://www.linkedin.com/feed/update/{urn}" if urn else ""
@@ -318,9 +341,9 @@ class LinkedInProvider(JobSourceProvider):
                 author_title = actor.get("subDescription", {}).get("text")
                 author_url = actor.get("navigationUrl")
 
-                # Extract first line or headline for title
+                # Extract first line for title
                 first_line = commentary.strip().split("\n")[0][:100]
-                title = f"Post: {first_line}"
+                title = f"Post de {author_name or 'Recruteur'}: {first_line}"
 
                 posts.append(JobOpportunity(
                     source=self.name,
@@ -331,38 +354,109 @@ class LinkedInProvider(JobSourceProvider):
                     author_title=author_title,
                     author_profile_url=author_url,
                     description=commentary,
-                    tags=["linkedin-post", "recruiter-network"],
+                    tags=["linkedin-post", "recruteur-réseau"],
                 ))
         return posts
 
-    async def _search_posts_fallback(self, params: SearchParams) -> List[JobOpportunity]:
-        """
-        When li_at is not provided, provides structured discovery queries and
-        extracts public web-indexed LinkedIn posts.
-        """
-        keywords_str = " ".join(params.keywords) if params.keywords else "developer"
+    def _scrape_posts_with_browser_sync(self, params: SearchParams, li_at: Optional[str] = None) -> List[JobOpportunity]:
+        """Scrapes individual LinkedIn posts using persistent Playwright browser profile."""
+        from playwright.sync_api import sync_playwright
+
+        profile_dir = Path("_bmad-output/browser_profiles/linkedin")
+        triggers = '("on recrute" OR "nous recrutons" OR "cherche" OR "hiring")'
+        keywords_str = " ".join([f'"{k}"' for k in params.keywords]) if params.keywords else "developer"
         location_str = params.location or "France"
-        
-        # Build direct web URL for the user to open all posts in 1 click
-        search_query = f'("on recrute" OR "nous recrutons" OR "hiring") {keywords_str} {location_str}'
-        web_search_url = f"https://www.linkedin.com/search/results/content/?keywords={quote(search_query)}&sortBy=%22date_posted%22"
-        
-        # Return a ready-to-use opportunity card pointing directly to the live recruiter posts feed
-        lead_post = JobOpportunity(
-            source=self.name,
-            opportunity_type=OpportunityType.POST,
-            title=f"Flux Posts Recruteurs en direct: {keywords_str} ({location_str})",
-            company="LinkedIn Network Feed",
-            location=location_str,
-            url=web_search_url,
-            author_name="LinkedIn Content Search Engine",
-            author_title="Recherche booléenne: 'on recrute' / 'nous recrutons'",
-            description=(
-                f"Lien direct vers le flux temps réel des publications LinkedIn de recruteurs et fondateurs "
-                f"avec les mots-clés '{keywords_str}' et les déclencheurs de recrutement.\n"
-                f"Pour activer l'aspiration automatique directe des posts dans Jobby, renseignez votre cookie "
-                f"'li_at' dans _bmad-output/jobby_config.yaml ou via la variable LINKEDIN_LI_AT."
-            ),
-            tags=["feed-direct", "recruiter-posts", "boolean-search"],
-        )
-        return [lead_post]
+        query_string = f"{triggers} {keywords_str} {location_str}"
+        search_url = f"https://www.linkedin.com/search/results/content/?keywords={quote(query_string)}&sortBy=%22date_posted%22"
+
+        posts: List[JobOpportunity] = []
+        try:
+            with sync_playwright() as p:
+                if profile_dir.exists():
+                    context = p.chromium.launch_persistent_context(
+                        user_data_dir=str(profile_dir),
+                        headless=True,
+                        channel="chrome",
+                        args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+                    )
+                else:
+                    browser = p.chromium.launch(headless=True, channel="chrome", args=["--no-sandbox"])
+                    context = browser.new_context()
+                    if li_at:
+                        context.add_cookies([{"name": "li_at", "value": li_at, "domain": ".linkedin.com", "path": "/"}])
+
+                page = context.new_page()
+                page.goto(search_url, timeout=20000, wait_until="domcontentloaded")
+                time.sleep(2.5)
+
+                if "login" in page.url or "checkpoint" in page.url:
+                    logger.info("LinkedIn requires login for post search; skipping automated scrape.")
+                    context.close()
+                    return []
+
+                # Scroll once or twice to trigger feed loading
+                page.evaluate("window.scrollBy(0, 1200)")
+                time.sleep(2.0)
+
+                # Find post items
+                cards = page.query_selector_all("div.feed-shared-update-v2, div[data-urn*='activity']")
+                for card in cards[:params.max_results]:
+                    # Click "see more" if truncated
+                    try:
+                        see_more = card.query_selector("button.feed-shared-inline-show-more-text__see-more-less-toggle, button[aria-label*='voir plus'], button[aria-label*='see more']")
+                        if see_more:
+                            see_more.click(timeout=1000)
+                    except Exception:
+                        pass
+
+                    # Extract commentary (the post text)
+                    desc_elem = card.query_selector(".feed-shared-update-v2__description, .update-components-text, .feed-shared-inline-show-more-text")
+                    commentary = desc_elem.inner_text().strip() if desc_elem else ""
+                    if not commentary or len(commentary) < 25:
+                        continue
+
+                    # STRICT USER REQUIREMENT: Ignore author's headline / profile title!
+                    # Only check the post text itself for the searched keywords!
+                    comm_lower = commentary.lower()
+                    if params.keywords:
+                        if not any(k.lower() in comm_lower for k in params.keywords):
+                            continue
+
+                    # Extract author name and title
+                    actor_elem = card.query_selector(".feed-shared-actor__name, .update-components-actor__name")
+                    author_name = actor_elem.inner_text().strip() if actor_elem else "Recruteur LinkedIn"
+
+                    title_elem = card.query_selector(".feed-shared-actor__description, .update-components-actor__description, .feed-shared-actor__sub-description")
+                    author_title = title_elem.inner_text().strip() if title_elem else "Réseau LinkedIn"
+
+                    # Extract permalink
+                    urn = card.get_attribute("data-urn") or ""
+                    link_elem = card.query_selector("a[href*='/feed/update/urn:li:activity:']")
+                    post_url = ""
+                    if link_elem:
+                        href = link_elem.get_attribute("href") or ""
+                        post_url = href.split("?")[0]
+                    elif urn:
+                        post_url = f"https://www.linkedin.com/feed/update/{urn}"
+                    else:
+                        post_url = "https://www.linkedin.com/feed/"
+
+                    first_line = commentary.split("\n")[0][:100]
+                    posts.append(JobOpportunity(
+                        source=self.name,
+                        opportunity_type=OpportunityType.POST,
+                        title=f"Post de {author_name}: {first_line}",
+                        company="Réseau LinkedIn",
+                        location=params.location or "France",
+                        url=post_url,
+                        author_name=author_name,
+                        author_title=author_title,
+                        description=commentary,
+                        tags=["linkedin-post", "recruteur-réseau"],
+                    ))
+
+                context.close()
+        except Exception as e:
+            logger.warning(f"Error scraping LinkedIn posts with browser: {e}")
+
+        return posts

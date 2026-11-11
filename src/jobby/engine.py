@@ -77,12 +77,27 @@ class ScoringEngine:
         full_text = f"{title_cleaned} {desc_cleaned}"
 
         # 1. Target roles / Métier match (up to 55 pts)
-        for role in self.config.target_roles:
-            norm_role = clean_text(role)
-            if norm_role and (norm_role in title_cleaned or norm_role in full_text):
-                score += 55.0
-                reasons.append(f"Poste ciblé '{role}' (+55)")
-                break
+        matched_in_post = False
+        if opp.opportunity_type == OpportunityType.POST:
+            # For social posts, strictly evaluate the post body itself,
+            # completely ignoring the author's title, current job or headline.
+            for role in self.config.target_roles:
+                norm_role = clean_text(role)
+                if norm_role and norm_role in desc_cleaned:
+                    score += 55.0
+                    reasons.append(f"Poste ciblé '{role}' cité dans le post (+55)")
+                    matched_in_post = True
+                    break
+            if not matched_in_post:
+                score -= 30.0
+                reasons.append("Poste ciblé absent du texte du post (-30)")
+        else:
+            for role in self.config.target_roles:
+                norm_role = clean_text(role)
+                if norm_role and (norm_role in title_cleaned or norm_role in full_text):
+                    score += 55.0
+                    reasons.append(f"Poste ciblé '{role}' (+55)")
+                    break
 
         # 2. Location / Remote preferences (up to 30 pts)
         location_text = clean_text(opp.location or "")
@@ -111,7 +126,7 @@ class ScoringEngine:
                 reasons.append("Option télétravail détectée (+20)")
 
         # 3. Social post / Recruiter direct contact bonus (+15 pts)
-        if opp.opportunity_type == OpportunityType.POST:
+        if opp.opportunity_type == OpportunityType.POST and matched_in_post:
             score += 15.0
             reasons.append("Post direct de recruteur/réseau (+15)")
 

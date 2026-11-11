@@ -452,14 +452,29 @@
         if (q) {
           const matchTitle = (o.title || '').toLowerCase().includes(q);
           const matchCompany = (o.company || '').toLowerCase().includes(q);
-          const matchAuthor = (o.author_name || '').toLowerCase().includes(q);
           const matchDesc = (o.description || '').toLowerCase().includes(q);
+          // For posts, strictly ignore author headline/title
+          const matchAuthor = o.opportunity_type !== 'post' && (o.author_name || '').toLowerCase().includes(q);
           if (!matchTitle && !matchCompany && !matchAuthor && !matchDesc) return false;
         }
         return true;
       });
 
       if (filtered.length === 0) {
+        if (currentFilter === 'post') {
+          resultsContainer.innerHTML = `
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
+              <span class="text-4xl">📢</span>
+              <h3 class="text-base font-bold text-slate-300">Aucun post de recrutement extrait</h3>
+              <p class="text-xs text-slate-400 max-w-md leading-relaxed">
+                Jobby extrait désormais les publications individuelles poste par poste (1 carte par post).<br>
+                Pour activer l'analyse des publications en direct de votre réseau, assurez-vous d'avoir connecté votre compte dans <span class="text-sky-400 font-semibold cursor-pointer underline" onclick="document.getElementById('open-auth-modal-btn').click()">Comptes &amp; Connexions</span> (en haut à droite).
+              </p>
+            </div>
+          `;
+          return;
+        }
+
         resultsContainer.innerHTML = `
           <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
             <span class="text-4xl">🔍</span>
