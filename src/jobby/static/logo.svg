@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" fill="none">
+  <!-- Icon Mark -->
+  <g transform="translate(0, 0)">
+    <rect width="64" height="64" rx="18" fill="#0F172A"/>
+    <rect x="1" y="1" width="62" height="62" rx="17" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+    
+    <path d="M22 18H36V37C36 43.075 31.075 48 25 48C21.5 48 18.5 46.2 16.5 43.5" 
+          stroke="url(#logo-grad)" 
+          stroke-width="7" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+          
+    <circle cx="44" cy="20" r="4.5" fill="#38BDF8"/>
+    <circle cx="44" cy="20" r="7.5" stroke="#38BDF8" stroke-width="1.5" stroke-opacity="0.45"/>
+  </g>
+  
+  <!-- Wordmark "Jobby" in clean modern typography -->
+  <g transform="translate(80, 44)">
+    <text font-family="system-ui, -apple-system, 'SF Pro Display', 'Inter', sans-serif" 
+          font-weight="900" 
+          font-size="34" 
+          letter-spacing="-1.2" 
+          fill="#0F172A">Jobby<tspan fill="#0284C7">.</tspan></text>
+  </g>
+
+  <defs>
+    <linearGradient id="logo-grad" x1="16" y1="18" x2="38" y2="48" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.6" stop-color="#E2E8F0"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+</svg>

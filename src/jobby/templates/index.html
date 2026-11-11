@@ -1,16 +1,22 @@
 <!DOCTYPE html>
-<html lang="fr" class="dark">
+<html lang="fr" class="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jobby — Chasseur d'Emploi Intelligent</title>
+  <title>Jobby — Chasseur d'Emploi & IA</title>
   
   <!-- PWA Meta tags -->
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#0284c7">
-  <meta name="description" content="Agent intelligent de veille et capture d'opportunités d'emploi & posts LinkedIn">
+  <meta name="theme-color" content="#FFFFFF">
+  <meta name="description" content="Agent intelligent de capture d'opportunités d'emploi & posts réseau">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
-  <link rel="icon" type="image/png" href="/static/icon-192.png">
+
+  <!-- Typography: Plus Jakarta Sans (Fuse & Revolut Aesthetic) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -19,111 +25,142 @@
       darkMode: 'class',
       theme: {
         extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+          },
           colors: {
-            brand: {
-              50: '#f0f9ff',
-              500: '#0284c7',
-              600: '#0369a1',
-              700: '#075985',
+            surface: {
+              DEFAULT: '#FFFFFF',
+              subtle: '#F8F9FA',
+              muted: '#F1F3F5',
+            },
+            revolut: {
+              black: '#0F172A',
+              blue: '#0075FF',
             }
+          },
+          boxShadow: {
+            'xs': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+            'card': '0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04)',
+            'card-hover': '0 8px 20px -4px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)',
           }
         }
       }
     }
   </script>
   <style>
-    /* Custom scrollbars */
+    /* Custom sleek light scrollbars */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0f172a; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    ::-webkit-scrollbar-track { background: #F1F3F5; }
+    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-sky-500 selection:text-white">
+<body class="bg-[#F8F9FB] text-slate-900 min-h-screen flex flex-col font-sans antialiased selection:bg-slate-900 selection:text-white">
 
-  <!-- TOP NAVIGATION BAR -->
-  <header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 sticky top-0 z-40 px-4 py-3 flex items-center justify-between">
+  <!-- TOP NAVIGATION BAR (REVOLUT / FUSE STYLE) -->
+  <header class="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 px-4 sm:px-6 py-3 flex items-center justify-between">
+    <!-- Brand Logo & Monogram -->
     <div class="flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
-        <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <circle cx="12" cy="12" r="9" stroke-width="2" />
-          <circle cx="12" cy="12" r="4" stroke-width="2" />
-          <circle cx="12" cy="12" r="1" fill="currentColor" />
-        </svg>
-      </div>
-      <div>
-        <h1 class="text-xl font-black tracking-tight bg-gradient-to-r from-white via-sky-200 to-sky-400 bg-clip-text text-transparent">Jobby</h1>
-        <p class="text-xs text-slate-400 font-medium">Agent IA Chasseur d'Emploi & Posts</p>
-      </div>
+      <a href="/" class="flex items-center gap-3 group">
+        <!-- Modern Jobby Logo Mark -->
+        <div class="w-10 h-10 rounded-2xl bg-slate-950 flex items-center justify-center shadow-md shadow-slate-950/10 border border-slate-800 transition group-hover:scale-105">
+          <svg class="w-6 h-6 text-white" viewBox="0 0 64 64" fill="none">
+            <path d="M22 18H36V37C36 43.075 31.075 48 25 48C21.5 48 18.5 46.2 16.5 43.5" 
+                  stroke="url(#hdr-jobby-grad)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="44" cy="20" r="4.5" fill="#38BDF8"/>
+            <circle cx="44" cy="20" r="7.5" stroke="#38BDF8" stroke-width="1.5" stroke-opacity="0.5"/>
+            <defs>
+              <linearGradient id="hdr-jobby-grad" x1="16" y1="18" x2="38" y2="48" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#FFFFFF"/>
+                <stop offset="0.6" stop-color="#E2E8F0"/>
+                <stop offset="1" stop-color="#38BDF8"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xl font-black tracking-tight text-slate-900">Jobby<span class="text-sky-500">.</span></span>
+            <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200/70">PRO</span>
+          </div>
+          <span class="text-[11px] text-slate-500 font-medium">Veille intelligente d'opportunités</span>
+        </div>
+      </a>
     </div>
 
     <!-- PWA Install & Quick Stats -->
-    <div class="flex items-center gap-3">
-      <button id="open-auth-modal-btn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold hover:text-white hover:bg-slate-700 transition">
-        <span>🔑</span>
-        <span>Comptes (WTTJ & LinkedIn)</span>
+    <div class="flex items-center gap-2 sm:gap-3">
+      <!-- Live Counter Pill -->
+      <div class="hidden md:flex items-center gap-2 text-xs bg-slate-100/90 text-slate-700 px-3 py-1.5 rounded-xl border border-slate-200/80 font-semibold shadow-xs">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span id="header-stats">Synchronisation...</span>
+      </div>
+
+      <!-- Auth Accounts Button -->
+      <button id="open-auth-modal-btn" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition shadow-xs cursor-pointer">
+        <span class="text-sm">🔑</span>
+        <span class="hidden sm:inline">Comptes &amp; IA</span>
       </button>
 
-      <button id="pwa-install-btn" class="hidden items-center gap-2 px-3 py-1.5 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs font-semibold hover:bg-sky-500/20 transition">
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <!-- PWA Install Button -->
+      <button id="pwa-install-btn" class="hidden items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950 text-white text-xs font-bold hover:bg-slate-800 transition shadow-sm cursor-pointer">
+        <svg class="w-3.5 h-3.5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
-        Installer l'App (PWA)
+        <span>Installer</span>
       </button>
-
-      <div class="hidden sm:flex items-center gap-2 text-xs bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
-        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span class="text-slate-300 font-medium" id="header-stats">Chargement...</span>
-      </div>
     </div>
   </header>
 
   <!-- MAIN CONTAINER (SPLIT LAYOUT) -->
   <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-    <!-- LEFT COLUMN: CRITERIA FORM -->
-    <section class="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-5 h-fit lg:sticky lg:top-20">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-        <h2 class="font-bold text-base text-slate-200 flex items-center gap-2">
-          <span>🎯</span> Critères de Recherche
+    <!-- LEFT COLUMN: CRITERIA FORM (CLEAN WHITE CARD) -->
+    <section class="lg:col-span-4 bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-card flex flex-col gap-5 h-fit lg:sticky lg:top-20">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <h2 class="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center text-xs">🎯</span>
+          <span>Paramètres de Recherche</span>
         </h2>
-        <button id="save-config-btn" title="Sauvegarder par défaut" class="text-xs text-sky-400 hover:text-sky-300 font-medium">Sauvegarder</button>
+        <button id="save-config-btn" title="Sauvegarder par défaut" class="text-xs text-sky-600 hover:text-sky-700 font-bold transition cursor-pointer">Sauvegarder</button>
       </div>
 
       <!-- Job Title / Keywords -->
       <div>
-        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Poste / Métier recherché</label>
+        <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Poste / Métier ciblé</label>
         <input type="text" id="input-role" placeholder="ex: Développeur Python, Data Engineer"
-               class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition">
+               class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 transition font-medium">
         <p class="text-[11px] text-slate-400 mt-1">Séparez par des virgules pour plusieurs rôles</p>
       </div>
 
-      <!-- Location & Remote -->
-      <div class="grid grid-cols-2 gap-3">
+      <!-- Location & Remote Mode -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Lieu</label>
+          <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Localisation</label>
           <input type="text" id="input-location" placeholder="ex: Paris, France"
-                 class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition">
+                 class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 transition font-medium">
         </div>
         <div>
-          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Télétravail</label>
-          <select id="select-remote" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500 transition">
-            <option value="all">Indifférent / Tous</option>
-            <option value="remote_only">100% Remote</option>
-            <option value="hybrid">Hybride accepté</option>
+          <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Mode Télétravail</label>
+          <select id="select-remote" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 transition font-medium cursor-pointer">
+            <option value="all">Tous les modes</option>
+            <option value="remote_only">100% Télétravail uniquement</option>
           </select>
         </div>
       </div>
 
       <!-- Salary Range -->
-      <div>
+      <div class="bg-slate-50 border border-slate-100 rounded-2xl p-3.5">
         <div class="flex justify-between items-center mb-1.5">
-          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Salaire Min. Annuel</label>
-          <span id="salary-display" class="text-xs font-bold text-sky-400">45 000 €</span>
+          <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">Salaire Min. Annuel</label>
+          <span id="salary-display" class="text-xs font-extrabold text-slate-900 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-xs">45 000 €</span>
         </div>
         <input type="range" id="input-salary" min="30" max="130" step="5" value="45"
-               class="w-full accent-sky-500 bg-slate-950 cursor-pointer">
-        <div class="flex justify-between text-[10px] text-slate-400">
+               class="w-full accent-slate-950 bg-slate-200 cursor-pointer">
+        <div class="flex justify-between text-[10px] text-slate-400 font-semibold mt-1">
           <span>30k €</span>
           <span>60k €</span>
           <span>90k €</span>
@@ -133,69 +170,69 @@
 
       <!-- Exclusions -->
       <div>
-        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Exclure (mots négatifs)</label>
+        <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Mots à exclure (négatifs)</label>
         <input type="text" id="input-negatives" placeholder="ex: Stage, Alternance, Junior"
-               class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition">
+               class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 transition font-medium">
       </div>
 
       <!-- Platforms Selection -->
       <div>
-        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Sources actives</label>
+        <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">Sources surveillées</label>
         <div class="grid grid-cols-2 gap-2 text-xs">
-          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
-            <input type="checkbox" id="src-wttj" checked class="rounded accent-sky-500">
-            <span class="font-medium text-slate-200">WTTJ</span>
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+            <input type="checkbox" id="src-wttj" checked class="rounded accent-slate-950 cursor-pointer">
+            <span class="font-bold text-slate-800">🌴 WTTJ</span>
           </label>
-          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-sky-500/30 bg-sky-950/10 cursor-pointer hover:border-sky-500/50">
-            <input type="checkbox" id="src-linkedin-posts" checked class="rounded accent-sky-500">
-            <span class="font-bold text-sky-300">LinkedIn (Posts) 🔥</span>
+          <label class="flex items-center gap-2 p-2.5 bg-sky-50/80 rounded-xl border border-sky-200 cursor-pointer hover:bg-sky-100/60 transition">
+            <input type="checkbox" id="src-linkedin-posts" checked class="rounded accent-sky-600 cursor-pointer">
+            <span class="font-bold text-sky-900">LinkedIn Posts 🔥</span>
           </label>
-          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
-            <input type="checkbox" id="src-linkedin" checked class="rounded accent-sky-500">
-            <span class="font-medium text-slate-200">LinkedIn (Offres)</span>
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+            <input type="checkbox" id="src-linkedin" checked class="rounded accent-slate-950 cursor-pointer">
+            <span class="font-medium text-slate-800">LinkedIn (Offres)</span>
           </label>
-          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
-            <input type="checkbox" id="src-hellowork" checked class="rounded accent-sky-500">
-            <span class="font-medium text-slate-200">HelloWork</span>
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+            <input type="checkbox" id="src-hellowork" checked class="rounded accent-slate-950 cursor-pointer">
+            <span class="font-medium text-slate-800">HelloWork</span>
           </label>
-          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
-            <input type="checkbox" id="src-indeed" checked class="rounded accent-sky-500">
-            <span class="font-medium text-slate-200">Indeed</span>
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+            <input type="checkbox" id="src-indeed" checked class="rounded accent-slate-950 cursor-pointer">
+            <span class="font-medium text-slate-800">Indeed</span>
           </label>
-          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
-            <input type="checkbox" id="src-glassdoor" checked class="rounded accent-sky-500">
-            <span class="font-medium text-slate-200">Glassdoor</span>
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+            <input type="checkbox" id="src-glassdoor" checked class="rounded accent-slate-950 cursor-pointer">
+            <span class="font-medium text-slate-800">Glassdoor</span>
           </label>
-          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
-            <input type="checkbox" id="src-teamtailor" checked class="rounded accent-sky-500">
-            <span class="font-medium text-slate-200">Teamtailor</span>
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+            <input type="checkbox" id="src-teamtailor" checked class="rounded accent-slate-950 cursor-pointer">
+            <span class="font-medium text-slate-800">Teamtailor</span>
           </label>
-          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
-            <input type="checkbox" id="src-jobgether" checked class="rounded accent-sky-500">
-            <span class="font-medium text-slate-200">Jobgether</span>
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+            <input type="checkbox" id="src-jobgether" checked class="rounded accent-slate-950 cursor-pointer">
+            <span class="font-medium text-slate-800">Jobgether</span>
           </label>
         </div>
       </div>
 
       <!-- Filtres Intelligents & IA Posts -->
-      <div class="p-3 rounded-xl bg-slate-950/90 border border-slate-800 flex flex-col gap-2">
-        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-          <span class="flex items-center gap-1.5">
+      <div class="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-100 flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
             <span>🤖</span>
-            <span>Filtres Intelligents IA</span>
+            <span>Tri Intelligent des Posts</span>
           </span>
-          <span class="text-[10px] text-sky-400 font-bold bg-sky-950/80 px-2 py-0.5 rounded border border-sky-800/60">NLP Actif</span>
-        </label>
-        <label class="flex items-start gap-2.5 cursor-pointer text-xs p-1.5 rounded-lg hover:bg-slate-900/60 transition">
-          <input type="checkbox" id="filter-candidate-alternance" checked class="mt-0.5 rounded accent-sky-500 cursor-pointer">
-          <span class="text-slate-300 leading-tight">
-            Masquer les <strong class="text-white">candidatures d'alternance</strong> de membres (conserver uniquement les offres de recrutement)
+          <span class="text-[10px] text-indigo-700 font-extrabold bg-indigo-100 px-2 py-0.5 rounded-md">NLP Actif</span>
+        </div>
+        <label class="flex items-start gap-2.5 cursor-pointer text-xs pt-1">
+          <input type="checkbox" id="filter-candidate-alternance" checked class="mt-0.5 rounded accent-indigo-600 cursor-pointer">
+          <span class="text-indigo-900 leading-snug">
+            Masquer les <strong class="font-bold text-indigo-950">candidatures d'alternance</strong> de membres (conserver uniquement les offres de recrutement)
           </span>
         </label>
       </div>
 
-      <!-- Action Button -->
-      <button id="search-btn" class="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-bold text-sm shadow-lg shadow-sky-500/25 hover:from-sky-400 hover:to-indigo-500 transition-all flex items-center justify-center gap-2 cursor-pointer">
+      <!-- Primary Action Button (Revolut Obsidian Black) -->
+      <button id="search-btn" class="w-full mt-2 py-3.5 px-4 rounded-2xl bg-slate-950 hover:bg-slate-800 text-white font-extrabold text-sm shadow-md shadow-slate-950/15 hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]">
         <svg id="search-spinner" class="hidden animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
@@ -204,55 +241,61 @@
       </button>
     </section>
 
-    <!-- RIGHT COLUMN: RESULTS PANE -->
+    <!-- RIGHT COLUMN: RESULTS PANE (REVOLUT / FUSE LIGHT DA) -->
     <section class="lg:col-span-8 flex flex-col gap-4">
 
-      <!-- FILTER TABS & SEARCH BAR -->
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+      <!-- FILTER TABS & SEARCH CONTAINER (WHITE CARD) -->
+      <div class="bg-white border border-slate-200/90 rounded-3xl p-4 sm:p-5 shadow-card flex flex-col gap-3">
         <!-- Search bar & Main Counts Row -->
         <div class="flex flex-col sm:flex-row gap-3 items-center justify-between">
-          <div class="flex items-center gap-2 text-xs font-semibold text-slate-300">
-            <span class="text-sky-400">⚡ Flux en direct</span>
-            <span class="text-slate-500">•</span>
-            <span class="text-slate-400 text-[11px]">Classé par date de scraping</span>
+          <div class="flex items-center gap-2 text-xs font-bold text-slate-800">
+            <span class="w-2 h-2 rounded-full bg-sky-500 animate-ping"></span>
+            <span>Flux d'opportunités en temps réel</span>
+            <span class="text-slate-300">•</span>
+            <span class="text-slate-500 text-[11px] font-medium">Classé par date de scraping</span>
           </div>
 
-          <!-- Quick filter in current results -->
-          <div class="relative w-full sm:w-64">
+          <!-- Quick filter search field with icon -->
+          <div class="relative w-full sm:w-72">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
             <input type="text" id="quick-filter" placeholder="Filtrer dans les résultats..."
-                   class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500">
+                   class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 font-medium">
           </div>
         </div>
 
-        <!-- Filter Tags Bar (Horizontal Scrollable) -->
-        <div class="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar" id="tabs-container">
-          <button class="tab-btn active px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500 text-white shrink-0 cursor-pointer" data-filter="all">Tout (<span id="count-all">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="wttj">🌴 WTTJ (<span id="count-wttj">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-sky-400 hover:text-sky-300 shrink-0 cursor-pointer" data-filter="post">📢 Posts (<span id="count-post">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="linkedin">💼 LinkedIn (<span id="count-linkedin">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="hellowork">HelloWork (<span id="count-hellowork">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="indeed">Indeed (<span id="count-indeed">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="glassdoor">Glassdoor (<span id="count-glassdoor">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="teamtailor">Teamtailor (<span id="count-teamtailor">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="jobgether">Jobgether (<span id="count-jobgether">0</span>)</button>
-          <span class="text-slate-700 mx-1 shrink-0">|</span>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/20 shrink-0 cursor-pointer" data-filter="remote">🌐 Remote (<span id="count-remote">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/25 hover:bg-sky-500/20 shrink-0 cursor-pointer" data-filter="hybrid">🏢 Hybride (<span id="count-hybrid">0</span>)</button>
-          <span class="text-slate-700 mx-1 shrink-0">|</span>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 shrink-0 cursor-pointer" data-filter="favorite">⭐ Favoris (<span id="count-favorite">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 shrink-0 cursor-pointer" data-filter="kept">✅ Je garde (<span id="count-kept">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 text-slate-400 hover:text-slate-200 shrink-0 cursor-pointer" data-filter="archived">📦 Archivés (<span id="count-archived">0</span>)</button>
+        <!-- Filter Tags Bar (Horizontal Scrollable, Revolut-style pills) -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 no-scrollbar" id="tabs-container">
+          <button class="tab-btn active px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-slate-950 text-white shrink-0 cursor-pointer shadow-xs transition" data-filter="all">Tout (<span id="count-all">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="wttj">🌴 WTTJ (<span id="count-wttj">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-sky-700 shrink-0 cursor-pointer transition" data-filter="post">📢 Posts (<span id="count-post">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="linkedin">💼 LinkedIn (<span id="count-linkedin">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="hellowork">HelloWork (<span id="count-hellowork">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="indeed">Indeed (<span id="count-indeed">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="glassdoor">Glassdoor (<span id="count-glassdoor">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="teamtailor">Teamtailor (<span id="count-teamtailor">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="jobgether">Jobgether (<span id="count-jobgether">0</span>)</button>
+          <span class="text-slate-300 mx-1 shrink-0">|</span>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100/70 shrink-0 cursor-pointer transition" data-filter="remote">🌐 Remote (<span id="count-remote">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100/70 shrink-0 cursor-pointer transition" data-filter="hybrid">🏢 Hybride (<span id="count-hybrid">0</span>)</button>
+          <span class="text-slate-300 mx-1 shrink-0">|</span>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100/70 shrink-0 cursor-pointer transition" data-filter="favorite">⭐ Favoris (<span id="count-favorite">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100/70 shrink-0 cursor-pointer transition" data-filter="kept">✅ Je garde (<span id="count-kept">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 hover:text-slate-900 shrink-0 cursor-pointer transition" data-filter="archived">📦 Archivés (<span id="count-archived">0</span>)</button>
         </div>
 
         <!-- Sub-filter bar for Posts & Alternance triage -->
-        <div class="flex items-center gap-2 pt-2 border-t border-slate-800/70 text-xs">
-          <span class="text-slate-400 text-[11px] font-semibold flex items-center gap-1 shrink-0">
+        <div class="flex items-center gap-2 pt-2.5 border-t border-slate-100 text-xs">
+          <span class="text-slate-500 text-[11px] font-bold flex items-center gap-1 shrink-0">
             <span>🤖 Tri IA Posts :</span>
           </span>
           <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-            <button class="post-subfilter-btn active px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/50 shrink-0 cursor-pointer" data-subfilter="all">Tous les posts</button>
-            <button class="post-subfilter-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-950 text-slate-300 border border-slate-800 hover:text-white shrink-0 cursor-pointer" data-subfilter="hiring_only">💼 Offres de recrutement (<span id="count-hiring">0</span>)</button>
-            <button class="post-subfilter-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-950 text-violet-300 border border-slate-800 hover:border-violet-500/50 hover:bg-violet-950/20 shrink-0 cursor-pointer" data-subfilter="candidate_alternance">🎓 Candidatures d'alternance (<span id="count-candidates">0</span>)</button>
+            <button class="post-subfilter-btn active px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-900 text-white shadow-xs shrink-0 cursor-pointer transition" data-subfilter="all">Tous les posts</button>
+            <button class="post-subfilter-btn px-3 py-1 rounded-xl text-[11px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200/80 shrink-0 cursor-pointer transition" data-subfilter="hiring_only">💼 Offres de recrutement (<span id="count-hiring">0</span>)</button>
+            <button class="post-subfilter-btn px-3 py-1 rounded-xl text-[11px] font-semibold bg-violet-50 text-violet-800 border border-violet-200 hover:bg-violet-100/70 shrink-0 cursor-pointer transition" data-subfilter="candidate_alternance">🎓 Candidatures d'alternance (<span id="count-candidates">0</span>)</button>
           </div>
         </div>
       </div>
@@ -264,31 +307,31 @@
     </section>
   </main>
 
-  <!-- AUTH MODAL -->
-  <div id="auth-modal" style="display: none;" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-        <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <span>🔑</span> Connexion des Comptes
+  <!-- AUTH & AI MODAL (LIGHT THEME) -->
+  <div id="auth-modal" style="display: none;" class="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5 text-slate-900">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+          <span>🔑</span> Connexion des Comptes &amp; IA
         </h3>
-        <button id="close-auth-modal-btn" type="button" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm cursor-pointer">✖</button>
+        <button id="close-auth-modal-btn" type="button" class="w-8 h-8 rounded-xl bg-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-200 flex items-center justify-center text-sm font-bold cursor-pointer transition">✖</button>
       </div>
 
       <div id="auth-notice" class="hidden"></div>
 
       <!-- WTTJ / Google Login -->
-      <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col gap-3">
+      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span class="text-lg">🌴</span>
-            <span class="font-bold text-sm text-slate-200">Welcome to the Jungle</span>
+            <span class="font-extrabold text-sm text-slate-900">Welcome to the Jungle</span>
           </div>
-          <span id="wttj-status-pill" class="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400">Vérification...</span>
+          <span id="wttj-status-pill" class="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-600">Vérification...</span>
         </div>
-        <p class="text-xs text-slate-400">
+        <p class="text-xs text-slate-500">
           Connectez votre compte avec Google (Gmail) pour récupérer vos offres recommandées et vos favoris.
         </p>
-        <button id="wttj-login-btn" type="button" class="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer shadow-md">
+        <button id="wttj-login-btn" type="button" class="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-200 transition flex items-center justify-center gap-2 cursor-pointer shadow-xs">
           <svg class="w-4 h-4" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
             <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -300,38 +343,38 @@
       </div>
 
       <!-- LinkedIn Login -->
-      <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col gap-3">
+      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span class="text-lg">💼</span>
-            <span class="font-bold text-sm text-slate-200">LinkedIn</span>
+            <span class="font-extrabold text-sm text-slate-900">LinkedIn</span>
           </div>
-          <span id="linkedin-status-pill" class="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400">Vérification...</span>
+          <span id="linkedin-status-pill" class="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-600">Vérification...</span>
         </div>
-        <p class="text-xs text-slate-400">
+        <p class="text-xs text-slate-500">
           Connectez votre compte LinkedIn pour aspirer tous les posts de recrutement récents du réseau sans restriction.
         </p>
-        <button id="linkedin-login-btn" type="button" class="w-full py-2.5 px-4 rounded-xl bg-[#0a66c2] hover:bg-[#004182] text-white text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-md">
+        <button id="linkedin-login-btn" type="button" class="w-full py-2.5 px-4 rounded-xl bg-[#0a66c2] hover:bg-[#004182] text-white text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs">
           <span>Se connecter à LinkedIn</span>
         </button>
       </div>
 
       <!-- AI Post Analyzer Engine -->
-      <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col gap-3">
+      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span class="text-lg">🤖</span>
-            <span class="font-bold text-sm text-slate-200">Intelligence Artificielle (Analyse des posts)</span>
+            <span class="font-extrabold text-sm text-slate-900">Intelligence Artificielle (Analyse des posts)</span>
           </div>
-          <span id="ai-status-pill" class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">NLP Actif ✓</span>
+          <span id="ai-status-pill" class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">NLP Actif ✓</span>
         </div>
-        <p class="text-xs text-slate-400">
+        <p class="text-xs text-slate-500">
           Le moteur local NLP classe déjà automatiquement les posts (alternance, offre, remote). Vous pouvez renseigner une clé API Google Gemini (gratuite) ou OpenAI pour un résumé approfondi.
         </p>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div>
-            <label class="block text-[10px] text-slate-400 uppercase font-semibold mb-1">Fournisseur IA</label>
-            <select id="select-ai-provider" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white">
+            <label class="block text-[10px] text-slate-600 uppercase font-bold mb-1">Fournisseur IA</label>
+            <select id="select-ai-provider" class="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 font-medium">
               <option value="auto">Auto (NLP Local + Clé si dispo)</option>
               <option value="gemini">Google Gemini (Gratuit)</option>
               <option value="openai">OpenAI (GPT-4o mini)</option>
@@ -339,22 +382,22 @@
             </select>
           </div>
           <div>
-            <label class="block text-[10px] text-slate-400 uppercase font-semibold mb-1">Clé API (Optionnelle)</label>
+            <label class="block text-[10px] text-slate-600 uppercase font-bold mb-1">Clé API (Optionnelle)</label>
             <input type="password" id="input-ai-key" placeholder="AIzaSy... ou sk-..."
-                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-600">
+                   class="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 placeholder-slate-400 font-medium">
           </div>
         </div>
         <div class="flex items-center gap-2 pt-1 flex-wrap">
-          <button id="test-ai-btn" type="button" class="py-1.5 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-xs font-semibold border border-sky-500/40 transition cursor-pointer flex items-center gap-1">
+          <button id="test-ai-btn" type="button" class="py-1.5 px-3 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold border border-sky-200 transition cursor-pointer flex items-center gap-1 shadow-xs">
             <span>🧪</span>
             <span>Tester la connexion IA</span>
           </button>
-          <button id="reanalyze-all-btn" type="button" class="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition cursor-pointer flex items-center gap-1">
+          <button id="reanalyze-all-btn" type="button" class="py-1.5 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 transition cursor-pointer flex items-center gap-1 shadow-xs">
             <span>🔄</span>
             <span>Ré-analyser les opportunités</span>
           </button>
         </div>
-        <div id="ai-test-result" class="hidden text-xs p-2.5 rounded-xl border"></div>
+        <div id="ai-test-result" class="hidden text-xs p-3 rounded-xl border"></div>
       </div>
     </div>
   </div>
@@ -393,6 +436,7 @@
     // STATE
     let allOpportunities = [];
     let currentFilter = 'all';
+    let postSubfilter = 'all';
 
     // ELEMENTS
     const inputRole = document.getElementById('input-role');
@@ -406,6 +450,7 @@
     const searchBtnText = document.getElementById('search-btn-text');
     const resultsContainer = document.getElementById('results-container');
     const quickFilter = document.getElementById('quick-filter');
+    const filterCandidateCheckbox = document.getElementById('filter-candidate-alternance');
 
     // Salary slider label update
     inputSalary.addEventListener('input', (e) => {
@@ -433,9 +478,8 @@
           const inp = document.getElementById('input-ai-key');
           if (inp) inp.value = config.ai_api_key;
         }
-        if (config.filter_candidate_posts !== undefined) {
-          const chk = document.getElementById('filter-candidate-alternance');
-          if (chk) chk.checked = config.filter_candidate_posts;
+        if (config.filter_candidate_posts !== undefined && filterCandidateCheckbox) {
+          filterCandidateCheckbox.checked = config.filter_candidate_posts;
         }
 
         // Load existing stored opportunities
@@ -448,7 +492,7 @@
 
     async function loadOpportunities() {
       try {
-        const resp = await fetch('/api/opportunities?limit=80');
+        const resp = await fetch('/api/opportunities?limit=100');
         allOpportunities = await resp.json();
         render();
       } catch (e) {
@@ -461,7 +505,7 @@
         const resp = await fetch('/api/stats');
         const stats = await resp.json();
         document.getElementById('header-stats').textContent = 
-          `${stats.total} opportunités (${stats.by_type?.post || 0} posts, ${stats.by_type?.offer || 0} offres)`;
+          `${stats.total} opportunités actives (${stats.by_type?.post || 0} posts, ${stats.by_type?.offer || 0} offres)`;
       } catch (e) {}
     }
 
@@ -469,7 +513,7 @@
     searchBtn.addEventListener('click', async () => {
       setLoading(true);
 
-      const roles = inputRole.value.split(',').map(s => s.strip ? s.strip() : s.trim()).filter(Boolean);
+      const roles = inputRole.value.split(',').map(s => s.trim()).filter(Boolean);
       const sources = [];
       if (document.getElementById('src-wttj')?.checked) sources.push('wttj');
       if (document.getElementById('src-linkedin')?.checked) sources.push('linkedin');
@@ -541,34 +585,34 @@
       }
     }
 
-    // SOURCE BADGE GENERATOR
+    // SOURCE BADGE GENERATOR (CLEAN LIGHT PILLS)
     function getSourceBadge(opp) {
       const isPost = opp.opportunity_type === 'post';
       if (isPost) {
-        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-sm flex items-center gap-1">📢 Post Réseau</span>`;
+        return `<span class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg bg-sky-100 text-sky-800 border border-sky-200 flex items-center gap-1 shadow-xs">📢 Post Réseau</span>`;
       }
       const s = (opp.source || '').toLowerCase();
       switch (s) {
         case 'wttj':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1">🌴 WTTJ</span>`;
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">🌴 WTTJ</span>`;
         case 'linkedin':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-blue-600/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">💼 LinkedIn</span>`;
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">💼 LinkedIn</span>`;
         case 'hellowork':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-pink-500/10 text-pink-300 border border-pink-500/30 flex items-center gap-1">HelloWork</span>`;
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-pink-50 text-pink-700 border border-pink-200 flex items-center gap-1">HelloWork</span>`;
         case 'indeed':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">Indeed</span>`;
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">Indeed</span>`;
         case 'glassdoor':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">Glassdoor</span>`;
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">Glassdoor</span>`;
         case 'teamtailor':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/30 flex items-center gap-1">Teamtailor</span>`;
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-violet-50 text-violet-700 border border-violet-200 flex items-center gap-1">Teamtailor</span>`;
         case 'jobgether':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">Jobgether</span>`;
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-200 flex items-center gap-1">Jobgether</span>`;
         default:
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 uppercase">${escapeHtml(opp.source || 'Offre')}</span>`;
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 uppercase">${escapeHtml(opp.source || 'Offre')}</span>`;
       }
     }
 
-    // CLIENT-SIDE REMOTE DETECTION & PROMINENT BADGE
+    // CLIENT-SIDE REMOTE DETECTION & PROMINENT BADGE (LIGHT DA)
     function detectClientRemotePolicy(opp) {
       if (opp.remote_policy && opp.remote_policy !== 'unknown') return opp.remote_policy;
       const text = `${opp.title || ''} ${opp.location || ''} ${opp.description || ''}`.toLowerCase();
@@ -592,27 +636,27 @@
     function getRemoteBadge(opp) {
       const policy = detectClientRemotePolicy(opp);
       if (policy === 'full') {
-        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 shadow-sm">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        return `<span class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5 shadow-xs">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
           <span>🌐 100% Télétravail</span>
         </span>`;
       }
       if (policy === 'hybrid') {
-        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-500/40 flex items-center gap-1.5 shadow-sm">
-          <span>🏢/🏠 Mode Hybride</span>
+        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 flex items-center gap-1.5 shadow-xs">
+          <span>🏢 Mode Hybride</span>
         </span>`;
       }
       if (policy === 'onsite') {
-        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
+        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-1.5">
           <span>📍 Présentiel / Sur site</span>
         </span>`;
       }
-      return `<span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-950/80 text-slate-400 border border-slate-800 flex items-center gap-1">
-        <span>❓ Télétravail non précisé</span>
+      return `<span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-200/80 flex items-center gap-1">
+        <span>❓ Non précisé</span>
       </span>`;
     }
 
-    // AI POST INTENT BADGE (ALTERNANCE / CANDIDAT / OFFRE)
+    // AI POST INTENT BADGE (LIGHT THEME)
     function getPostAiBadge(opp) {
       if (opp.opportunity_type !== 'post') return '';
       const intent = opp.post_intent || '';
@@ -620,18 +664,18 @@
 
       if (intent === 'candidate_seeking_alternance') {
         return `
-          <div class="p-2.5 rounded-xl bg-violet-950/40 border border-violet-500/40 text-xs flex items-center justify-between gap-3 shadow-inner">
+          <div class="p-3 rounded-2xl bg-violet-50/90 border border-violet-200 text-xs flex items-center justify-between gap-3 shadow-xs">
             <div class="flex items-center gap-2.5">
-              <span class="text-base shrink-0">🎓</span>
+              <span class="text-lg shrink-0">🎓</span>
               <div class="flex flex-col">
-                <span class="font-bold text-violet-300 flex items-center gap-1">
+                <span class="font-extrabold text-violet-950 flex items-center gap-1.5">
                   <span>Candidature : Recherche d'alternance</span>
-                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-violet-900/60 text-violet-200 border border-violet-700/60 font-medium">Étudiant</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-violet-200/70 text-violet-900 font-bold">Étudiant</span>
                 </span>
-                <span class="text-[11px] text-slate-300 leading-tight mt-0.5">${escapeHtml(summary || "L'auteur recherche activement une alternance pour ses études.")}</span>
+                <span class="text-[11px] text-violet-800 leading-tight mt-0.5 font-medium">${escapeHtml(summary || "L'auteur recherche activement une alternance pour ses études.")}</span>
               </div>
             </div>
-            <button onclick="changeStatus('${opp.id}', 'archived')" title="Archiver ce post" class="px-2.5 py-1 rounded-lg bg-violet-900/50 hover:bg-violet-800/80 text-[11px] font-semibold text-violet-200 border border-violet-700/60 shrink-0 cursor-pointer transition">
+            <button onclick="changeStatus('${opp.id}', 'archived')" title="Archiver ce post" class="px-2.5 py-1 rounded-xl bg-white hover:bg-violet-100 text-[11px] font-bold text-violet-800 border border-violet-200 shrink-0 cursor-pointer shadow-xs transition">
               📦 Archiver
             </button>
           </div>
@@ -639,32 +683,32 @@
       }
       if (intent === 'hiring_alternance') {
         return `
-          <div class="p-2.5 rounded-xl bg-teal-950/40 border border-teal-500/40 text-xs flex items-center gap-2.5 shadow-inner">
-            <span class="text-base shrink-0">🏢</span>
+          <div class="p-3 rounded-2xl bg-teal-50/90 border border-teal-200 text-xs flex items-center gap-2.5 shadow-xs">
+            <span class="text-lg shrink-0">🏢</span>
             <div class="flex flex-col">
-              <span class="font-bold text-teal-300 flex items-center gap-1">
+              <span class="font-extrabold text-teal-950 flex items-center gap-1.5">
                 <span>Offre d'alternance d'entreprise</span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded bg-teal-900/60 text-teal-200 border border-teal-700/60 font-medium">Recrutement</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-teal-200/70 text-teal-900 font-bold">Recrutement</span>
               </span>
-              <span class="text-[11px] text-slate-300 leading-tight mt-0.5">${escapeHtml(summary || "Cette entreprise recrute actuellement un(e) alternant(e).")}</span>
+              <span class="text-[11px] text-teal-800 leading-tight mt-0.5 font-medium">${escapeHtml(summary || "Cette entreprise recrute actuellement un(e) alternant(e).")}</span>
             </div>
           </div>
         `;
       }
       if (intent === 'candidate_seeking_job') {
         return `
-          <div class="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-xs flex items-center justify-between gap-3 shadow-inner">
+          <div class="p-3 rounded-2xl bg-amber-50/90 border border-amber-200 text-xs flex items-center justify-between gap-3 shadow-xs">
             <div class="flex items-center gap-2.5">
-              <span class="text-base shrink-0">🙋</span>
+              <span class="text-lg shrink-0">🙋</span>
               <div class="flex flex-col">
-                <span class="font-bold text-amber-300 flex items-center gap-1">
-                  <span>Candidat en recherche d'emploi</span>
-                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-900/60 text-amber-200 border border-amber-700/60 font-medium">Open to Work</span>
+                <span class="font-extrabold text-amber-950 flex items-center gap-1.5">
+                  <span>Candidat en recherche active d'emploi</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-200/70 text-amber-900 font-bold">Open to Work</span>
                 </span>
-                <span class="text-[11px] text-slate-300 leading-tight mt-0.5">${escapeHtml(summary || "L'auteur partage son CV et cherche une opportunité.")}</span>
+                <span class="text-[11px] text-amber-800 leading-tight mt-0.5 font-medium">${escapeHtml(summary || "L'auteur partage son CV et cherche une opportunité.")}</span>
               </div>
             </div>
-            <button onclick="changeStatus('${opp.id}', 'archived')" title="Archiver ce post" class="px-2.5 py-1 rounded-lg bg-amber-900/50 hover:bg-amber-800/80 text-[11px] font-semibold text-amber-200 border border-amber-700/60 shrink-0 cursor-pointer transition">
+            <button onclick="changeStatus('${opp.id}', 'archived')" title="Archiver ce post" class="px-2.5 py-1 rounded-xl bg-white hover:bg-amber-100 text-[11px] font-bold text-amber-900 border border-amber-200 shrink-0 cursor-pointer shadow-xs transition">
               📦 Archiver
             </button>
           </div>
@@ -672,36 +716,29 @@
       }
       // Hiring job (Default recruiter post)
       return `
-        <div class="p-2.5 rounded-xl bg-sky-950/30 border border-sky-500/30 text-xs flex items-center gap-2.5">
-          <span class="text-base shrink-0">💼</span>
+        <div class="p-3 rounded-2xl bg-sky-50/90 border border-sky-200 text-xs flex items-center gap-2.5 shadow-xs">
+          <span class="text-lg shrink-0">💼</span>
           <div class="flex flex-col">
-            <span class="font-bold text-sky-300 flex items-center gap-1">
+            <span class="font-extrabold text-sky-950 flex items-center gap-1.5">
               <span>Offre de recrutement réseau</span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded bg-sky-900/60 text-sky-200 border border-sky-700/60 font-medium">Recruteur</span>
+              <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-sky-200/70 text-sky-900 font-bold">Recruteur</span>
             </span>
-            <span class="text-[11px] text-slate-300 leading-tight mt-0.5">${escapeHtml(summary || "Offre d'emploi partagée par un recruteur ou collaborateur du réseau.")}</span>
+            <span class="text-[11px] text-sky-800 leading-tight mt-0.5 font-medium">${escapeHtml(summary || "Offre d'emploi partagée directement par un recruteur ou collaborateur.")}</span>
           </div>
         </div>
       `;
     }
 
     // TABS LOGIC
-    let postSubfilter = 'all';
-
     function updateTabVisuals() {
       document.querySelectorAll('.tab-btn').forEach(b => {
         const isActive = b.dataset.filter === currentFilter;
         if (isActive) {
-          b.classList.add('ring-2', 'ring-sky-400', 'ring-offset-1', 'ring-offset-slate-900', 'shadow-md');
-          if (b.dataset.filter === 'all') {
-            b.classList.add('bg-sky-500', 'text-white');
-          }
+          b.classList.remove('bg-slate-100', 'text-slate-700');
+          b.classList.add('bg-slate-950', 'text-white', 'font-extrabold', 'shadow-xs');
         } else {
-          b.classList.remove('ring-2', 'ring-sky-400', 'ring-offset-1', 'ring-offset-slate-900', 'shadow-md');
-          if (b.dataset.filter === 'all') {
-            b.classList.remove('bg-sky-500');
-            b.classList.add('bg-slate-800', 'text-slate-300');
-          }
+          b.classList.remove('bg-slate-950', 'text-white', 'font-extrabold');
+          b.classList.add('bg-slate-100', 'text-slate-700', 'font-semibold');
         }
       });
     }
@@ -718,17 +755,16 @@
     document.querySelectorAll('.post-subfilter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.post-subfilter-btn').forEach(b => {
-          b.classList.remove('active', 'bg-sky-500/20', 'text-sky-300', 'border-sky-500/50');
-          b.classList.add('bg-slate-950', 'text-slate-300', 'border-slate-800');
+          b.classList.remove('active', 'bg-slate-900', 'text-white', 'font-bold', 'shadow-xs');
+          b.classList.add('bg-slate-100', 'text-slate-700', 'font-semibold');
         });
-        btn.classList.add('active', 'bg-sky-500/20', 'text-sky-300', 'border-sky-500/50');
-        btn.classList.remove('bg-slate-950', 'text-slate-300', 'border-slate-800');
+        btn.classList.add('active', 'bg-slate-900', 'text-white', 'font-bold', 'shadow-xs');
+        btn.classList.remove('bg-slate-100', 'text-slate-700', 'font-semibold');
         postSubfilter = btn.dataset.subfilter;
         render();
       });
     });
 
-    const filterCandidateCheckbox = document.getElementById('filter-candidate-alternance');
     if (filterCandidateCheckbox) {
       filterCandidateCheckbox.addEventListener('change', () => {
         render();
@@ -856,6 +892,7 @@
           const matchTitle = (o.title || '').toLowerCase().includes(q);
           const matchCompany = (o.company || '').toLowerCase().includes(q);
           const matchDesc = (o.description || '').toLowerCase().includes(q);
+          // For posts, ignore author headline/title
           const matchAuthor = o.opportunity_type !== 'post' && (o.author_name || '').toLowerCase().includes(q);
           if (!matchTitle && !matchCompany && !matchAuthor && !matchDesc) return false;
         }
@@ -865,12 +902,12 @@
       if (filtered.length === 0) {
         if (currentFilter === 'post') {
           resultsContainer.innerHTML = `
-            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
+            <div class="bg-white border border-slate-200/90 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-card">
               <span class="text-4xl">📢</span>
-              <h3 class="text-base font-bold text-slate-300">Aucun post correspondant trouvé</h3>
-              <p class="text-xs text-slate-400 max-w-md leading-relaxed">
+              <h3 class="text-base font-extrabold text-slate-800">Aucun post correspondant trouvé</h3>
+              <p class="text-xs text-slate-500 max-w-md leading-relaxed">
                 Si vous avez activé le filtre de masquage des alternances, les candidatures étudiantes sont masquées.<br>
-                Vous pouvez basculer sur l'onglet <span class="text-violet-400 font-semibold cursor-pointer underline" onclick="document.querySelector('[data-subfilter=\\'candidate_alternance\\']').click()">Candidatures d'alternance</span> ou lancer une nouvelle recherche.
+                Vous pouvez basculer sur l'onglet <span class="text-violet-600 font-bold cursor-pointer underline" onclick="document.querySelector('[data-subfilter=\\'candidate_alternance\\']').click()">Candidatures d'alternance</span> ou lancer une nouvelle recherche.
               </p>
             </div>
           `;
@@ -879,9 +916,9 @@
 
         if (currentFilter === 'archived') {
           resultsContainer.innerHTML = `
-            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
+            <div class="bg-white border border-slate-200/90 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-card">
               <span class="text-4xl">📦</span>
-              <h3 class="text-base font-bold text-slate-300">Aucune offre archivée</h3>
+              <h3 class="text-base font-extrabold text-slate-800">Aucune offre archivée</h3>
               <p class="text-xs text-slate-500 max-w-sm">Les opportunités que vous archivez avec le bouton "📦 Archiver" apparaîtront ici.</p>
             </div>
           `;
@@ -889,10 +926,10 @@
         }
 
         resultsContainer.innerHTML = `
-          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
+          <div class="bg-white border border-slate-200/90 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-card">
             <span class="text-4xl">🔍</span>
-            <h3 class="text-base font-bold text-slate-300">Aucune opportunité trouvée</h3>
-            <p class="text-xs text-slate-500 max-w-sm">Lancez une recherche avec le bouton de gauche ou changez d'onglet.</p>
+            <h3 class="text-base font-extrabold text-slate-800">Aucune opportunité trouvée</h3>
+            <p class="text-xs text-slate-500 max-w-sm">Lancez une recherche avec le bouton de gauche ou changez de filtre.</p>
           </div>
         `;
         return;
@@ -905,18 +942,18 @@
         const isArchived = opp.status === 'archived';
 
         const tagsHtml = (opp.tags || []).slice(0, 4).map(t =>
-          `<span class="inline-block bg-sky-950/60 text-sky-300 text-[10px] font-medium px-2 py-0.5 rounded-md border border-sky-800/40">${escapeHtml(t)}</span>`
+          `<span class="inline-block bg-slate-100 text-slate-700 text-[10px] font-semibold px-2.5 py-0.5 rounded-lg border border-slate-200/80">${escapeHtml(t)}</span>`
         ).join('');
 
         return `
-          <article class="bg-slate-900 border ${isPost ? 'border-sky-500/40 shadow-sky-500/5' : 'border-slate-800'} rounded-2xl p-4 sm:p-5 shadow-lg hover:border-slate-700 transition flex flex-col gap-3">
+          <article class="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-card hover:shadow-card-hover hover:border-slate-300 transition-all flex flex-col gap-3.5">
             
             <!-- Top Card Header: Source, Remote Badge, Date, & Fast Triage Buttons -->
             <div class="flex items-center justify-between gap-3 flex-wrap">
               <div class="flex items-center gap-2 flex-wrap">
                 ${getSourceBadge(opp)}
                 ${getRemoteBadge(opp)}
-                <span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 flex items-center gap-1">
+                <span class="text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-200/60 flex items-center gap-1">
                   <span>🕒</span>
                   <span>${formatRelativeDate(opp.discovered_at)}</span>
                 </span>
@@ -926,10 +963,10 @@
               <div class="flex items-center gap-1.5 flex-shrink-0">
                 <button onclick="toggleFavorite('${opp.id}')" 
                         title="${isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}"
-                        class="px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 border ${
+                        class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border shadow-xs ${
                           isFav 
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-sm shadow-amber-500/10' 
-                            : 'bg-slate-950/80 text-slate-400 border-slate-800 hover:text-amber-300 hover:border-amber-500/40'
+                            ? 'bg-amber-100 text-amber-900 border-amber-300' 
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-amber-300 hover:text-amber-800 hover:bg-amber-50'
                         }">
                   <span>⭐</span>
                   <span class="hidden sm:inline">${isFav ? 'Favori' : 'Favori'}</span>
@@ -937,10 +974,10 @@
 
                 <button onclick="toggleKept('${opp.id}')"
                         title="${isKept ? 'Retirer de Je garde' : 'Garder cette opportunité'}"
-                        class="px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 border ${
+                        class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border shadow-xs ${
                           isKept 
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/60 shadow-sm shadow-emerald-500/10' 
-                            : 'bg-slate-950/80 text-slate-400 border-slate-800 hover:text-emerald-300 hover:border-emerald-500/40'
+                            ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-emerald-300 hover:text-emerald-800 hover:bg-emerald-50'
                         }">
                   <span>✅</span>
                   <span class="hidden sm:inline">${isKept ? 'Gardé' : 'Je garde'}</span>
@@ -949,14 +986,14 @@
                 ${isArchived ? `
                   <button onclick="changeStatus('${opp.id}', 'new')"
                           title="Restaurer dans la boîte principale"
-                          class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/50 hover:bg-sky-500/30 transition cursor-pointer flex items-center gap-1">
+                          class="px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition cursor-pointer flex items-center gap-1 shadow-xs">
                     <span>↩️</span>
                     <span class="hidden sm:inline">Restaurer</span>
                   </button>
                 ` : `
                   <button onclick="changeStatus('${opp.id}', 'archived')"
                           title="Archiver l'opportunité"
-                          class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-950/80 text-slate-400 border border-slate-800 hover:text-rose-400 hover:border-rose-500/40 hover:bg-rose-500/10 transition cursor-pointer flex items-center gap-1">
+                          class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-50 text-slate-700 border border-slate-200 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 transition cursor-pointer flex items-center gap-1 shadow-xs">
                     <span>📦</span>
                     <span class="hidden sm:inline">Archiver</span>
                   </button>
@@ -965,10 +1002,10 @@
             </div>
 
             <!-- Job Title -->
-            <h3 class="text-base font-bold text-white hover:text-sky-400 transition">
-              <a href="${opp.url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5">
-                <span>${escapeHtml(opp.title)}</span>
-                <svg class="w-3.5 h-3.5 text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <h3 class="text-base font-extrabold text-slate-900 hover:text-sky-600 transition">
+              <a href="${opp.url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 group">
+                <span class="group-hover:underline decoration-sky-500">${escapeHtml(opp.title)}</span>
+                <svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-500 flex-shrink-0 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
               </a>
@@ -976,13 +1013,13 @@
 
             <!-- Recruiter / Author details (for posts) -->
             ${opp.author_name ? `
-              <div class="flex items-center gap-2 p-2 bg-slate-950/80 rounded-xl border border-slate-800 text-xs text-slate-300">
-                <div class="w-7 h-7 rounded-full bg-sky-600/30 text-sky-400 flex items-center justify-center font-bold">
+              <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
+                <div class="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-sm shadow-xs">
                   ${escapeHtml(opp.author_name.charAt(0))}
                 </div>
                 <div class="flex flex-col">
-                  <span class="font-bold text-slate-200">${escapeHtml(opp.author_name)}</span>
-                  <span class="text-[11px] text-slate-400">${escapeHtml(opp.author_title || 'Recruteur / Réseau')}</span>
+                  <span class="font-extrabold text-slate-900">${escapeHtml(opp.author_name)}</span>
+                  <span class="text-[11px] text-slate-500 font-medium">${escapeHtml(opp.author_title || 'Recruteur / Réseau')}</span>
                 </div>
               </div>
             ` : ''}
@@ -991,41 +1028,41 @@
             ${getPostAiBadge(opp)}
 
             <!-- Company / Location / Salary -->
-            <div class="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
-              ${opp.company ? `<span class="flex items-center gap-1">🏢 <strong>${escapeHtml(opp.company)}</strong></span>` : ''}
-              ${opp.location ? `<span class="flex items-center gap-1">📍 ${escapeHtml(opp.location)}</span>` : ''}
-              ${opp.salary_raw ? `<span class="flex items-center gap-1 text-emerald-400 font-semibold">💰 ${escapeHtml(opp.salary_raw)}</span>` : ''}
+            <div class="flex items-center gap-4 text-xs text-slate-600 flex-wrap font-medium">
+              ${opp.company ? `<span class="flex items-center gap-1.5">🏢 <strong class="text-slate-900 font-bold">${escapeHtml(opp.company)}</strong></span>` : ''}
+              ${opp.location ? `<span class="flex items-center gap-1.5">📍 ${escapeHtml(opp.location)}</span>` : ''}
+              ${opp.salary_raw ? `<span class="flex items-center gap-1.5 text-emerald-700 font-extrabold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">💰 ${escapeHtml(opp.salary_raw)}</span>` : ''}
             </div>
 
-            <!-- Dépliant Description -->
+            <!-- Dépliant Description (Sleek Accordion) -->
             ${opp.description ? `
-              <details class="group bg-slate-950/70 rounded-xl border border-slate-800/80 transition-all hover:border-slate-700/80">
-                <summary class="flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-slate-300 cursor-pointer hover:text-sky-400 select-none list-none">
+              <details class="group bg-slate-50/70 rounded-2xl border border-slate-200/80 transition-all hover:border-slate-300">
+                <summary class="flex items-center justify-between px-4 py-3 text-xs font-bold text-slate-700 cursor-pointer hover:text-slate-900 select-none list-none">
                   <span class="flex items-center gap-2">
-                    <span class="text-sky-400 text-sm">📋</span>
+                    <span class="text-sky-600 text-sm">📋</span>
                     <span>Description détaillée de l'annonce</span>
                   </span>
-                  <span class="text-[11px] text-slate-500 font-bold group-open:rotate-180 transition-transform duration-200">
+                  <span class="text-[11px] text-slate-400 font-bold group-open:rotate-180 transition-transform duration-200">
                     ▼
                   </span>
                 </summary>
-                <div class="px-3.5 pb-3.5 pt-2 text-xs text-slate-300 leading-relaxed border-t border-slate-800/60 whitespace-pre-line font-normal select-text max-h-80 overflow-y-auto">
+                <div class="px-4 pb-4 pt-2 text-xs text-slate-700 leading-relaxed border-t border-slate-200/60 whitespace-pre-line font-normal select-text max-h-80 overflow-y-auto">
                   ${escapeHtml(opp.description)}
                 </div>
               </details>
             ` : `
-              <div class="text-[11px] text-slate-500 italic px-2">
+              <div class="text-[11px] text-slate-400 italic px-2">
                 Aucune description textuelle disponible pour cette annonce. Consultez le lien source pour les détails complets.
               </div>
             `}
 
-            <!-- Footer: Tags & External link -->
-            <div class="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-800/80">
+            <!-- Footer: Tags & External link (Revolut Black Button) -->
+            <div class="flex items-center justify-between gap-2 flex-wrap pt-3 border-t border-slate-100">
               <div class="flex items-center gap-1.5 flex-wrap">
                 ${tagsHtml}
               </div>
               <a href="${opp.url}" target="_blank" rel="noopener noreferrer" 
-                 class="px-3.5 py-1.5 rounded-lg bg-sky-500/15 text-sky-300 hover:bg-sky-500/25 border border-sky-500/30 text-xs font-semibold transition flex items-center gap-1.5 shadow-sm">
+                 class="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs hover:shadow-sm">
                 <span>Voir ${isPost ? 'le Post' : "l'Offre"}</span>
                 <span>↗</span>
               </a>
@@ -1053,18 +1090,18 @@
         
         if (data.wttj_connected) {
           wttjStatusPill.textContent = "Connecté ✓";
-          wttjStatusPill.className = "text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+          wttjStatusPill.className = "text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200";
         } else {
           wttjStatusPill.textContent = "Non connecté";
-          wttjStatusPill.className = "text-[11px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400";
+          wttjStatusPill.className = "text-[11px] font-medium px-2 py-0.5 rounded bg-slate-200 text-slate-600";
         }
 
         if (data.linkedin_connected) {
           linkedinStatusPill.textContent = "Connecté ✓";
-          linkedinStatusPill.className = "text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+          linkedinStatusPill.className = "text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200";
         } else {
           linkedinStatusPill.textContent = "Non connecté";
-          linkedinStatusPill.className = "text-[11px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400";
+          linkedinStatusPill.className = "text-[11px] font-medium px-2 py-0.5 rounded bg-slate-200 text-slate-600";
         }
       } catch (e) {}
     }
@@ -1081,7 +1118,7 @@
 
     wttjLoginBtn.addEventListener('click', async () => {
       authNotice.textContent = "🚀 Lancement du navigateur de connexion... Cliquez sur 'Continuer avec Google' dans la fenêtre qui s'ouvre !";
-      authNotice.className = "p-3 rounded-xl bg-sky-950/60 border border-sky-500/40 text-xs text-sky-200";
+      authNotice.className = "p-3 rounded-2xl bg-sky-50 border border-sky-200 text-xs text-sky-800 font-medium";
       authNotice.classList.remove('hidden');
       try {
         await fetch('/api/auth/login-wttj', { method: 'POST' });
@@ -1091,7 +1128,7 @@
           if (data.wttj_connected) {
             clearInterval(poll);
             authNotice.textContent = "🎉 Compte Welcome to the Jungle (via Gmail) connecté avec succès !";
-            authNotice.className = "p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs text-emerald-200";
+            authNotice.className = "p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium";
             checkAuthStatus();
           }
         }, 3000);
@@ -1102,7 +1139,7 @@
 
     linkedinLoginBtn.addEventListener('click', async () => {
       authNotice.textContent = "🚀 Lancement du navigateur de connexion LinkedIn... Connectez-vous dans la fenêtre qui s'ouvre !";
-      authNotice.className = "p-3 rounded-xl bg-sky-950/60 border border-sky-500/40 text-xs text-sky-200";
+      authNotice.className = "p-3 rounded-2xl bg-sky-50 border border-sky-200 text-xs text-sky-800 font-medium";
       authNotice.classList.remove('hidden');
       try {
         await fetch('/api/auth/login-linkedin', { method: 'POST' });
@@ -1112,7 +1149,7 @@
           if (data.linkedin_connected) {
             clearInterval(poll);
             authNotice.textContent = "🎉 Compte LinkedIn connecté avec succès !";
-            authNotice.className = "p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs text-emerald-200";
+            authNotice.className = "p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium";
             checkAuthStatus();
           }
         }, 3000);
@@ -1170,7 +1207,7 @@
         testAiBtn.disabled = true;
         testAiBtn.textContent = 'Test en cours...';
         aiTestResult.classList.remove('hidden');
-        aiTestResult.className = "text-xs p-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-300";
+        aiTestResult.className = "text-xs p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700";
         aiTestResult.textContent = "Analyse d'un post test en cours...";
 
         try {
@@ -1184,17 +1221,17 @@
           });
           const data = await res.json();
           const a = data.analysis;
-          aiTestResult.className = "text-xs p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-200 flex flex-col gap-1";
+          aiTestResult.className = "text-xs p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex flex-col gap-1";
           aiTestResult.innerHTML = `
-            <div class="font-bold flex items-center gap-1.5">
+            <div class="font-extrabold flex items-center gap-1.5">
               <span>✓ Test réussi</span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-900/60 font-mono">${data.provider.toUpperCase()}</span>
+              <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-200 text-emerald-900 font-mono">${data.provider.toUpperCase()}</span>
             </div>
             <div>Intent détecté : <strong>${a.intent}</strong> (Candidat: ${a.is_candidate}, Alternance: ${a.is_alternance})</div>
-            <div class="text-[11px] text-emerald-300">Résumé IA : <em>${escapeHtml(a.summary || '')}</em></div>
+            <div class="text-[11px] text-emerald-800">Résumé IA : <em>${escapeHtml(a.summary || '')}</em></div>
           `;
         } catch (err) {
-          aiTestResult.className = "text-xs p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-200";
+          aiTestResult.className = "text-xs p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800";
           aiTestResult.textContent = "Erreur lors du test IA : " + err;
         } finally {
           testAiBtn.disabled = false;

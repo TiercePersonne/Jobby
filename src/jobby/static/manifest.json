@@ -1,12 +1,12 @@
 {
-  "name": "Jobby — Chasseur d'Emploi Intelligent",
+  "name": "Jobby — Chasseur d'Emploi",
   "short_name": "Jobby",
-  "description": "Agent autonome multi-sources de recherche d'emploi et posts informels de recruteurs",
+  "description": "Agent intelligent de veille et capture d'opportunités d'emploi & posts LinkedIn",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0284c7",
-  "orientation": "any",
+  "background_color": "#F8F9FB",
+  "theme_color": "#FFFFFF",
+  "orientation": "portrait-primary",
   "icons": [
     {
       "src": "/static/icon-192.png",
