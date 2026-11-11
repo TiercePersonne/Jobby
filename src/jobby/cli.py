@@ -306,7 +306,7 @@ def start_ui(
     if not no_browser:
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
 
-    uvicorn.run("jobby.server:app", host=host, port=port, reload=False)
+    uvicorn.run("jobby.server:app", host=host, port=port, reload=True)
 
 
 if __name__ == "__main__":
