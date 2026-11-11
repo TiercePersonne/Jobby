@@ -143,26 +143,42 @@
         <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Sources actives</label>
         <div class="grid grid-cols-2 gap-2 text-xs">
           <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
-            <input type="checkbox" id="src-linkedin" checked class="rounded accent-sky-500">
-            <span class="font-medium text-slate-200">LinkedIn (Offres)</span>
+            <input type="checkbox" id="src-wttj" checked class="rounded accent-sky-500">
+            <span class="font-medium text-slate-200">WTTJ</span>
           </label>
           <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-sky-500/30 bg-sky-950/10 cursor-pointer hover:border-sky-500/50">
             <input type="checkbox" id="src-linkedin-posts" checked class="rounded accent-sky-500">
             <span class="font-bold text-sky-300">LinkedIn (Posts) 🔥</span>
           </label>
           <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
+            <input type="checkbox" id="src-linkedin" checked class="rounded accent-sky-500">
+            <span class="font-medium text-slate-200">LinkedIn (Offres)</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
             <input type="checkbox" id="src-hellowork" checked class="rounded accent-sky-500">
             <span class="font-medium text-slate-200">HelloWork</span>
           </label>
           <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
-            <input type="checkbox" id="src-wttj" checked class="rounded accent-sky-500">
-            <span class="font-medium text-slate-200">WTTJ</span>
+            <input type="checkbox" id="src-indeed" checked class="rounded accent-sky-500">
+            <span class="font-medium text-slate-200">Indeed</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
+            <input type="checkbox" id="src-glassdoor" checked class="rounded accent-sky-500">
+            <span class="font-medium text-slate-200">Glassdoor</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
+            <input type="checkbox" id="src-teamtailor" checked class="rounded accent-sky-500">
+            <span class="font-medium text-slate-200">Teamtailor</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
+            <input type="checkbox" id="src-jobgether" checked class="rounded accent-sky-500">
+            <span class="font-medium text-slate-200">Jobgether</span>
           </label>
         </div>
       </div>
 
       <!-- Action Button -->
-      <button id="search-btn" class="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-bold text-sm shadow-lg shadow-sky-500/25 hover:from-sky-400 hover:to-indigo-500 transition-all flex items-center justify-center gap-2">
+      <button id="search-btn" class="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-bold text-sm shadow-lg shadow-sky-500/25 hover:from-sky-400 hover:to-indigo-500 transition-all flex items-center justify-center gap-2 cursor-pointer">
         <svg id="search-spinner" class="hidden animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
@@ -175,20 +191,37 @@
     <section class="lg:col-span-8 flex flex-col gap-4">
 
       <!-- FILTER TABS & SEARCH BAR -->
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row gap-3 items-center justify-between">
-        <!-- Tabs -->
-        <div class="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0" id="tabs-container">
-          <button class="tab-btn active px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-500 text-white" data-filter="all">Tous (<span id="count-all">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="top">🌟 Matchs ≥ 70% (<span id="count-top">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="post">📢 Posts Réseau (<span id="count-posts">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="saved">📌 Favoris (<span id="count-saved">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="applied">✉️ Postulés (<span id="count-applied">0</span>)</button>
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+        <!-- Search bar & Main Counts Row -->
+        <div class="flex flex-col sm:flex-row gap-3 items-center justify-between">
+          <div class="flex items-center gap-2 text-xs font-semibold text-slate-300">
+            <span class="text-sky-400">⚡ Flux en direct</span>
+            <span class="text-slate-500">•</span>
+            <span class="text-slate-400 text-[11px]">Classé par date de scraping</span>
+          </div>
+
+          <!-- Quick filter in current results -->
+          <div class="relative w-full sm:w-64">
+            <input type="text" id="quick-filter" placeholder="Filtrer dans les résultats..."
+                   class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500">
+          </div>
         </div>
 
-        <!-- Quick filter in current results -->
-        <div class="relative w-full sm:w-48">
-          <input type="text" id="quick-filter" placeholder="Filtrer résultats..."
-                 class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500">
+        <!-- Filter Tags Bar (Horizontal Scrollable) -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar" id="tabs-container">
+          <button class="tab-btn active px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500 text-white shrink-0 cursor-pointer" data-filter="all">Tout (<span id="count-all">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="wttj">🌴 WTTJ (<span id="count-wttj">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-sky-400 hover:text-sky-300 shrink-0 cursor-pointer" data-filter="post">📢 Posts (<span id="count-post">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="linkedin">💼 LinkedIn (<span id="count-linkedin">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="hellowork">HelloWork (<span id="count-hellowork">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="indeed">Indeed (<span id="count-indeed">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="glassdoor">Glassdoor (<span id="count-glassdoor">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="teamtailor">Teamtailor (<span id="count-teamtailor">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="jobgether">Jobgether (<span id="count-jobgether">0</span>)</button>
+          <span class="text-slate-700 mx-1 shrink-0">|</span>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 shrink-0 cursor-pointer" data-filter="favorite">⭐ Favoris (<span id="count-favorite">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 shrink-0 cursor-pointer" data-filter="kept">✅ Je garde (<span id="count-kept">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 text-slate-400 hover:text-slate-200 shrink-0 cursor-pointer" data-filter="archived">📦 Archivés (<span id="count-archived">0</span>)</button>
         </div>
       </div>
 
@@ -352,9 +385,13 @@
 
       const roles = inputRole.value.split(',').map(s => s.strip ? s.strip() : s.trim()).filter(Boolean);
       const sources = [];
-      if (document.getElementById('src-linkedin').checked) sources.push('linkedin');
-      if (document.getElementById('src-hellowork').checked) sources.push('hellowork');
-      if (document.getElementById('src-wttj').checked) sources.push('wttj');
+      if (document.getElementById('src-wttj')?.checked) sources.push('wttj');
+      if (document.getElementById('src-linkedin')?.checked) sources.push('linkedin');
+      if (document.getElementById('src-hellowork')?.checked) sources.push('hellowork');
+      if (document.getElementById('src-indeed')?.checked) sources.push('indeed');
+      if (document.getElementById('src-glassdoor')?.checked) sources.push('glassdoor');
+      if (document.getElementById('src-teamtailor')?.checked) sources.push('teamtailor');
+      if (document.getElementById('src-jobgether')?.checked) sources.push('jobgether');
       
       const payload = {
         keywords: roles.length > 0 ? roles : ['Python'],
@@ -396,16 +433,78 @@
       }
     }
 
+    // DATE FORMATTER (RELATIVE SCRAPING DATE)
+    function formatRelativeDate(isoStr) {
+      if (!isoStr) return 'Récemment';
+      try {
+        const date = new Date(isoStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
+        if (diffSecs < 60) return "À l'instant";
+        const diffMins = Math.floor(diffSecs / 60);
+        if (diffMins < 60) return `Il y a ${diffMins} min`;
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `Il y a ${diffHours} h`;
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffDays === 1) return 'Hier';
+        if (diffDays < 7) return `Il y a ${diffDays} j`;
+        return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+      } catch (e) {
+        return 'Récemment';
+      }
+    }
+
+    // SOURCE BADGE GENERATOR
+    function getSourceBadge(opp) {
+      const isPost = opp.opportunity_type === 'post';
+      if (isPost) {
+        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-sm flex items-center gap-1">📢 Post Réseau</span>`;
+      }
+      const s = (opp.source || '').toLowerCase();
+      switch (s) {
+        case 'wttj':
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1">🌴 WTTJ</span>`;
+        case 'linkedin':
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-blue-600/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">💼 LinkedIn</span>`;
+        case 'hellowork':
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-pink-500/10 text-pink-300 border border-pink-500/30 flex items-center gap-1">HelloWork</span>`;
+        case 'indeed':
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">Indeed</span>`;
+        case 'glassdoor':
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">Glassdoor</span>`;
+        case 'teamtailor':
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/30 flex items-center gap-1">Teamtailor</span>`;
+        case 'jobgether':
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">Jobgether</span>`;
+        default:
+          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 uppercase">${escapeHtml(opp.source || 'Offre')}</span>`;
+      }
+    }
+
     // TABS LOGIC
+    function updateTabVisuals() {
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        const isActive = b.dataset.filter === currentFilter;
+        if (isActive) {
+          b.classList.add('ring-2', 'ring-sky-400', 'ring-offset-1', 'ring-offset-slate-900', 'shadow-md');
+          if (b.dataset.filter === 'all') {
+            b.classList.add('bg-sky-500', 'text-white');
+          }
+        } else {
+          b.classList.remove('ring-2', 'ring-sky-400', 'ring-offset-1', 'ring-offset-slate-900', 'shadow-md');
+          if (b.dataset.filter === 'all') {
+            b.classList.remove('bg-sky-500');
+            b.classList.add('bg-slate-800', 'text-slate-300');
+          }
+        }
+      });
+    }
+
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab-btn').forEach(b => {
-          b.classList.remove('bg-sky-500', 'text-white');
-          b.classList.add('bg-slate-800', 'text-slate-400');
-        });
-        btn.classList.add('bg-sky-500', 'text-white');
-        btn.classList.remove('bg-slate-800', 'text-slate-400');
         currentFilter = btn.dataset.filter;
+        updateTabVisuals();
         render();
       });
     });
@@ -414,7 +513,7 @@
       render();
     });
 
-    // UPDATE STATUS ACTION
+    // UPDATE STATUS ACTION (1-CLICK TRIAGE)
     async function changeStatus(id, newStatus) {
       try {
         await fetch(`/api/opportunities/${id}/status`, {
@@ -427,33 +526,85 @@
         render();
         await updateStats();
       } catch (e) {
-        console.error(e);
+        console.error('Failed to change status:', e);
       }
     }
 
-    // RENDER CARDS
+    async function toggleFavorite(id) {
+      const item = allOpportunities.find(o => o.id === id);
+      if (!item) return;
+      const newStatus = (item.status === 'favorite' || item.status === 'saved') ? 'new' : 'favorite';
+      await changeStatus(id, newStatus);
+    }
+
+    async function toggleKept(id) {
+      const item = allOpportunities.find(o => o.id === id);
+      if (!item) return;
+      const newStatus = (item.status === 'kept') ? 'new' : 'kept';
+      await changeStatus(id, newStatus);
+    }
+
+    // RENDER CARDS (CHRONOLOGICAL SCRAPING ORDER & 1-CLICK TRIAGE)
     function render() {
       const q = quickFilter.value.toLowerCase().trim();
 
-      // Counts
-      document.getElementById('count-all').textContent = allOpportunities.length;
-      document.getElementById('count-top').textContent = allOpportunities.filter(o => (o.score || 0) >= 70).length;
-      document.getElementById('count-posts').textContent = allOpportunities.filter(o => o.opportunity_type === 'post').length;
-      document.getElementById('count-saved').textContent = allOpportunities.filter(o => o.status === 'saved').length;
-      document.getElementById('count-applied').textContent = allOpportunities.filter(o => o.status === 'applied').length;
+      // Sort strictly by discovered_at descending (scraping date)
+      allOpportunities.sort((a, b) => {
+        const da = new Date(a.discovered_at || 0).getTime();
+        const db = new Date(b.discovered_at || 0).getTime();
+        return db - da;
+      });
+
+      // Filter active (non-archived) vs archived
+      const activeOpps = allOpportunities.filter(o => o.status !== 'archived');
+      const archivedOpps = allOpportunities.filter(o => o.status === 'archived');
+
+      // Update Counts
+      const setVal = (id, count) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = count;
+      };
+
+      setVal('count-all', activeOpps.length);
+      setVal('count-wttj', activeOpps.filter(o => o.source === 'wttj' && o.opportunity_type !== 'post').length);
+      setVal('count-post', activeOpps.filter(o => o.opportunity_type === 'post').length);
+      setVal('count-linkedin', activeOpps.filter(o => o.source === 'linkedin' && o.opportunity_type !== 'post').length);
+      setVal('count-hellowork', activeOpps.filter(o => o.source === 'hellowork').length);
+      setVal('count-indeed', activeOpps.filter(o => o.source === 'indeed').length);
+      setVal('count-glassdoor', activeOpps.filter(o => o.source === 'glassdoor').length);
+      setVal('count-teamtailor', activeOpps.filter(o => o.source === 'teamtailor').length);
+      setVal('count-jobgether', activeOpps.filter(o => o.source === 'jobgether').length);
+      setVal('count-favorite', activeOpps.filter(o => o.status === 'favorite' || o.status === 'saved').length);
+      setVal('count-kept', activeOpps.filter(o => o.status === 'kept').length);
+      setVal('count-archived', archivedOpps.length);
 
       // Filtered list
       let filtered = allOpportunities.filter(o => {
-        if (currentFilter === 'top' && (o.score || 0) < 70) return false;
-        if (currentFilter === 'post' && o.opportunity_type !== 'post') return false;
-        if (currentFilter === 'saved' && o.status !== 'saved') return false;
-        if (currentFilter === 'applied' && o.status !== 'applied') return false;
+        const isArchived = o.status === 'archived';
+
+        if (currentFilter === 'archived') {
+          if (!isArchived) return false;
+        } else {
+          // All other tabs show active items only
+          if (isArchived) return false;
+
+          if (currentFilter === 'wttj' && (o.source !== 'wttj' || o.opportunity_type === 'post')) return false;
+          if (currentFilter === 'post' && o.opportunity_type !== 'post') return false;
+          if (currentFilter === 'linkedin' && (o.source !== 'linkedin' || o.opportunity_type === 'post')) return false;
+          if (currentFilter === 'hellowork' && o.source !== 'hellowork') return false;
+          if (currentFilter === 'indeed' && o.source !== 'indeed') return false;
+          if (currentFilter === 'glassdoor' && o.source !== 'glassdoor') return false;
+          if (currentFilter === 'teamtailor' && o.source !== 'teamtailor') return false;
+          if (currentFilter === 'jobgether' && o.source !== 'jobgether') return false;
+          if (currentFilter === 'favorite' && o.status !== 'favorite' && o.status !== 'saved') return false;
+          if (currentFilter === 'kept' && o.status !== 'kept') return false;
+        }
 
         if (q) {
           const matchTitle = (o.title || '').toLowerCase().includes(q);
           const matchCompany = (o.company || '').toLowerCase().includes(q);
           const matchDesc = (o.description || '').toLowerCase().includes(q);
-          // For posts, strictly ignore author headline/title
+          // For posts, ignore author headline/title
           const matchAuthor = o.opportunity_type !== 'post' && (o.author_name || '').toLowerCase().includes(q);
           if (!matchTitle && !matchCompany && !matchAuthor && !matchDesc) return false;
         }
@@ -475,6 +626,17 @@
           return;
         }
 
+        if (currentFilter === 'archived') {
+          resultsContainer.innerHTML = `
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
+              <span class="text-4xl">📦</span>
+              <h3 class="text-base font-bold text-slate-300">Aucune offre archivée</h3>
+              <p class="text-xs text-slate-500 max-w-sm">Les opportunités que vous archivez avec le bouton "📦 Archiver" apparaîtront ici.</p>
+            </div>
+          `;
+          return;
+        }
+
         resultsContainer.innerHTML = `
           <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
             <span class="text-4xl">🔍</span>
@@ -487,41 +649,25 @@
 
       resultsContainer.innerHTML = filtered.map(opp => {
         const isPost = opp.opportunity_type === 'post';
-        const score = Math.round(opp.score || 0);
-
-        let scoreBadgeClass = "bg-slate-800 text-slate-300 border-slate-700";
-        if (score >= 75) scoreBadgeClass = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
-        else if (score >= 50) scoreBadgeClass = "bg-amber-500/10 text-amber-400 border-amber-500/30";
-
-        const reasonsHtml = (opp.score_reasons || []).map(r => 
-          `<span class="inline-block bg-slate-800/80 text-slate-300 text-[10px] px-2 py-0.5 rounded-full border border-slate-700">${r}</span>`
-        ).join('');
+        const isFav = opp.status === 'favorite' || opp.status === 'saved';
+        const isKept = opp.status === 'kept';
+        const isArchived = opp.status === 'archived';
 
         const tagsHtml = (opp.tags || []).slice(0, 4).map(t =>
-          `<span class="inline-block bg-sky-950/60 text-sky-300 text-[10px] font-medium px-2 py-0.5 rounded-md border border-sky-800/40">${t}</span>`
+          `<span class="inline-block bg-sky-950/60 text-sky-300 text-[10px] font-medium px-2 py-0.5 rounded-md border border-sky-800/40">${escapeHtml(t)}</span>`
         ).join('');
 
         return `
           <article class="bg-slate-900 border ${isPost ? 'border-sky-500/40 shadow-sky-500/5' : 'border-slate-800'} rounded-2xl p-4 sm:p-5 shadow-lg hover:border-slate-700 transition flex flex-col gap-3">
             
-            <!-- Top Card Header -->
-            <div class="flex items-start justify-between gap-3">
+            <!-- Top Card Header: Source, Date, 100% Remote, & Fast Triage Buttons -->
+            <div class="flex items-center justify-between gap-3 flex-wrap">
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-xs font-bold px-2 py-0.5 rounded-lg border ${scoreBadgeClass}">
-                  ${score}% match
+                ${getSourceBadge(opp)}
+                <span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 flex items-center gap-1">
+                  <span>🕒</span>
+                  <span>${formatRelativeDate(opp.discovered_at)}</span>
                 </span>
-                <span class="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300">
-                  ${opp.source}
-                </span>
-                ${isPost ? `
-                  <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-sm flex items-center gap-1">
-                    📢 Post Réseau
-                  </span>
-                ` : `
-                  <span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-800/50 text-slate-400 border border-slate-700">
-                    🏢 Offre
-                  </span>
-                `}
                 ${opp.remote_policy === 'full' ? `
                   <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                     100% Remote
@@ -529,20 +675,52 @@
                 ` : ''}
               </div>
 
-              <!-- Status Dropdown / Action -->
-              <select onchange="changeStatus('${opp.id}', this.value)" class="text-[11px] bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-300 focus:outline-none">
-                <option value="new" ${opp.status === 'new' ? 'selected' : ''}>Nouveau</option>
-                <option value="saved" ${opp.status === 'saved' ? 'selected' : ''}>⭐ Favori</option>
-                <option value="applied" ${opp.status === 'applied' ? 'selected' : ''}>✉️ Postulé</option>
-                <option value="interview" ${opp.status === 'interview' ? 'selected' : ''}>📅 Entretien</option>
-                <option value="archived" ${opp.status === 'archived' ? 'selected' : ''}>✖️ Archivé</option>
-              </select>
+              <!-- Fast Triage Actions (Favoris, Je garde, Archiver) -->
+              <div class="flex items-center gap-1.5 flex-shrink-0">
+                <button onclick="toggleFavorite('${opp.id}')" 
+                        title="${isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}"
+                        class="px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 border ${
+                          isFav 
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-sm shadow-amber-500/10' 
+                            : 'bg-slate-950/80 text-slate-400 border-slate-800 hover:text-amber-300 hover:border-amber-500/40'
+                        }">
+                  <span>⭐</span>
+                  <span class="hidden sm:inline">${isFav ? 'Favori' : 'Favori'}</span>
+                </button>
+
+                <button onclick="toggleKept('${opp.id}')"
+                        title="${isKept ? 'Retirer de Je garde' : 'Garder cette opportunité'}"
+                        class="px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 border ${
+                          isKept 
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/60 shadow-sm shadow-emerald-500/10' 
+                            : 'bg-slate-950/80 text-slate-400 border-slate-800 hover:text-emerald-300 hover:border-emerald-500/40'
+                        }">
+                  <span>✅</span>
+                  <span class="hidden sm:inline">${isKept ? 'Gardé' : 'Je garde'}</span>
+                </button>
+
+                ${isArchived ? `
+                  <button onclick="changeStatus('${opp.id}', 'new')"
+                          title="Restaurer dans la boîte principale"
+                          class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/50 hover:bg-sky-500/30 transition cursor-pointer flex items-center gap-1">
+                    <span>↩️</span>
+                    <span class="hidden sm:inline">Restaurer</span>
+                  </button>
+                ` : `
+                  <button onclick="changeStatus('${opp.id}', 'archived')"
+                          title="Archiver l'opportunité"
+                          class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-950/80 text-slate-400 border border-slate-800 hover:text-rose-400 hover:border-rose-500/40 hover:bg-rose-500/10 transition cursor-pointer flex items-center gap-1">
+                    <span>📦</span>
+                    <span class="hidden sm:inline">Archiver</span>
+                  </button>
+                `}
+              </div>
             </div>
 
             <!-- Job Title -->
             <h3 class="text-base font-bold text-white hover:text-sky-400 transition">
               <a href="${opp.url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5">
-                <span>${opp.title}</span>
+                <span>${escapeHtml(opp.title)}</span>
                 <svg class="w-3.5 h-3.5 text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
@@ -553,20 +731,20 @@
             ${opp.author_name ? `
               <div class="flex items-center gap-2 p-2 bg-slate-950/80 rounded-xl border border-slate-800 text-xs text-slate-300">
                 <div class="w-7 h-7 rounded-full bg-sky-600/30 text-sky-400 flex items-center justify-center font-bold">
-                  ${opp.author_name.charAt(0)}
+                  ${escapeHtml(opp.author_name.charAt(0))}
                 </div>
                 <div class="flex flex-col">
-                  <span class="font-bold text-slate-200">${opp.author_name}</span>
-                  <span class="text-[11px] text-slate-400">${opp.author_title || 'Recruteur / Réseau'}</span>
+                  <span class="font-bold text-slate-200">${escapeHtml(opp.author_name)}</span>
+                  <span class="text-[11px] text-slate-400">${escapeHtml(opp.author_title || 'Recruteur / Réseau')}</span>
                 </div>
               </div>
             ` : ''}
 
             <!-- Company / Location / Salary -->
             <div class="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
-              ${opp.company ? `<span class="flex items-center gap-1">🏢 <strong>${opp.company}</strong></span>` : ''}
-              ${opp.location ? `<span class="flex items-center gap-1">📍 ${opp.location}</span>` : ''}
-              ${opp.salary_raw ? `<span class="flex items-center gap-1 text-emerald-400 font-semibold">💰 ${opp.salary_raw}</span>` : ''}
+              ${opp.company ? `<span class="flex items-center gap-1">🏢 <strong>${escapeHtml(opp.company)}</strong></span>` : ''}
+              ${opp.location ? `<span class="flex items-center gap-1">📍 ${escapeHtml(opp.location)}</span>` : ''}
+              ${opp.salary_raw ? `<span class="flex items-center gap-1 text-emerald-400 font-semibold">💰 ${escapeHtml(opp.salary_raw)}</span>` : ''}
             </div>
 
             <!-- Dépliant Description -->
@@ -591,14 +769,13 @@
               </div>
             `}
 
-            <!-- Footer: Match Reasons & Tags -->
+            <!-- Footer: Tags & External link -->
             <div class="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-800/80">
               <div class="flex items-center gap-1.5 flex-wrap">
-                ${reasonsHtml}
                 ${tagsHtml}
               </div>
               <a href="${opp.url}" target="_blank" rel="noopener noreferrer" 
-                 class="px-3 py-1.5 rounded-lg bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 text-xs font-semibold transition flex items-center gap-1">
+                 class="px-3.5 py-1.5 rounded-lg bg-sky-500/15 text-sky-300 hover:bg-sky-500/25 border border-sky-500/30 text-xs font-semibold transition flex items-center gap-1.5 shadow-sm">
                 <span>Voir ${isPost ? 'le Post' : "l'Offre"}</span>
                 <span>↗</span>
               </a>

@@ -142,7 +142,7 @@ def list_opportunities(
 def set_status(opp_id: str, body: StatusUpdateRequest) -> Dict[str, Any]:
     config = load_config()
     storage = Storage(config.database_path)
-    valid_statuses = ["new", "saved", "applied", "interview", "archived", "rejected"]
+    valid_statuses = ["new", "saved", "favorite", "kept", "applied", "interview", "archived", "rejected"]
     if body.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Status must be one of {valid_statuses}")
 
@@ -175,23 +175,23 @@ async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
     # Concurrent search across providers
     raw_results = await registry.search_all(params, source_names=req.sources)
 
-    # Deduplicate & Score
+    # Deduplicate & Sort by scraping date (most recent first)
     deduped = DeduplicationEngine.deduplicate(raw_results)
-    scored = scoring.evaluate_all(deduped)
+    deduped.sort(key=lambda x: x.discovered_at, reverse=True)
 
     # Save to SQLite
     new_count = 0
-    for opp in scored:
+    for opp in deduped:
         is_new, _ = storage.upsert_opportunity(opp)
         if is_new:
             new_count += 1
 
     # Update latest digest
     query_desc = f"{', '.join(params.keywords)} ({params.location})"
-    Reporter.generate_markdown_digest(scored, query_desc=query_desc, output_path=config.digest_output_path)
+    Reporter.generate_markdown_digest(deduped, query_desc=query_desc, output_path=config.digest_output_path)
 
     return {
-        "total_found": len(scored),
+        "total_found": len(deduped),
         "new_count": new_count,
-        "opportunities": [o.model_dump() for o in scored],
+        "opportunities": [o.model_dump() for o in deduped],
     }

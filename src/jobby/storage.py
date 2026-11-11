@@ -159,7 +159,7 @@ class Storage:
             query += " AND opportunity_type = ?"
             params.append(opp_type.value)
 
-        query += " ORDER BY COALESCE(score, 0) DESC, discovered_at DESC LIMIT ? OFFSET ?"
+        query += " ORDER BY discovered_at DESC, id DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
         with self._connection() as conn:
