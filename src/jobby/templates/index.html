@@ -33,16 +33,14 @@
               DEFAULT: '#FFFFFF',
               subtle: '#F8F9FA',
               muted: '#F1F3F5',
-            },
-            revolut: {
-              black: '#0F172A',
-              blue: '#0075FF',
             }
           },
           boxShadow: {
-            'xs': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-            'card': '0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04)',
-            'card-hover': '0 8px 20px -4px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)',
+            'xs': '0 1px 2px 0 rgba(0, 0, 0, 0.04)',
+            'card': '0 4px 20px -2px rgba(15, 23, 42, 0.04), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
+            'card-hover': '0 16px 36px -6px rgba(14, 165, 233, 0.12), 0 4px 12px -2px rgba(15, 23, 42, 0.04)',
+            'glow-sky': '0 0 24px -4px rgba(14, 165, 233, 0.25)',
+            'glow-emerald': '0 0 24px -4px rgba(16, 185, 129, 0.25)',
           }
         }
       }
@@ -51,22 +49,29 @@
   <style>
     /* Custom sleek light scrollbars */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #F1F3F5; }
+    ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
-<body class="bg-[#F8F9FB] text-slate-900 min-h-screen flex flex-col font-sans antialiased selection:bg-slate-900 selection:text-white">
+<body class="bg-[#F8F9FC] text-slate-900 min-h-screen flex flex-col font-sans antialiased selection:bg-slate-900 selection:text-white relative overflow-x-hidden">
 
-  <!-- TOP NAVIGATION BAR (REVOLUT / FUSE STYLE) -->
-  <header class="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 px-4 sm:px-6 py-3 flex items-center justify-between">
+  <!-- AMBIENT GRADIENT MESH BACKGROUND (FUSE & REVOLUT STYLE) -->
+  <div class="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+    <div class="absolute -top-[15%] -right-[10%] w-[650px] h-[650px] rounded-full bg-gradient-to-br from-sky-400/15 via-indigo-300/10 to-transparent blur-3xl"></div>
+    <div class="absolute top-[25%] -left-[12%] w-[550px] h-[550px] rounded-full bg-gradient-to-tr from-violet-400/12 via-sky-300/10 to-transparent blur-3xl"></div>
+    <div class="absolute -bottom-[20%] right-[15%] w-[600px] h-[600px] rounded-full bg-gradient-to-t from-emerald-400/12 via-teal-200/8 to-transparent blur-3xl"></div>
+  </div>
+
+  <!-- TOP NAVIGATION BAR (GLASSMORPHISM) -->
+  <header class="bg-white/70 backdrop-blur-xl border-b border-slate-200/70 sticky top-0 z-40 px-4 sm:px-6 py-3 flex items-center justify-between shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
     <!-- Brand Logo & Monogram -->
     <div class="flex items-center gap-3">
       <a href="/" class="flex items-center gap-3 group">
         <!-- Modern Jobby Logo Mark -->
-        <div class="w-10 h-10 rounded-2xl bg-slate-950 flex items-center justify-center shadow-md shadow-slate-950/10 border border-slate-800 transition group-hover:scale-105">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 flex items-center justify-center shadow-md shadow-slate-950/15 border border-slate-800/80 transition duration-300 group-hover:scale-105">
           <svg class="w-6 h-6 text-white" viewBox="0 0 64 64" fill="none">
             <path d="M22 18H36V37C36 43.075 31.075 48 25 48C21.5 48 18.5 46.2 16.5 43.5" 
                   stroke="url(#hdr-jobby-grad)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
@@ -84,31 +89,33 @@
         <div class="flex flex-col">
           <div class="flex items-center gap-1.5">
             <span class="text-xl font-black tracking-tight text-slate-900">Jobby<span class="text-sky-500">.</span></span>
-            <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200/70">PRO</span>
+            <span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">PRO</span>
           </div>
-          <span class="text-[11px] text-slate-500 font-medium">Veille intelligente d'opportunités</span>
+          <span class="text-[11px] text-slate-500 font-medium">Capture &amp; Veille Intelligente</span>
         </div>
       </a>
     </div>
 
-    <!-- PWA Install & Quick Stats -->
+    <!-- Actions & Quick Stats -->
     <div class="flex items-center gap-2 sm:gap-3">
       <!-- Live Counter Pill -->
-      <div class="hidden md:flex items-center gap-2 text-xs bg-slate-100/90 text-slate-700 px-3 py-1.5 rounded-xl border border-slate-200/80 font-semibold shadow-xs">
-        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+      <div class="hidden md:flex items-center gap-2 text-xs bg-white/80 backdrop-blur-md text-slate-700 px-3.5 py-1.5 rounded-full border border-slate-200/80 font-semibold shadow-xs">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
         <span id="header-stats">Synchronisation...</span>
       </div>
 
       <!-- Auth Accounts Button -->
-      <button id="open-auth-modal-btn" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition shadow-xs cursor-pointer">
-        <span class="text-sm">🔑</span>
+      <button id="open-auth-modal-btn" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/90 backdrop-blur-md border border-slate-200/90 text-slate-700 text-xs font-bold hover:bg-white hover:text-slate-900 hover:border-slate-300 transition shadow-xs cursor-pointer">
+        <svg class="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 2l-2 2m-1.5 1.5L14 9l-1.5-1.5L11 9l-1.5-1.5L8 9 2 15v7h7l6-6 1.5 1.5L18 16l1.5-1.5 1.5 1.5 2-2z"/>
+        </svg>
         <span class="hidden sm:inline">Comptes &amp; IA</span>
       </button>
 
       <!-- PWA Install Button -->
-      <button id="pwa-install-btn" class="hidden items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950 text-white text-xs font-bold hover:bg-slate-800 transition shadow-sm cursor-pointer">
-        <svg class="w-3.5 h-3.5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      <button id="pwa-install-btn" class="hidden items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950 text-white text-xs font-bold hover:bg-slate-800 transition shadow-xs cursor-pointer">
+        <svg class="w-3.5 h-3.5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
         <span>Installer</span>
       </button>
@@ -118,12 +125,16 @@
   <!-- MAIN CONTAINER (SPLIT LAYOUT) -->
   <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-    <!-- LEFT COLUMN: CRITERIA FORM (CLEAN WHITE CARD) -->
-    <section class="lg:col-span-4 bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-card flex flex-col gap-5 h-fit lg:sticky lg:top-20">
+    <!-- LEFT COLUMN: CRITERIA FORM (FROSTED GLASS CARD) -->
+    <section class="lg:col-span-4 bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-5 sm:p-6 shadow-card flex flex-col gap-5 h-fit lg:sticky lg:top-20">
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
         <h2 class="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-          <span class="w-6 h-6 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center text-xs">🎯</span>
-          <span>Paramètres de Recherche</span>
+          <span class="w-7 h-7 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>
+            </svg>
+          </span>
+          <span>Paramètres de Veille</span>
         </h2>
         <button id="save-config-btn" title="Sauvegarder par défaut" class="text-xs text-sky-600 hover:text-sky-700 font-bold transition cursor-pointer">Sauvegarder</button>
       </div>
@@ -132,7 +143,7 @@
       <div>
         <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Poste / Métier ciblé</label>
         <input type="text" id="input-role" placeholder="ex: Développeur Python, Data Engineer"
-               class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 transition font-medium">
+               class="w-full bg-slate-50/90 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition font-medium">
         <p class="text-[11px] text-slate-400 mt-1">Séparez par des virgules pour plusieurs rôles</p>
       </div>
 
@@ -141,11 +152,11 @@
         <div>
           <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Localisation</label>
           <input type="text" id="input-location" placeholder="ex: Paris, France"
-                 class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 transition font-medium">
+                 class="w-full bg-slate-50/90 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition font-medium">
         </div>
         <div>
           <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Mode Télétravail</label>
-          <select id="select-remote" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 transition font-medium cursor-pointer">
+          <select id="select-remote" class="w-full bg-slate-50/90 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition font-medium cursor-pointer">
             <option value="all">Tous les modes</option>
             <option value="remote_only">100% Télétravail uniquement</option>
           </select>
@@ -153,10 +164,10 @@
       </div>
 
       <!-- Salary Range -->
-      <div class="bg-slate-50 border border-slate-100 rounded-2xl p-3.5">
+      <div class="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5">
         <div class="flex justify-between items-center mb-1.5">
           <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">Salaire Min. Annuel</label>
-          <span id="salary-display" class="text-xs font-extrabold text-slate-900 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-xs">45 000 €</span>
+          <span id="salary-display" class="text-xs font-black text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">45 000 €</span>
         </div>
         <input type="range" id="input-salary" min="30" max="130" step="5" value="45"
                class="w-full accent-slate-950 bg-slate-200 cursor-pointer">
@@ -172,42 +183,42 @@
       <div>
         <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Mots à exclure (négatifs)</label>
         <input type="text" id="input-negatives" placeholder="ex: Stage, Alternance, Junior"
-               class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 transition font-medium">
+               class="w-full bg-slate-50/90 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition font-medium">
       </div>
 
       <!-- Platforms Selection -->
       <div>
         <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">Sources surveillées</label>
         <div class="grid grid-cols-2 gap-2 text-xs">
-          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/70 transition">
             <input type="checkbox" id="src-wttj" checked class="rounded accent-slate-950 cursor-pointer">
-            <span class="font-bold text-slate-800">🌴 WTTJ</span>
+            <span class="font-bold text-slate-800">WTTJ</span>
           </label>
-          <label class="flex items-center gap-2 p-2.5 bg-sky-50/80 rounded-xl border border-sky-200 cursor-pointer hover:bg-sky-100/60 transition">
+          <label class="flex items-center gap-2 p-2.5 bg-gradient-to-r from-sky-50 to-indigo-50/50 rounded-xl border border-sky-200 cursor-pointer hover:border-sky-300 transition shadow-xs">
             <input type="checkbox" id="src-linkedin-posts" checked class="rounded accent-sky-600 cursor-pointer">
-            <span class="font-bold text-sky-900">LinkedIn Posts 🔥</span>
+            <span class="font-bold text-sky-900">LinkedIn Posts</span>
           </label>
-          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/70 transition">
             <input type="checkbox" id="src-linkedin" checked class="rounded accent-slate-950 cursor-pointer">
-            <span class="font-medium text-slate-800">LinkedIn (Offres)</span>
+            <span class="font-medium text-slate-800">LinkedIn</span>
           </label>
-          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/70 transition">
             <input type="checkbox" id="src-hellowork" checked class="rounded accent-slate-950 cursor-pointer">
             <span class="font-medium text-slate-800">HelloWork</span>
           </label>
-          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/70 transition">
             <input type="checkbox" id="src-indeed" checked class="rounded accent-slate-950 cursor-pointer">
             <span class="font-medium text-slate-800">Indeed</span>
           </label>
-          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/70 transition">
             <input type="checkbox" id="src-glassdoor" checked class="rounded accent-slate-950 cursor-pointer">
             <span class="font-medium text-slate-800">Glassdoor</span>
           </label>
-          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/70 transition">
             <input type="checkbox" id="src-teamtailor" checked class="rounded accent-slate-950 cursor-pointer">
             <span class="font-medium text-slate-800">Teamtailor</span>
           </label>
-          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/80 cursor-pointer hover:bg-slate-100/70 transition">
             <input type="checkbox" id="src-jobgether" checked class="rounded accent-slate-950 cursor-pointer">
             <span class="font-medium text-slate-800">Jobgether</span>
           </label>
@@ -215,13 +226,15 @@
       </div>
 
       <!-- Filtres Intelligents & IA Posts -->
-      <div class="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-100 flex flex-col gap-2">
+      <div class="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50/80 to-purple-50/50 border border-indigo-100 flex flex-col gap-2">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
-            <span>🤖</span>
-            <span>Tri Intelligent des Posts</span>
+          <span class="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
+            </svg>
+            <span>Filtrage IA des Posts</span>
           </span>
-          <span class="text-[10px] text-indigo-700 font-extrabold bg-indigo-100 px-2 py-0.5 rounded-md">NLP Actif</span>
+          <span class="text-[10px] text-indigo-700 font-extrabold bg-indigo-100/80 px-2 py-0.5 rounded-md">NLP Actif</span>
         </div>
         <label class="flex items-start gap-2.5 cursor-pointer text-xs pt-1">
           <input type="checkbox" id="filter-candidate-alternance" checked class="mt-0.5 rounded accent-indigo-600 cursor-pointer">
@@ -231,25 +244,30 @@
         </label>
       </div>
 
-      <!-- Primary Action Button (Revolut Obsidian Black) -->
-      <button id="search-btn" class="w-full mt-2 py-3.5 px-4 rounded-2xl bg-slate-950 hover:bg-slate-800 text-white font-extrabold text-sm shadow-md shadow-slate-950/15 hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]">
-        <svg id="search-spinner" class="hidden animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+      <!-- Primary Action Button (Revolut Obsidian Gradient) -->
+      <button id="search-btn" class="w-full mt-2 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 hover:from-slate-900 hover:to-indigo-900 text-white font-extrabold text-sm shadow-md shadow-slate-950/20 hover:shadow-glow-sky transition-all flex items-center justify-center gap-2.5 cursor-pointer active:scale-[0.99]">
+        <svg id="search-spinner" class="hidden animate-spin h-4 w-4 text-sky-400" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
         </svg>
-        <span id="search-btn-text">🚀 Lancer la Chasse</span>
+        <span id="search-btn-text" class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <span>Lancer la Chasse</span>
+        </span>
       </button>
     </section>
 
-    <!-- RIGHT COLUMN: RESULTS PANE (REVOLUT / FUSE LIGHT DA) -->
+    <!-- RIGHT COLUMN: RESULTS PANE (GLASSMORPHISM & GRADIENTS) -->
     <section class="lg:col-span-8 flex flex-col gap-4">
 
-      <!-- FILTER TABS & SEARCH CONTAINER (WHITE CARD) -->
-      <div class="bg-white border border-slate-200/90 rounded-3xl p-4 sm:p-5 shadow-card flex flex-col gap-3">
+      <!-- FILTER TABS & SEARCH CONTAINER (FROSTED GLASS CARD) -->
+      <div class="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-card flex flex-col gap-3.5">
         <!-- Search bar & Main Counts Row -->
         <div class="flex flex-col sm:flex-row gap-3 items-center justify-between">
           <div class="flex items-center gap-2 text-xs font-bold text-slate-800">
-            <span class="w-2 h-2 rounded-full bg-sky-500 animate-ping"></span>
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
             <span>Flux d'opportunités en temps réel</span>
             <span class="text-slate-300">•</span>
             <span class="text-slate-500 text-[11px] font-medium">Classé par date de scraping</span>
@@ -258,72 +276,81 @@
           <!-- Quick filter search field with icon -->
           <div class="relative w-full sm:w-72">
             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
             <input type="text" id="quick-filter" placeholder="Filtrer dans les résultats..."
-                   class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 font-medium">
+                   class="w-full bg-slate-50/90 border border-slate-200 rounded-2xl pl-9 pr-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 font-medium transition">
           </div>
         </div>
 
         <!-- Filter Tags Bar (Horizontal Scrollable, Revolut-style pills) -->
         <div class="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 no-scrollbar" id="tabs-container">
           <button class="tab-btn active px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-slate-950 text-white shrink-0 cursor-pointer shadow-xs transition" data-filter="all">Tout (<span id="count-all">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="wttj">🌴 WTTJ (<span id="count-wttj">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-sky-700 shrink-0 cursor-pointer transition" data-filter="post">📢 Posts (<span id="count-post">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="linkedin">💼 LinkedIn (<span id="count-linkedin">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="hellowork">HelloWork (<span id="count-hellowork">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="indeed">Indeed (<span id="count-indeed">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="glassdoor">Glassdoor (<span id="count-glassdoor">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="teamtailor">Teamtailor (<span id="count-teamtailor">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 shrink-0 cursor-pointer transition" data-filter="jobgether">Jobgether (<span id="count-jobgether">0</span>)</button>
+          <button class="tab-btn px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0 cursor-pointer transition" data-filter="wttj">WTTJ (<span id="count-wttj">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/90 hover:bg-slate-100 text-sky-700 border border-slate-200/80 shrink-0 cursor-pointer transition" data-filter="post">Posts (<span id="count-post">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0 cursor-pointer transition" data-filter="linkedin">LinkedIn (<span id="count-linkedin">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0 cursor-pointer transition" data-filter="hellowork">HelloWork (<span id="count-hellowork">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0 cursor-pointer transition" data-filter="indeed">Indeed (<span id="count-indeed">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0 cursor-pointer transition" data-filter="glassdoor">Glassdoor (<span id="count-glassdoor">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0 cursor-pointer transition" data-filter="teamtailor">Teamtailor (<span id="count-teamtailor">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0 cursor-pointer transition" data-filter="jobgether">Jobgether (<span id="count-jobgether">0</span>)</button>
           <span class="text-slate-300 mx-1 shrink-0">|</span>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100/70 shrink-0 cursor-pointer transition" data-filter="remote">🌐 Remote (<span id="count-remote">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100/70 shrink-0 cursor-pointer transition" data-filter="hybrid">🏢 Hybride (<span id="count-hybrid">0</span>)</button>
+          <button class="tab-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-50/90 text-emerald-800 border border-emerald-200 hover:bg-emerald-100/70 shrink-0 cursor-pointer transition" data-filter="remote">100% Remote (<span id="count-remote">0</span>)</button>
+          <button class="tab-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-sky-50/90 text-sky-800 border border-sky-200 hover:bg-sky-100/70 shrink-0 cursor-pointer transition" data-filter="hybrid">Hybride (<span id="count-hybrid">0</span>)</button>
           <span class="text-slate-300 mx-1 shrink-0">|</span>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100/70 shrink-0 cursor-pointer transition" data-filter="favorite">⭐ Favoris (<span id="count-favorite">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100/70 shrink-0 cursor-pointer transition" data-filter="kept">✅ Je garde (<span id="count-kept">0</span>)</button>
-          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 hover:text-slate-900 shrink-0 cursor-pointer transition" data-filter="archived">📦 Archivés (<span id="count-archived">0</span>)</button>
+          <button class="tab-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-50/90 text-amber-900 border border-amber-200 hover:bg-amber-100/70 shrink-0 cursor-pointer transition" data-filter="favorite">Favoris (<span id="count-favorite">0</span>)</button>
+          <button class="tab-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-50/90 text-emerald-900 border border-emerald-200 hover:bg-emerald-100/70 shrink-0 cursor-pointer transition" data-filter="kept">Je garde (<span id="count-kept">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100/90 text-slate-600 border border-slate-200 hover:text-slate-900 shrink-0 cursor-pointer transition" data-filter="archived">Archivés (<span id="count-archived">0</span>)</button>
         </div>
 
         <!-- Sub-filter bar for Posts & Alternance triage -->
         <div class="flex items-center gap-2 pt-2.5 border-t border-slate-100 text-xs">
-          <span class="text-slate-500 text-[11px] font-bold flex items-center gap-1 shrink-0">
-            <span>🤖 Tri IA Posts :</span>
+          <span class="text-slate-500 text-[11px] font-bold flex items-center gap-1.5 shrink-0">
+            <svg class="w-3.5 h-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
+            </svg>
+            <span>Tri IA Posts :</span>
           </span>
           <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
             <button class="post-subfilter-btn active px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-900 text-white shadow-xs shrink-0 cursor-pointer transition" data-subfilter="all">Tous les posts</button>
-            <button class="post-subfilter-btn px-3 py-1 rounded-xl text-[11px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200/80 shrink-0 cursor-pointer transition" data-subfilter="hiring_only">💼 Offres de recrutement (<span id="count-hiring">0</span>)</button>
-            <button class="post-subfilter-btn px-3 py-1 rounded-xl text-[11px] font-semibold bg-violet-50 text-violet-800 border border-violet-200 hover:bg-violet-100/70 shrink-0 cursor-pointer transition" data-subfilter="candidate_alternance">🎓 Candidatures d'alternance (<span id="count-candidates">0</span>)</button>
+            <button class="post-subfilter-btn px-3 py-1 rounded-xl text-[11px] font-semibold bg-slate-100/80 text-slate-700 hover:bg-slate-200/80 shrink-0 cursor-pointer transition" data-subfilter="hiring_only">Offres de recrutement (<span id="count-hiring">0</span>)</button>
+            <button class="post-subfilter-btn px-3 py-1 rounded-xl text-[11px] font-semibold bg-violet-50 text-violet-800 border border-violet-200 hover:bg-violet-100/70 shrink-0 cursor-pointer transition" data-subfilter="candidate_alternance">Candidatures d'alternance (<span id="count-candidates">0</span>)</button>
           </div>
         </div>
       </div>
 
       <!-- RESULTS LIST CONTAINER -->
-      <div id="results-container" class="flex flex-col gap-3 min-h-[400px]">
+      <div id="results-container" class="flex flex-col gap-3.5 min-h-[400px]">
         <!-- Cards inserted dynamically -->
       </div>
     </section>
   </main>
 
-  <!-- AUTH & AI MODAL (LIGHT THEME) -->
-  <div id="auth-modal" style="display: none;" class="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm items-center justify-center p-4">
-    <div class="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5 text-slate-900">
+  <!-- AUTH & AI MODAL (GLASSMORPHISM) -->
+  <div id="auth-modal" style="display: none;" class="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-md items-center justify-center p-4">
+    <div class="bg-white/90 backdrop-blur-2xl border border-slate-200/80 rounded-3xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5 text-slate-900">
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
         <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
-          <span>🔑</span> Connexion des Comptes &amp; IA
+          <svg class="w-4 h-4 text-sky-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 2l-2 2m-1.5 1.5L14 9l-1.5-1.5L11 9l-1.5-1.5L8 9 2 15v7h7l6-6 1.5 1.5L18 16l1.5-1.5 1.5 1.5 2-2z"/>
+          </svg>
+          <span>Connexion des Comptes &amp; IA</span>
         </h3>
-        <button id="close-auth-modal-btn" type="button" class="w-8 h-8 rounded-xl bg-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-200 flex items-center justify-center text-sm font-bold cursor-pointer transition">✖</button>
+        <button id="close-auth-modal-btn" type="button" class="w-8 h-8 rounded-xl bg-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-200 flex items-center justify-center text-sm font-bold cursor-pointer transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
 
       <div id="auth-notice" class="hidden"></div>
 
       <!-- WTTJ / Google Login -->
-      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-3">
+      <div class="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="text-lg">🌴</span>
             <span class="font-extrabold text-sm text-slate-900">Welcome to the Jungle</span>
           </div>
           <span id="wttj-status-pill" class="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-600">Vérification...</span>
@@ -343,10 +370,9 @@
       </div>
 
       <!-- LinkedIn Login -->
-      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-3">
+      <div class="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="text-lg">💼</span>
             <span class="font-extrabold text-sm text-slate-900">LinkedIn</span>
           </div>
           <span id="linkedin-status-pill" class="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-600">Vérification...</span>
@@ -360,10 +386,12 @@
       </div>
 
       <!-- AI Post Analyzer Engine -->
-      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-3">
+      <div class="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="text-lg">🤖</span>
+            <svg class="w-4 h-4 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
+            </svg>
             <span class="font-extrabold text-sm text-slate-900">Intelligence Artificielle (Analyse des posts)</span>
           </div>
           <span id="ai-status-pill" class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">NLP Actif ✓</span>
@@ -388,12 +416,17 @@
           </div>
         </div>
         <div class="flex items-center gap-2 pt-1 flex-wrap">
-          <button id="test-ai-btn" type="button" class="py-1.5 px-3 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold border border-sky-200 transition cursor-pointer flex items-center gap-1 shadow-xs">
-            <span>🧪</span>
+          <button id="test-ai-btn" type="button" class="py-1.5 px-3 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold border border-sky-200 transition cursor-pointer flex items-center gap-1.5 shadow-xs">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/>
+              <line x1="8.5" y1="2" x2="15.5" y2="2"/>
+            </svg>
             <span>Tester la connexion IA</span>
           </button>
-          <button id="reanalyze-all-btn" type="button" class="py-1.5 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 transition cursor-pointer flex items-center gap-1 shadow-xs">
-            <span>🔄</span>
+          <button id="reanalyze-all-btn" type="button" class="py-1.5 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 transition cursor-pointer flex items-center gap-1.5 shadow-xs">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+            </svg>
             <span>Ré-analyser les opportunités</span>
           </button>
         </div>
@@ -402,8 +435,27 @@
     </div>
   </div>
 
-  <!-- PWA SERVICE WORKER & APP LOGIC SCRIPT -->
+  <!-- MODERN VECTOR ICON HELPERS (LUCIDE / FEATHER STYLE) -->
   <script>
+    const ICONS = {
+      globe: (cls = "w-3.5 h-3.5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+      building: (cls = "w-3.5 h-3.5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8.01" y2="6"/><line x1="16" y1="6" x2="16.01" y2="6"/><line x1="12" y1="6" x2="12.01" y2="6"/><line x1="8" y1="10" x2="8.01" y2="10"/><line x1="16" y1="10" x2="16.01" y2="10"/><line x1="12" y1="10" x2="12.01" y2="10"/></svg>`,
+      mapPin: (cls = "w-3.5 h-3.5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
+      clock: (cls = "w-3 h-3") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+      star: (cls = "w-3.5 h-3.5", filled = false) => `<svg class="${cls}" viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+      check: (cls = "w-3.5 h-3.5", filled = false) => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`,
+      archive: (cls = "w-3.5 h-3.5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`,
+      restore: (cls = "w-3.5 h-3.5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`,
+      briefcase: (cls = "w-3.5 h-3.5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
+      megaphone: (cls = "w-3.5 h-3.5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>`,
+      graduation: (cls = "w-4 h-4") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`,
+      user: (cls = "w-4 h-4") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+      spark: (cls = "w-3.5 h-3.5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>`,
+      help: (cls = "w-3 h-3") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+      currency: (cls = "w-3.5 h-3.5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M15 9.5a3.5 3.5 0 0 0-5 0c-1.5 1.5-1.5 3.5 0 5a3.5 3.5 0 0 0 5 0"/><line x1="7" y1="12" x2="13" y2="12"/></svg>`,
+      fileText: (cls = "w-3.5 h-3.5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+    };
+
     // PWA Service Worker Registration
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -554,11 +606,16 @@
     function setLoading(isLoading) {
       if (isLoading) {
         searchSpinner.classList.remove('hidden');
-        searchBtnText.textContent = 'Chasse en cours...';
+        searchBtnText.innerHTML = `<span>Recherche en cours...</span>`;
         searchBtn.disabled = true;
       } else {
         searchSpinner.classList.add('hidden');
-        searchBtnText.textContent = '🚀 Lancer la Chasse';
+        searchBtnText.innerHTML = `
+          <svg class="w-4 h-4 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <span>Lancer la Chasse</span>
+        `;
         searchBtn.disabled = false;
       }
     }
@@ -585,34 +642,37 @@
       }
     }
 
-    // SOURCE BADGE GENERATOR (CLEAN LIGHT PILLS)
+    // SOURCE BADGE GENERATOR (CLEAN VECTOR BADGES)
     function getSourceBadge(opp) {
       const isPost = opp.opportunity_type === 'post';
       if (isPost) {
-        return `<span class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg bg-sky-100 text-sky-800 border border-sky-200 flex items-center gap-1 shadow-xs">📢 Post Réseau</span>`;
+        return `<span class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg bg-sky-100/90 text-sky-800 border border-sky-200/90 flex items-center gap-1.5 shadow-xs">
+          ${ICONS.megaphone("w-3 h-3 text-sky-600")}
+          <span>Post Réseau</span>
+        </span>`;
       }
       const s = (opp.source || '').toLowerCase();
       switch (s) {
         case 'wttj':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">🌴 WTTJ</span>`;
+          return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/90 flex items-center gap-1">WTTJ</span>`;
         case 'linkedin':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">💼 LinkedIn</span>`;
+          return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200/90 flex items-center gap-1">LinkedIn</span>`;
         case 'hellowork':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-pink-50 text-pink-700 border border-pink-200 flex items-center gap-1">HelloWork</span>`;
+          return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-pink-50 text-pink-700 border border-pink-200/90 flex items-center gap-1">HelloWork</span>`;
         case 'indeed':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">Indeed</span>`;
+          return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/90 flex items-center gap-1">Indeed</span>`;
         case 'glassdoor':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">Glassdoor</span>`;
+          return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/90 flex items-center gap-1">Glassdoor</span>`;
         case 'teamtailor':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-violet-50 text-violet-700 border border-violet-200 flex items-center gap-1">Teamtailor</span>`;
+          return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-violet-50 text-violet-700 border border-violet-200/90 flex items-center gap-1">Teamtailor</span>`;
         case 'jobgether':
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-200 flex items-center gap-1">Jobgether</span>`;
+          return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-200/90 flex items-center gap-1">Jobgether</span>`;
         default:
-          return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 uppercase">${escapeHtml(opp.source || 'Offre')}</span>`;
+          return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 uppercase">${escapeHtml(opp.source || 'Offre')}</span>`;
       }
     }
 
-    // CLIENT-SIDE REMOTE DETECTION & PROMINENT BADGE (LIGHT DA)
+    // CLIENT-SIDE REMOTE DETECTION & PROMINENT BADGE (CLEAN VECTOR ICONS)
     function detectClientRemotePolicy(opp) {
       if (opp.remote_policy && opp.remote_policy !== 'unknown') return opp.remote_policy;
       const text = `${opp.title || ''} ${opp.location || ''} ${opp.description || ''}`.toLowerCase();
@@ -638,25 +698,29 @@
       if (policy === 'full') {
         return `<span class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5 shadow-xs">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>🌐 100% Télétravail</span>
+          ${ICONS.globe("w-3 h-3 text-emerald-600")}
+          <span>100% Télétravail</span>
         </span>`;
       }
       if (policy === 'hybrid') {
         return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 flex items-center gap-1.5 shadow-xs">
-          <span>🏢 Mode Hybride</span>
+          ${ICONS.building("w-3 h-3 text-sky-600")}
+          <span>Mode Hybride</span>
         </span>`;
       }
       if (policy === 'onsite') {
         return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-1.5">
-          <span>📍 Présentiel / Sur site</span>
+          ${ICONS.mapPin("w-3 h-3 text-amber-600")}
+          <span>Présentiel / Sur site</span>
         </span>`;
       }
-      return `<span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-200/80 flex items-center gap-1">
-        <span>❓ Non précisé</span>
+      return `<span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-100 text-slate-500 border border-slate-200/80 flex items-center gap-1">
+        ${ICONS.help("w-3 h-3 text-slate-400")}
+        <span>Non précisé</span>
       </span>`;
     }
 
-    // AI POST INTENT BADGE (LIGHT THEME)
+    // AI POST INTENT BADGE (GLASSMORPHISM WITH IRIDESCENT GRADIENT)
     function getPostAiBadge(opp) {
       if (opp.opportunity_type !== 'post') return '';
       const intent = opp.post_intent || '';
@@ -664,31 +728,36 @@
 
       if (intent === 'candidate_seeking_alternance') {
         return `
-          <div class="p-3 rounded-2xl bg-violet-50/90 border border-violet-200 text-xs flex items-center justify-between gap-3 shadow-xs">
-            <div class="flex items-center gap-2.5">
-              <span class="text-lg shrink-0">🎓</span>
+          <div class="p-3.5 rounded-2xl bg-gradient-to-r from-violet-50/90 via-purple-50/50 to-white/70 backdrop-blur-sm border border-violet-200 text-xs flex items-center justify-between gap-3 shadow-xs">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center shrink-0 border border-violet-200">
+                ${ICONS.graduation("w-4 h-4 text-violet-700")}
+              </div>
               <div class="flex flex-col">
                 <span class="font-extrabold text-violet-950 flex items-center gap-1.5">
                   <span>Candidature : Recherche d'alternance</span>
-                  <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-violet-200/70 text-violet-900 font-bold">Étudiant</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-violet-200/80 text-violet-900 font-bold">Étudiant</span>
                 </span>
                 <span class="text-[11px] text-violet-800 leading-tight mt-0.5 font-medium">${escapeHtml(summary || "L'auteur recherche activement une alternance pour ses études.")}</span>
               </div>
             </div>
-            <button onclick="changeStatus('${opp.id}', 'archived')" title="Archiver ce post" class="px-2.5 py-1 rounded-xl bg-white hover:bg-violet-100 text-[11px] font-bold text-violet-800 border border-violet-200 shrink-0 cursor-pointer shadow-xs transition">
-              📦 Archiver
+            <button onclick="changeStatus('${opp.id}', 'archived')" title="Archiver ce post" class="px-2.5 py-1 rounded-xl bg-white hover:bg-violet-100 text-[11px] font-bold text-violet-800 border border-violet-200 shrink-0 cursor-pointer shadow-xs transition flex items-center gap-1">
+              ${ICONS.archive("w-3 h-3 text-violet-700")}
+              <span>Archiver</span>
             </button>
           </div>
         `;
       }
       if (intent === 'hiring_alternance') {
         return `
-          <div class="p-3 rounded-2xl bg-teal-50/90 border border-teal-200 text-xs flex items-center gap-2.5 shadow-xs">
-            <span class="text-lg shrink-0">🏢</span>
+          <div class="p-3.5 rounded-2xl bg-gradient-to-r from-teal-50/90 via-emerald-50/50 to-white/70 backdrop-blur-sm border border-teal-200 text-xs flex items-center gap-3 shadow-xs">
+            <div class="w-8 h-8 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center shrink-0 border border-teal-200">
+              ${ICONS.building("w-4 h-4 text-teal-700")}
+            </div>
             <div class="flex flex-col">
               <span class="font-extrabold text-teal-950 flex items-center gap-1.5">
                 <span>Offre d'alternance d'entreprise</span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-teal-200/70 text-teal-900 font-bold">Recrutement</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-teal-200/80 text-teal-900 font-bold">Recrutement</span>
               </span>
               <span class="text-[11px] text-teal-800 leading-tight mt-0.5 font-medium">${escapeHtml(summary || "Cette entreprise recrute actuellement un(e) alternant(e).")}</span>
             </div>
@@ -697,31 +766,36 @@
       }
       if (intent === 'candidate_seeking_job') {
         return `
-          <div class="p-3 rounded-2xl bg-amber-50/90 border border-amber-200 text-xs flex items-center justify-between gap-3 shadow-xs">
-            <div class="flex items-center gap-2.5">
-              <span class="text-lg shrink-0">🙋</span>
+          <div class="p-3.5 rounded-2xl bg-gradient-to-r from-amber-50/90 via-orange-50/40 to-white/70 backdrop-blur-sm border border-amber-200 text-xs flex items-center justify-between gap-3 shadow-xs">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-200">
+                ${ICONS.user("w-4 h-4 text-amber-800")}
+              </div>
               <div class="flex flex-col">
                 <span class="font-extrabold text-amber-950 flex items-center gap-1.5">
-                  <span>Candidat en recherche active d'emploi</span>
-                  <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-200/70 text-amber-900 font-bold">Open to Work</span>
+                  <span>Candidat en recherche d'emploi</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-200/80 text-amber-900 font-bold">Open to Work</span>
                 </span>
                 <span class="text-[11px] text-amber-800 leading-tight mt-0.5 font-medium">${escapeHtml(summary || "L'auteur partage son CV et cherche une opportunité.")}</span>
               </div>
             </div>
-            <button onclick="changeStatus('${opp.id}', 'archived')" title="Archiver ce post" class="px-2.5 py-1 rounded-xl bg-white hover:bg-amber-100 text-[11px] font-bold text-amber-900 border border-amber-200 shrink-0 cursor-pointer shadow-xs transition">
-              📦 Archiver
+            <button onclick="changeStatus('${opp.id}', 'archived')" title="Archiver ce post" class="px-2.5 py-1 rounded-xl bg-white hover:bg-amber-100 text-[11px] font-bold text-amber-900 border border-amber-200 shrink-0 cursor-pointer shadow-xs transition flex items-center gap-1">
+              ${ICONS.archive("w-3 h-3 text-amber-700")}
+              <span>Archiver</span>
             </button>
           </div>
         `;
       }
       // Hiring job (Default recruiter post)
       return `
-        <div class="p-3 rounded-2xl bg-sky-50/90 border border-sky-200 text-xs flex items-center gap-2.5 shadow-xs">
-          <span class="text-lg shrink-0">💼</span>
+        <div class="p-3.5 rounded-2xl bg-gradient-to-r from-sky-50/90 via-indigo-50/40 to-white/70 backdrop-blur-sm border border-sky-200 text-xs flex items-center gap-3 shadow-xs">
+          <div class="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0 border border-sky-200">
+            ${ICONS.briefcase("w-4 h-4 text-sky-700")}
+          </div>
           <div class="flex flex-col">
             <span class="font-extrabold text-sky-950 flex items-center gap-1.5">
               <span>Offre de recrutement réseau</span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-sky-200/70 text-sky-900 font-bold">Recruteur</span>
+              <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-sky-200/80 text-sky-900 font-bold">Recruteur</span>
             </span>
             <span class="text-[11px] text-sky-800 leading-tight mt-0.5 font-medium">${escapeHtml(summary || "Offre d'emploi partagée directement par un recruteur ou collaborateur.")}</span>
           </div>
@@ -734,11 +808,11 @@
       document.querySelectorAll('.tab-btn').forEach(b => {
         const isActive = b.dataset.filter === currentFilter;
         if (isActive) {
-          b.classList.remove('bg-slate-100', 'text-slate-700');
+          b.classList.remove('bg-white/90', 'text-slate-700', 'border-slate-200/80');
           b.classList.add('bg-slate-950', 'text-white', 'font-extrabold', 'shadow-xs');
         } else {
           b.classList.remove('bg-slate-950', 'text-white', 'font-extrabold');
-          b.classList.add('bg-slate-100', 'text-slate-700', 'font-semibold');
+          b.classList.add('bg-white/90', 'text-slate-700', 'font-semibold', 'border-slate-200/80');
         }
       });
     }
@@ -756,10 +830,10 @@
       btn.addEventListener('click', () => {
         document.querySelectorAll('.post-subfilter-btn').forEach(b => {
           b.classList.remove('active', 'bg-slate-900', 'text-white', 'font-bold', 'shadow-xs');
-          b.classList.add('bg-slate-100', 'text-slate-700', 'font-semibold');
+          b.classList.add('bg-slate-100/80', 'text-slate-700', 'font-semibold');
         });
         btn.classList.add('active', 'bg-slate-900', 'text-white', 'font-bold', 'shadow-xs');
-        btn.classList.remove('bg-slate-100', 'text-slate-700', 'font-semibold');
+        btn.classList.remove('bg-slate-100/80', 'text-slate-700', 'font-semibold');
         postSubfilter = btn.dataset.subfilter;
         render();
       });
@@ -806,7 +880,7 @@
       await changeStatus(id, newStatus);
     }
 
-    // RENDER CARDS (CHRONOLOGICAL SCRAPING ORDER & 1-CLICK TRIAGE)
+    // RENDER CARDS (FROSTED GLASSMORPHISM & CLEAN VECTOR BADGES)
     function render() {
       const q = quickFilter.value.toLowerCase().trim();
 
@@ -892,7 +966,6 @@
           const matchTitle = (o.title || '').toLowerCase().includes(q);
           const matchCompany = (o.company || '').toLowerCase().includes(q);
           const matchDesc = (o.description || '').toLowerCase().includes(q);
-          // For posts, ignore author headline/title
           const matchAuthor = o.opportunity_type !== 'post' && (o.author_name || '').toLowerCase().includes(q);
           if (!matchTitle && !matchCompany && !matchAuthor && !matchDesc) return false;
         }
@@ -902,10 +975,12 @@
       if (filtered.length === 0) {
         if (currentFilter === 'post') {
           resultsContainer.innerHTML = `
-            <div class="bg-white border border-slate-200/90 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-card">
-              <span class="text-4xl">📢</span>
+            <div class="bg-white/80 backdrop-blur-xl border border-slate-200/90 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-card">
+              <div class="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+                ${ICONS.megaphone("w-6 h-6 text-sky-600")}
+              </div>
               <h3 class="text-base font-extrabold text-slate-800">Aucun post correspondant trouvé</h3>
-              <p class="text-xs text-slate-500 max-w-md leading-relaxed">
+              <p class="text-xs text-slate-500 max-w-md leading-relaxed font-medium">
                 Si vous avez activé le filtre de masquage des alternances, les candidatures étudiantes sont masquées.<br>
                 Vous pouvez basculer sur l'onglet <span class="text-violet-600 font-bold cursor-pointer underline" onclick="document.querySelector('[data-subfilter=\\'candidate_alternance\\']').click()">Candidatures d'alternance</span> ou lancer une nouvelle recherche.
               </p>
@@ -916,20 +991,26 @@
 
         if (currentFilter === 'archived') {
           resultsContainer.innerHTML = `
-            <div class="bg-white border border-slate-200/90 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-card">
-              <span class="text-4xl">📦</span>
-              <h3 class="text-base font-extrabold text-slate-800">Aucune offre archivée</h3>
-              <p class="text-xs text-slate-500 max-w-sm">Les opportunités que vous archivez avec le bouton "📦 Archiver" apparaîtront ici.</p>
+            <div class="bg-white/80 backdrop-blur-xl border border-slate-200/90 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-card">
+              <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200">
+                ${ICONS.archive("w-6 h-6 text-slate-600")}
+              </div>
+              <h3 class="text-base font-extrabold text-slate-800">Aucune opportunité archivée</h3>
+              <p class="text-xs text-slate-500 max-w-sm font-medium">Les opportunités que vous archivez avec le bouton "Archiver" apparaîtront ici.</p>
             </div>
           `;
           return;
         }
 
         resultsContainer.innerHTML = `
-          <div class="bg-white border border-slate-200/90 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-card">
-            <span class="text-4xl">🔍</span>
+          <div class="bg-white/80 backdrop-blur-xl border border-slate-200/90 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-card">
+            <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200">
+              <svg class="w-6 h-6 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </div>
             <h3 class="text-base font-extrabold text-slate-800">Aucune opportunité trouvée</h3>
-            <p class="text-xs text-slate-500 max-w-sm">Lancez une recherche avec le bouton de gauche ou changez de filtre.</p>
+            <p class="text-xs text-slate-500 max-w-sm font-medium">Lancez une recherche avec le bouton de gauche ou changez de filtre.</p>
           </div>
         `;
         return;
@@ -942,19 +1023,19 @@
         const isArchived = opp.status === 'archived';
 
         const tagsHtml = (opp.tags || []).slice(0, 4).map(t =>
-          `<span class="inline-block bg-slate-100 text-slate-700 text-[10px] font-semibold px-2.5 py-0.5 rounded-lg border border-slate-200/80">${escapeHtml(t)}</span>`
+          `<span class="inline-block bg-slate-100/90 text-slate-700 text-[10px] font-semibold px-2.5 py-0.5 rounded-lg border border-slate-200/70">${escapeHtml(t)}</span>`
         ).join('');
 
         return `
-          <article class="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-card hover:shadow-card-hover hover:border-slate-300 transition-all flex flex-col gap-3.5">
+          <article class="bg-white/85 backdrop-blur-lg border border-slate-200/80 rounded-3xl p-5 sm:p-6 shadow-card hover:shadow-card-hover hover:border-sky-300/80 transition-all duration-300 flex flex-col gap-3.5 group">
             
             <!-- Top Card Header: Source, Remote Badge, Date, & Fast Triage Buttons -->
             <div class="flex items-center justify-between gap-3 flex-wrap">
               <div class="flex items-center gap-2 flex-wrap">
                 ${getSourceBadge(opp)}
                 ${getRemoteBadge(opp)}
-                <span class="text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-200/60 flex items-center gap-1">
-                  <span>🕒</span>
+                <span class="text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-slate-100/80 text-slate-600 border border-slate-200/60 flex items-center gap-1.5">
+                  ${ICONS.clock("w-3 h-3 text-slate-400")}
                   <span>${formatRelativeDate(opp.discovered_at)}</span>
                 </span>
               </div>
@@ -965,36 +1046,36 @@
                         title="${isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}"
                         class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border shadow-xs ${
                           isFav 
-                            ? 'bg-amber-100 text-amber-900 border-amber-300' 
-                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-amber-300 hover:text-amber-800 hover:bg-amber-50'
+                            ? 'bg-gradient-to-r from-amber-50 to-amber-100/80 text-amber-900 border-amber-300' 
+                            : 'bg-slate-50/80 text-slate-700 border-slate-200/90 hover:border-amber-300 hover:text-amber-800 hover:bg-amber-50/80'
                         }">
-                  <span>⭐</span>
-                  <span class="hidden sm:inline">${isFav ? 'Favori' : 'Favori'}</span>
+                  ${ICONS.star("w-3.5 h-3.5 text-amber-500", isFav)}
+                  <span class="hidden sm:inline">Favori</span>
                 </button>
 
-                <button onclick="toggleKept('${opp.id}')"
+                <button onclick="toggleKept('${opp.id}')" 
                         title="${isKept ? 'Retirer de Je garde' : 'Garder cette opportunité'}"
                         class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border shadow-xs ${
                           isKept 
-                            ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
-                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-emerald-300 hover:text-emerald-800 hover:bg-emerald-50'
+                            ? 'bg-gradient-to-r from-emerald-50 to-emerald-100/80 text-emerald-900 border-emerald-300' 
+                            : 'bg-slate-50/80 text-slate-700 border-slate-200/90 hover:border-emerald-300 hover:text-emerald-800 hover:bg-emerald-50/80'
                         }">
-                  <span>✅</span>
+                  ${ICONS.check("w-3.5 h-3.5 text-emerald-600", isKept)}
                   <span class="hidden sm:inline">${isKept ? 'Gardé' : 'Je garde'}</span>
                 </button>
 
                 ${isArchived ? `
                   <button onclick="changeStatus('${opp.id}', 'new')"
                           title="Restaurer dans la boîte principale"
-                          class="px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition cursor-pointer flex items-center gap-1 shadow-xs">
-                    <span>↩️</span>
+                          class="px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition cursor-pointer flex items-center gap-1.5 shadow-xs">
+                    ${ICONS.restore("w-3.5 h-3.5 text-sky-600")}
                     <span class="hidden sm:inline">Restaurer</span>
                   </button>
                 ` : `
                   <button onclick="changeStatus('${opp.id}', 'archived')"
                           title="Archiver l'opportunité"
-                          class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-50 text-slate-700 border border-slate-200 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 transition cursor-pointer flex items-center gap-1 shadow-xs">
-                    <span>📦</span>
+                          class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-50/80 text-slate-600 border border-slate-200/90 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50/80 transition cursor-pointer flex items-center gap-1.5 shadow-xs">
+                    ${ICONS.archive("w-3.5 h-3.5 text-slate-500")}
                     <span class="hidden sm:inline">Archiver</span>
                   </button>
                 `}
@@ -1005,16 +1086,16 @@
             <h3 class="text-base font-extrabold text-slate-900 hover:text-sky-600 transition">
               <a href="${opp.url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 group">
                 <span class="group-hover:underline decoration-sky-500">${escapeHtml(opp.title)}</span>
-                <svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-500 flex-shrink-0 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                <svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-500 flex-shrink-0 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
               </a>
             </h3>
 
             <!-- Recruiter / Author details (for posts) -->
             ${opp.author_name ? `
-              <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
-                <div class="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-sm shadow-xs">
+              <div class="flex items-center gap-3 p-3 bg-slate-50/80 rounded-2xl border border-slate-100 text-xs">
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-slate-900 to-indigo-950 text-white flex items-center justify-center font-extrabold text-sm shadow-xs">
                   ${escapeHtml(opp.author_name.charAt(0))}
                 </div>
                 <div class="flex flex-col">
@@ -1029,9 +1110,21 @@
 
             <!-- Company / Location / Salary -->
             <div class="flex items-center gap-4 text-xs text-slate-600 flex-wrap font-medium">
-              ${opp.company ? `<span class="flex items-center gap-1.5">🏢 <strong class="text-slate-900 font-bold">${escapeHtml(opp.company)}</strong></span>` : ''}
-              ${opp.location ? `<span class="flex items-center gap-1.5">📍 ${escapeHtml(opp.location)}</span>` : ''}
-              ${opp.salary_raw ? `<span class="flex items-center gap-1.5 text-emerald-700 font-extrabold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">💰 ${escapeHtml(opp.salary_raw)}</span>` : ''}
+              ${opp.company ? `
+                <span class="flex items-center gap-1.5">
+                  ${ICONS.building("w-3.5 h-3.5 text-slate-400")}
+                  <strong class="text-slate-900 font-bold">${escapeHtml(opp.company)}</strong>
+                </span>` : ''}
+              ${opp.location ? `
+                <span class="flex items-center gap-1.5">
+                  ${ICONS.mapPin("w-3.5 h-3.5 text-slate-400")}
+                  <span>${escapeHtml(opp.location)}</span>
+                </span>` : ''}
+              ${opp.salary_raw ? `
+                <span class="flex items-center gap-1.5 text-emerald-700 font-extrabold bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                  ${ICONS.currency("w-3.5 h-3.5 text-emerald-600")}
+                  <span>${escapeHtml(opp.salary_raw)}</span>
+                </span>` : ''}
             </div>
 
             <!-- Dépliant Description (Sleek Accordion) -->
@@ -1039,7 +1132,7 @@
               <details class="group bg-slate-50/70 rounded-2xl border border-slate-200/80 transition-all hover:border-slate-300">
                 <summary class="flex items-center justify-between px-4 py-3 text-xs font-bold text-slate-700 cursor-pointer hover:text-slate-900 select-none list-none">
                   <span class="flex items-center gap-2">
-                    <span class="text-sky-600 text-sm">📋</span>
+                    ${ICONS.fileText("w-3.5 h-3.5 text-sky-600")}
                     <span>Description détaillée de l'annonce</span>
                   </span>
                   <span class="text-[11px] text-slate-400 font-bold group-open:rotate-180 transition-transform duration-200">
@@ -1056,15 +1149,17 @@
               </div>
             `}
 
-            <!-- Footer: Tags & External link (Revolut Black Button) -->
+            <!-- Footer: Tags & External link (Revolut Obsidian Gradient Button) -->
             <div class="flex items-center justify-between gap-2 flex-wrap pt-3 border-t border-slate-100">
               <div class="flex items-center gap-1.5 flex-wrap">
                 ${tagsHtml}
               </div>
               <a href="${opp.url}" target="_blank" rel="noopener noreferrer" 
-                 class="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs hover:shadow-sm">
+                 class="px-4 py-2 rounded-xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 hover:from-slate-900 hover:to-indigo-900 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs hover:shadow-md">
                 <span>Voir ${isPost ? 'le Post' : "l'Offre"}</span>
-                <span>↗</span>
+                <svg class="w-3.5 h-3.5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                </svg>
               </a>
             </div>
 
@@ -1117,7 +1212,7 @@
     });
 
     wttjLoginBtn.addEventListener('click', async () => {
-      authNotice.textContent = "🚀 Lancement du navigateur de connexion... Cliquez sur 'Continuer avec Google' dans la fenêtre qui s'ouvre !";
+      authNotice.textContent = "Lancement du navigateur de connexion... Cliquez sur 'Continuer avec Google' dans la fenêtre qui s'ouvre.";
       authNotice.className = "p-3 rounded-2xl bg-sky-50 border border-sky-200 text-xs text-sky-800 font-medium";
       authNotice.classList.remove('hidden');
       try {
@@ -1127,7 +1222,7 @@
           const data = await res.json();
           if (data.wttj_connected) {
             clearInterval(poll);
-            authNotice.textContent = "🎉 Compte Welcome to the Jungle (via Gmail) connecté avec succès !";
+            authNotice.textContent = "Compte Welcome to the Jungle (via Gmail) connecté avec succès !";
             authNotice.className = "p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium";
             checkAuthStatus();
           }
@@ -1138,7 +1233,7 @@
     });
 
     linkedinLoginBtn.addEventListener('click', async () => {
-      authNotice.textContent = "🚀 Lancement du navigateur de connexion LinkedIn... Connectez-vous dans la fenêtre qui s'ouvre !";
+      authNotice.textContent = "Lancement du navigateur de connexion LinkedIn... Connectez-vous dans la fenêtre qui s'ouvre.";
       authNotice.className = "p-3 rounded-2xl bg-sky-50 border border-sky-200 text-xs text-sky-800 font-medium";
       authNotice.classList.remove('hidden');
       try {
@@ -1148,7 +1243,7 @@
           const data = await res.json();
           if (data.linkedin_connected) {
             clearInterval(poll);
-            authNotice.textContent = "🎉 Compte LinkedIn connecté avec succès !";
+            authNotice.textContent = "Compte LinkedIn connecté avec succès !";
             authNotice.className = "p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium";
             checkAuthStatus();
           }
@@ -1235,7 +1330,13 @@
           aiTestResult.textContent = "Erreur lors du test IA : " + err;
         } finally {
           testAiBtn.disabled = false;
-          testAiBtn.innerHTML = '<span>🧪</span><span>Tester la connexion IA</span>';
+          testAiBtn.innerHTML = `
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/>
+              <line x1="8.5" y1="2" x2="15.5" y2="2"/>
+            </svg>
+            <span>Tester la connexion IA</span>
+          `;
         }
       });
     }
@@ -1253,7 +1354,12 @@
           alert("Erreur lors de la ré-analyse : " + e);
         } finally {
           reanalyzeBtn.disabled = false;
-          reanalyzeBtn.innerHTML = '<span>🔄</span><span>Ré-analyser les opportunités</span>';
+          reanalyzeBtn.innerHTML = `
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+            </svg>
+            <span>Ré-analyser les opportunités</span>
+          `;
         }
       });
     }
