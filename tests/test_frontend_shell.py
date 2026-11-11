@@ -2514,3 +2514,1072 @@ def test_profile_brief_e2e_unmocked_sqlite_persistence(browser, live_server_url,
         assert errors == []
     finally:
         context.close()
+
+
+def test_brief_drawer_boot_autosave_prefill_and_esc_priority(browser, live_server_url):
+    # 1. Boot with active ideal_job_brief + blur & collapse auto-save + error retention
+    context, page = _new_isolated_page(browser)
+    errors = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+
+    brief_state = {"value": "Lead Product Designer Figma full remote"}
+    put_calls = []
+    rank_calls = []
+    put_fail = {"fail": False}
+
+    def handle_profile(route):
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "user": {"id": "usr_1", "email": "user@jobby.local", "full_name": "Mon Profil"},
+                    "profile": {
+                        "user_id": "usr_1",
+                        "target_roles": ["Lead Product Designer", "Design Ops"],
+                        "skills": ["Figma", "Design System"],
+                        "remote_preference": "full",
+                        "bio": "10 ans en produit B2B",
+                        "ideal_job_brief": brief_state["value"],
+                    },
+                    "has_cv": False,
+                }
+            ),
+        )
+
+    def handle_profile_brief(route):
+        payload = route.request.post_data_json
+        put_calls.append(payload)
+        if put_fail["fail"]:
+            route.fulfill(
+                status=500,
+                content_type="application/json",
+                body='{"detail":"Erreur sauvegarde brief"}',
+            )
+            return
+        raw = payload.get("brief") if isinstance(payload, dict) else ""
+        cleaned = raw.strip() if isinstance(raw, str) else ""
+        brief_state["value"] = cleaned or None
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "status": "saved",
+                    "ideal_job_brief": brief_state["value"],
+                    "profile": {
+                        "user_id": "usr_1",
+                        "target_roles": ["Lead Product Designer", "Design Ops"],
+                        "skills": ["Figma", "Design System"],
+                        "remote_preference": "full",
+                        "bio": "10 ans en produit B2B",
+                        "ideal_job_brief": brief_state["value"],
+                    },
+                }
+            ),
+        )
+
+    _mock_base_apis(page)
+    page.unroute("**/api/profile")
+    page.route("**/api/profile", handle_profile)
+    page.route("**/api/profile/brief", handle_profile_brief)
+    page.route("**/api/ai/rank-by-brief", lambda r: (rank_calls.append(r.request.post_data_json), r.abort()))
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+
+        # Collapsed bar (~44px), sage dot (#15803D), extract visible, Warm Porcelain tokens
+        box_rect = page.locator("#brief-box").bounding_box()
+        assert 38 <= box_rect["height"] <= 50
+        assert not page.locator("#brief-drawer").is_visible()
+        assert page.locator("#brief-box").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(253, 252, 251)"
+        assert page.locator("#brief-box").evaluate("el => getComputedStyle(el).borderTopColor") == "rgb(231, 229, 228)"
+        assert page.locator("#brief-box").evaluate("el => getComputedStyle(el).boxShadow") == "none"
+        assert page.locator("#brief-dot").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(21, 128, 61)"
+        assert "Lead Product Designer Figma full remote" in page.locator("#brief-preview-text").inner_text()
+        assert page.locator("#brief-toggle-text").inner_text() == "Déplier & affiner"
+
+        # Expand drawer
+        page.click("#brief-toggle-btn")
+        assert page.locator("#brief-drawer").is_visible()
+        assert page.locator("#brief-toggle-btn").get_attribute("aria-expanded") == "true"
+        assert page.locator("#brief-toggle-text").inner_text() == "Replier"
+        assert page.locator("#brief-input").input_value() == "Lead Product Designer Figma full remote"
+
+        # Edit and blur -> auto-save via PUT /api/profile/brief, 0 Gemini calls
+        page.fill("#brief-input", "Staff Product Designer Design System 100% Remote")
+        with page.expect_response("**/api/profile/brief"):
+            page.locator("#brief-input").blur()
+        assert len(put_calls) == 1
+        assert put_calls[0] == {"brief": "Staff Product Designer Design System 100% Remote"}
+        assert rank_calls == []
+        assert "Staff Product Designer Design System 100% Remote" in page.locator("#brief-preview-text").inner_text()
+
+        # Edit and collapse via Replier -> auto-save on collapse, 0 Gemini calls
+        page.fill("#brief-input", "Principal Designer Token System")
+        with page.expect_response("**/api/profile/brief"):
+            page.click("#brief-toggle-btn")
+        assert not page.locator("#brief-drawer").is_visible()
+        assert len(put_calls) == 2
+        assert put_calls[1] == {"brief": "Principal Designer Token System"}
+        assert rank_calls == []
+        assert "Principal Designer Token System" in page.locator("#brief-preview-text").inner_text()
+
+        # Open and collapse WITHOUT modifying -> 0 extra PUT calls
+        page.click("#brief-toggle-btn")
+        assert page.locator("#brief-drawer").is_visible()
+        page.click("#brief-toggle-btn")
+        assert not page.locator("#brief-drawer").is_visible()
+        assert len(put_calls) == 2
+
+        # (c) PUT failure on blur -> error toast shown, user edit preserved, then retry succeeds on collapse
+        put_fail["fail"] = True
+        page.click("#brief-toggle-btn")
+        page.fill("#brief-input", "Brouillon non sauvegardé")
+        with page.expect_response("**/api/profile/brief"):
+            page.locator("#brief-input").blur()
+        assert page.locator("#toast-container .jp-toast-error").last.is_visible()
+        assert page.locator("#brief-input").input_value() == "Brouillon non sauvegardé"
+
+        put_fail["fail"] = False
+        with page.expect_response("**/api/profile/brief"):
+            page.click("#brief-toggle-btn")
+        assert not page.locator("#brief-drawer").is_visible()
+        assert put_calls[-1] == {"brief": "Brouillon non sauvegardé"}
+        assert "Brouillon non sauvegardé" in page.locator("#brief-preview-text").inner_text()
+
+        # (a) Navigating away from Feed via setActiveView('kanban') / #nav-kanban collapses open drawer and auto-saves unblurred edits
+        page.click("#brief-toggle-btn")
+        page.fill("#brief-input", "Navigation Away Brief")
+        with page.expect_response("**/api/profile/brief"):
+            page.evaluate(
+                """async () => {
+                    const { setActiveView } = await import('/static/js/state.js');
+                    setActiveView('kanban');
+                }"""
+            )
+        assert page.locator("#view-kanban").is_visible()
+        page.click("#nav-feed")
+        assert not page.locator("#brief-drawer").is_visible()
+        assert put_calls[-1] == {"brief": "Navigation Away Brief"}
+        assert "Navigation Away Brief" in page.locator("#brief-preview-text").inner_text()
+
+        # (b) Clearing an active brief via blur & collapse reverts dot to neutral & preview to "Aucun brief actif"
+        page.click("#brief-toggle-btn")
+        page.fill("#brief-input", "   ")
+        with page.expect_response("**/api/profile/brief"):
+            page.locator("#brief-input").blur()
+        assert page.locator("#brief-dot").evaluate("el => getComputedStyle(el).backgroundColor") != "rgb(21, 128, 61)"
+        assert "Aucun brief actif" in page.locator("#brief-preview-text").inner_text()
+        assert put_calls[-1] == {"brief": ""}
+
+        # (d) Clicking #btn-prefill after unsaved edit triggers zero premature PUT before prefill
+        put_count_before_prefill = len(put_calls)
+        page.fill("#brief-input", "Mon brief avec C++ et .NET en teletravail partiel")
+        page.click("#btn-prefill")
+        assert len(put_calls) == put_count_before_prefill
+        prefilled_after_edit = page.locator("#brief-input").input_value()
+        assert "Lead Product Designer, Design Ops" in prefilled_after_edit
+        assert "Figma, Design System" in prefilled_after_edit
+        assert errors == []
+    finally:
+        context.close()
+
+    # 2. Boot with empty brief + AD-2 non-destructive prefill + Esc priority (modal -> popover -> drawer)
+    ctx2, page2 = _new_isolated_page(browser)
+    errors2 = []
+    page2.on("pageerror", lambda err: errors2.append(str(err)))
+    put_calls2 = []
+    profile_posts = []
+
+    empty_or_full_profile = {
+        "value": {
+            "user_id": "usr_2",
+            "target_roles": ["Lead Product Designer", "Design Ops"],
+            "skills": ["Figma", "Design System"],
+            "remote_preference": "full",
+            "bio": "10 ans en produit B2B",
+            "ideal_job_brief": None,
+        }
+    }
+
+    _mock_base_apis(page2)
+    page2.unroute("**/api/profile")
+    page2.route(
+        "**/api/profile",
+        lambda r: (
+            profile_posts.append(r.request.method) if r.request.method != "GET" else None,
+            r.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"profile": empty_or_full_profile["value"], "has_cv": False}),
+            ),
+        ),
+    )
+    page2.route(
+        "**/api/profile/brief",
+        lambda r: (
+            put_calls2.append(r.request.post_data_json),
+            r.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "status": "saved",
+                        "ideal_job_brief": (r.request.post_data_json or {}).get("brief", "").strip() or None,
+                        "profile": empty_or_full_profile["value"],
+                    }
+                ),
+            ),
+        ),
+    )
+
+    try:
+        page2.goto(live_server_url, wait_until="networkidle")
+
+        # Empty brief boot: ~44px, neutral dot (not #15803D), sober invite
+        assert 38 <= page2.locator("#brief-box").bounding_box()["height"] <= 50
+        assert page2.locator("#brief-dot").evaluate("el => getComputedStyle(el).backgroundColor") != "rgb(21, 128, 61)"
+        assert "Aucun brief actif" in page2.locator("#brief-preview-text").inner_text()
+
+        # Prefill from empty brief -> formats roles, skills, remote, bio
+        page2.click("#brief-toggle-btn")
+        page2.click("#btn-prefill")
+        prefilled = page2.locator("#brief-input").input_value()
+        assert "Lead Product Designer, Design Ops" in prefilled
+        assert "Figma, Design System" in prefilled
+        assert "100% Remote" in prefilled
+        assert "10 ans en produit B2B" in prefilled
+        assert profile_posts == []
+
+        # Non-destructive partial append (existing text untouched, no duplicates)
+        existing_brief = "Je cherche un poste de Lead Product Designer en 100% Remote avec Figma."
+        page2.fill("#brief-input", existing_brief)
+        page2.click("#btn-prefill")
+        merged_val = page2.locator("#brief-input").input_value()
+        assert merged_val.startswith(existing_brief)
+        assert merged_val.lower().count("lead product designer") == 1
+        assert merged_val.lower().count("figma") == 1
+        assert merged_val.lower().count("100% remote") == 1
+        assert "Design Ops" in merged_val
+        assert "Design System" in merged_val
+        assert "10 ans en produit B2B" in merged_val
+
+        # Second click on #btn-prefill does NOT duplicate anything
+        page2.click("#btn-prefill")
+        assert page2.locator("#brief-input").input_value() == merged_val
+
+        # Esc priority: modal > #popover-sources > #brief-drawer (+ auto-save if dirty)
+        page2.click("#btn-open-hunt-modal")
+        assert page2.locator("#modal-hunt").is_visible()
+        page2.keyboard.press("Escape")
+        assert not page2.locator("#modal-hunt").is_visible()
+        assert page2.locator("#brief-drawer").is_visible()
+
+        page2.click("#btn-sources-popover")
+        assert page2.locator("#popover-sources").is_visible()
+        page2.keyboard.press("Escape")
+        assert not page2.locator("#popover-sources").is_visible()
+        assert page2.locator("#brief-drawer").is_visible()
+
+        esc_saved_brief = f"{merged_val}\nPas d'ESN."
+        page2.fill("#brief-input", esc_saved_brief)
+        with page2.expect_response("**/api/profile/brief"):
+            page2.keyboard.press("Escape")
+        assert not page2.locator("#brief-drawer").is_visible()
+        assert page2.evaluate("() => document.activeElement?.id") == "brief-toggle-btn"
+        assert len(put_calls2) >= 1
+        assert put_calls2[-1]["brief"] == esc_saved_brief
+        assert page2.locator("#brief-dot").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(21, 128, 61)"
+
+        # Empty profile -> info toast, input unchanged
+        empty_or_full_profile["value"] = {
+            "user_id": "usr_2",
+            "target_roles": [],
+            "skills": [],
+            "remote_preference": None,
+            "bio": None,
+            "ideal_job_brief": None,
+        }
+        page2.evaluate(
+            """async () => {
+                const { setProfile } = await import('/static/js/state.js');
+                setProfile({ user_id: 'usr_2', target_roles: [], skills: [], remote_preference: null, bio: null, ideal_job_brief: null });
+            }"""
+        )
+        page2.click("#brief-toggle-btn")
+        page2.fill("#brief-input", "Mon brief custom")
+        page2.click("#btn-prefill")
+        assert page2.locator("#brief-input").input_value() == "Mon brief custom"
+        assert page2.locator("#toast-container .jp-toast:not(.jp-toast-error)").last.is_visible()
+
+        # (d) Verify remote_preference 'hybrid'/'onsite', unaccented remote variants, NFD folding & C++/C/.NET word boundaries
+        prefill_matrix = page2.evaluate(
+            """async () => {
+                const { buildNonDestructiveBriefWithProfile } = await import('/static/js/views/feed.js');
+                const hybridNew = buildNonDestructiveBriefWithProfile('', {
+                    target_roles: ['Staff Designer'],
+                    skills: ['Figma'],
+                    remote_preference: 'hybrid',
+                    bio: null,
+                });
+                const hybridDedup = buildNonDestructiveBriefWithProfile('Poste en teletravail partiel sur Lyon', {
+                    target_roles: [],
+                    skills: [],
+                    remote_preference: 'hybrid',
+                    bio: null,
+                });
+                const onsiteNew = buildNonDestructiveBriefWithProfile('', {
+                    target_roles: [],
+                    skills: [],
+                    remote_preference: 'onsite',
+                    bio: null,
+                });
+                const unaccentedRemote = buildNonDestructiveBriefWithProfile('100% teletravail ou totalement a distance', {
+                    target_roles: [],
+                    skills: [],
+                    remote_preference: 'full',
+                    bio: null,
+                });
+                const unaccentedTeletravailTotal = buildNonDestructiveBriefWithProfile('Poste en teletravail total uniquement', {
+                    target_roles: [],
+                    skills: [],
+                    remote_preference: 'full',
+                    bio: null,
+                });
+                const cBoundary = buildNonDestructiveBriefWithProfile('Développement C++ et .NET', {
+                    target_roles: [],
+                    skills: ['C++', 'C', '.NET'],
+                    remote_preference: null,
+                    bio: null,
+                });
+                const cSharpBoundary = buildNonDestructiveBriefWithProfile('Stack C++ et C#', {
+                    target_roles: [],
+                    skills: ['C++', 'C', 'C#'],
+                    remote_preference: null,
+                    bio: null,
+                });
+                const cPeriodBoundary = buildNonDestructiveBriefWithProfile('Expertise C++. Recherche équipe', {
+                    target_roles: [],
+                    skills: ['C++'],
+                    remote_preference: null,
+                    bio: null,
+                });
+                const nfdRole = buildNonDestructiveBriefWithProfile('Developpement systeme', {
+                    target_roles: ['Développement système'],
+                    skills: [],
+                    remote_preference: null,
+                    bio: null,
+                });
+                return {
+                    hybridNew,
+                    hybridDedup,
+                    onsiteNew,
+                    unaccentedRemote,
+                    unaccentedTeletravailTotal,
+                    cBoundary,
+                    cSharpBoundary,
+                    cPeriodBoundary,
+                    nfdRole,
+                };
+            }"""
+        )
+        assert "Mode souhaité : Hybride." in prefill_matrix["hybridNew"]["text"]
+        assert prefill_matrix["hybridDedup"]["status"] == "already_present"
+        assert prefill_matrix["onsiteNew"]["text"] == "Mode souhaité : Sur site."
+        assert prefill_matrix["unaccentedRemote"]["status"] == "already_present"
+        assert prefill_matrix["unaccentedTeletravailTotal"]["status"] == "already_present"
+        assert prefill_matrix["cBoundary"]["text"].endswith("Compétences : C.")
+        assert prefill_matrix["cSharpBoundary"]["text"].endswith("Compétences : C.")
+        assert prefill_matrix["cPeriodBoundary"]["status"] == "already_present"
+        assert prefill_matrix["nfdRole"]["status"] == "already_present"
+        assert errors2 == []
+    finally:
+        ctx2.close()
+
+    # 3. Resilience: slow GET /api/profile (pending toast, briefDirty protection, early PUT preserves full profile) & partial renderFeedView
+    ctx3, page3 = _new_isolated_page(browser)
+    errors3 = []
+    page3.on("pageerror", lambda err: errors3.append(str(err)))
+    held_profile = []
+    _mock_base_apis(page3)
+    page3.unroute("**/api/profile")
+    page3.route("**/api/profile", lambda r: held_profile.append(r))
+    page3.route(
+        "**/api/profile/brief",
+        lambda r: r.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "status": "saved",
+                    "ideal_job_brief": (r.request.post_data_json or {}).get("brief", "").strip() or None,
+                }
+            ),
+        ),
+    )
+
+    try:
+        with page3.expect_request("**/api/profile"):
+            page3.goto(live_server_url, wait_until="domcontentloaded")
+        page3.wait_for_function("() => !!document.getElementById('brief-toggle-btn') && document.readyState === 'complete'")
+        assert len(held_profile) == 1
+
+        # (d) Clicking #btn-prefill while GET /api/profile is still pending shows loading toast
+        page3.click("#brief-toggle-btn")
+        page3.click("#btn-prefill")
+        pending_toast = page3.locator("#toast-container .jp-toast", has_text="Profil en cours de chargement, veuillez patienter.")
+        pending_toast.wait_for(state="visible")
+
+        # User saves early brief BEFORE GET /api/profile resolves -> briefDirty + late GET preserves full profile + active user brief
+        page3.fill("#brief-input", "Early User Brief")
+        with page3.expect_response("**/api/profile/brief"):
+            page3.locator("#brief-input").blur()
+
+        page3.fill("#brief-input", "Ma saisie active en cours")
+        held_profile[0].fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "profile": {
+                        "user_id": "usr_3",
+                        "target_roles": ["Staff Designer"],
+                        "skills": ["Figma"],
+                        "remote_preference": "hybrid",
+                        "bio": "Bio complète",
+                        "ideal_job_brief": "Ancien brief serveur",
+                    }
+                }
+            ),
+        )
+        page3.wait_for_function("async () => (await import('/static/js/state.js')).getState().profile?.user_id === 'usr_3'")
+        hydrated_profile = page3.evaluate(
+            """async () => {
+                const { getState } = await import('/static/js/state.js');
+                return getState().profile;
+            }"""
+        )
+        assert hydrated_profile["user_id"] == "usr_3"
+        assert hydrated_profile["target_roles"] == ["Staff Designer"]
+        assert hydrated_profile["skills"] == ["Figma"]
+        assert hydrated_profile["remote_preference"] == "hybrid"
+        assert hydrated_profile["bio"] == "Bio complète"
+        assert hydrated_profile["ideal_job_brief"] == "Early User Brief"
+        assert page3.locator("#brief-input").input_value() == "Ma saisie active en cours"
+
+        # (e) Partial renderFeedView snapshot omitting profile preserves active dot/preview/input
+        page3.evaluate(
+            """async () => {
+                const { renderFeedView } = await import('/static/js/views/feed.js');
+                renderFeedView({ opportunities: [], feedFilters: { onlyNew: false, sources: [], modes: [], regions: [], type: 'all', sortBy: 'date', hideAlternance: true } });
+            }"""
+        )
+        assert page3.locator("#brief-dot").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(21, 128, 61)"
+        assert "Early User Brief" in page3.locator("#brief-preview-text").inner_text()
+        assert page3.locator("#brief-input").input_value() == "Ma saisie active en cours"
+
+        # Calling renderFeedView with profileError state never crashes and resets dot
+        page3.evaluate(
+            """async () => {
+                const { setProfile } = await import('/static/js/state.js');
+                const { renderFeedView } = await import('/static/js/views/feed.js');
+                setProfile(null, 'Profil down');
+                renderFeedView({ opportunities: [], feedFilters: { onlyNew: false, sources: [], modes: [], regions: [], type: 'all', sortBy: 'date', hideAlternance: true } });
+            }"""
+        )
+        assert page3.locator("#brief-dot").evaluate("el => getComputedStyle(el).backgroundColor") != "rgb(21, 128, 61)"
+        assert errors3 == []
+    finally:
+        ctx3.close()
+
+
+def test_brief_drawer_ranking_loop_fallback_honesty_and_mobile(browser, live_server_url):
+    context, page = _new_isolated_page(browser)
+    errors = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+
+    base_opps = [
+        {
+            "id": "rk-low",
+            "source": "indeed",
+            "opportunity_type": "offer",
+            "title": "Brand Designer",
+            "company": "OnSite Corp",
+            "location": "Paris, France",
+            "remote_policy": "onsite",
+            "published_at": "2026-11-11T12:00:00+00:00",
+            "discovered_at": "2026-11-11T12:00:00+00:00",
+            "url": "https://example.com/rk-low",
+            "score": 40,
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "rk-mid",
+            "source": "linkedin",
+            "opportunity_type": "offer",
+            "title": "Product Designer",
+            "company": "Mid Studio",
+            "location": "Lyon, France",
+            "remote_policy": "hybrid",
+            "published_at": "2026-11-11T11:00:00+00:00",
+            "discovered_at": "2026-11-11T11:00:00+00:00",
+            "url": "https://example.com/rk-mid",
+            "score": 55,
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "rk-top",
+            "source": "wttj",
+            "opportunity_type": "offer",
+            "title": "Lead Design System",
+            "company": "Porcelain Tech",
+            "location": "Paris, France",
+            "remote_policy": "full",
+            "published_at": "2026-11-11T10:00:00+00:00",
+            "discovered_at": "2026-11-11T10:00:00+00:00",
+            "url": "https://example.com/rk-top",
+            "score": 30,
+            "status": "new",
+            "is_seen": False,
+        },
+    ]
+
+    gemini_ranked_opps = [
+        {
+            **base_opps[0],
+            "score": 45,
+            "raw_metadata": {"ai_match": {"verdict": "Sur site sans Design System.", "provider_used": "gemini", "used_fallback": False}},
+        },
+        {
+            **base_opps[1],
+            "score": 74,
+            "raw_metadata": {"ai_match": {"verdict": "Bon rôle produit mais hybride.", "provider_used": "gemini", "used_fallback": False}},
+        },
+        {
+            **base_opps[2],
+            "score": 94,
+            "raw_metadata": {"ai_match": {"verdict": "Idéal : Lead Design System Figma full remote.", "provider_used": "gemini", "used_fallback": False}},
+        },
+    ]
+
+    opps_mode = {"mode": "base"}
+    rank_requests = []
+    held_rank = []
+
+    def handle_opps(route):
+        if opps_mode["mode"] == "fail":
+            route.fulfill(status=500, content_type="application/json", body='{"detail":"refresh opps down"}')
+            return
+        payload = gemini_ranked_opps if opps_mode["mode"] == "gemini" else base_opps
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+    def handle_rank(route):
+        rank_requests.append(route.request.post_data_json)
+        held_rank.append(route)
+
+    _mock_base_apis(page)
+    page.unroute("**/api/opportunities*")
+    page.route("**/api/opportunities*", handle_opps)
+    page.route("**/api/ai/rank-by-brief", handle_rank)
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+
+        # Initial sort is date -> rk-low first
+        initial_order = page.locator("#feed-list article[data-opp-id]").evaluate_all(
+            "els => els.map(el => el.getAttribute('data-opp-id'))"
+        )
+        assert initial_order == ["rk-low", "rk-mid", "rk-top"]
+
+        # 1. Empty brief -> stays open, error toast, 0 POST calls
+        page.click("#brief-toggle-btn")
+        page.fill("#brief-input", "   ")
+        page.click("#btn-run-gemini")
+        assert len(rank_requests) == 0
+        assert page.locator("#brief-drawer").is_visible()
+        assert page.locator("#toast-container .jp-toast-error").last.is_visible()
+
+        # 2. Single-flight loading state + readOnly input + Gemini OK -> auto-collapse, focus restored, sortBy='score', badges + #F7F5F0, Gemini toast
+        page.fill("#brief-input", "Lead Design System Figma full remote")
+        page.locator("#btn-run-gemini").focus()
+        page.keyboard.press("Enter")
+        page.wait_for_function("() => document.getElementById('btn-run-gemini')?.disabled === true")
+        assert page.locator("#btn-run-gemini").inner_text() == "Analyse en cours..."
+        assert page.locator("#btn-run-gemini").get_attribute("aria-busy") == "true"
+        assert page.locator("#btn-prefill").is_disabled()
+        assert page.locator("#brief-input").evaluate("el => el.readOnly") is True
+        # Duplicate click while in flight is ignored
+        page.locator("#btn-run-gemini").click(force=True)
+        assert len(rank_requests) == 1
+        assert rank_requests[0] == {"brief": "Lead Design System Figma full remote", "limit": 100}
+
+        opps_mode["mode"] = "gemini"
+        with page.expect_response("**/api/opportunities?limit=100"):
+            held_rank.pop().fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "status": "success",
+                        "total_evaluated": 3,
+                        "updated_count": 3,
+                        "provider_used": "gemini",
+                        "used_fallback": False,
+                        "fallback_reason": None,
+                        "results": [
+                            {"id": "rk-top", "score": 94, "verdict": "Idéal : Lead Design System Figma full remote.", "provider_used": "gemini", "used_fallback": False},
+                            {"id": "rk-mid", "score": 74, "verdict": "Bon rôle produit mais hybride.", "provider_used": "gemini", "used_fallback": False},
+                            {"id": "rk-low", "score": 45, "verdict": "Sur site sans Design System.", "provider_used": "gemini", "used_fallback": False},
+                        ],
+                    }
+                ),
+            )
+
+        page.locator("#brief-drawer").wait_for(state="hidden")
+        assert page.evaluate("() => document.activeElement?.id") == "brief-toggle-btn"
+        assert page.locator("#brief-input").evaluate("el => el.readOnly") is False
+        assert page.locator("#filter-sort").input_value() == "score"
+        assert page.locator("#btn-run-gemini").is_enabled()
+        assert page.locator("#btn-run-gemini").get_attribute("aria-busy") is None
+        assert page.locator("#btn-run-gemini").inner_text() == "Re-calculer le classement Gemini"
+        assert page.locator("#btn-prefill").is_enabled()
+
+        sorted_order = page.locator("#feed-list article[data-opp-id]").evaluate_all(
+            "els => els.map(el => el.getAttribute('data-opp-id'))"
+        )
+        assert sorted_order == ["rk-top", "rk-mid", "rk-low"]
+        top_callout = page.locator('[data-opp-id="rk-top"] [data-ai-callout]')
+        assert "Gemini :" in top_callout.inner_text()
+        assert top_callout.evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(247, 245, 240)"
+        assert page.locator('[data-opp-id="rk-top"] [data-score-badge]').inner_text() == "94% Match"
+        assert page.locator("#toast-container .jp-toast-success").last.is_visible()
+        assert "Gemini" in page.locator("#toast-container .jp-toast-success").last.inner_text()
+
+        # 3. Error 500 on POST /api/ai/rank-by-brief -> drawer stays open, sortBy untouched, aria-busy cleared
+        page.select_option("#filter-sort", "date")
+        page.click("#brief-toggle-btn")
+        page.click("#btn-run-gemini")
+        page.wait_for_function("() => document.getElementById('btn-run-gemini')?.getAttribute('aria-busy') === 'true'")
+        held_rank.pop().fulfill(
+            status=500,
+            content_type="application/json",
+            body='{"detail":"Quota Gemini dépassé"}',
+        )
+        page.wait_for_function("() => !document.getElementById('btn-run-gemini')?.hasAttribute('aria-busy')")
+        err_toast = page.locator("#toast-container .jp-toast-error", has_text="Quota Gemini dépassé")
+        err_toast.wait_for(state="visible")
+        assert page.locator("#brief-drawer").is_visible()
+        assert page.locator("#filter-sort").input_value() == "date"
+        assert page.locator("#btn-run-gemini").get_attribute("aria-busy") is None
+        assert page.locator("#btn-run-gemini").is_enabled()
+
+        # 4. Mixed batch fallback (provider_used='gemini', used_fallback=True) + /api/opportunities 500 -> results merge fallback + honest NFR3 toast
+        opps_mode["mode"] = "fail"
+        page.click("#btn-run-gemini")
+        page.wait_for_function("() => document.getElementById('btn-run-gemini')?.getAttribute('aria-busy') === 'true'")
+        with page.expect_response("**/api/opportunities?limit=100"):
+            held_rank.pop().fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "status": "success",
+                        "total_evaluated": 3,
+                        "updated_count": 3,
+                        "provider_used": "gemini",
+                        "used_fallback": True,
+                        "fallback_reason": "Lot 2 : Timeout Gemini (35s)",
+                        "results": [
+                            {"id": "rk-mid", "score": 91, "verdict": "Lot 1 Gemini OK.", "provider_used": "gemini", "used_fallback": False, "fallback_reason": None},
+                            {"id": "rk-top", "score": 66, "verdict": "Match sémantique (2 mots-clés)", "provider_used": "heuristic", "used_fallback": True, "fallback_reason": "Lot 2 : Timeout Gemini (35s)"},
+                            {"id": "rk-low", "score": 25, "verdict": "Match sémantique faible", "provider_used": "heuristic", "used_fallback": True, "fallback_reason": "Lot 2 : Timeout Gemini (35s)"},
+                        ],
+                    }
+                ),
+            )
+
+        page.locator("#brief-drawer").wait_for(state="hidden")
+        assert page.locator("#filter-sort").input_value() == "score"
+        merged_order = page.locator("#feed-list article[data-opp-id]").evaluate_all(
+            "els => els.map(el => el.getAttribute('data-opp-id'))"
+        )
+        assert merged_order == ["rk-mid", "rk-top", "rk-low"]
+        assert "Gemini :" in page.locator('[data-opp-id="rk-mid"] [data-ai-callout]').inner_text()
+        assert "Synthèse :" in page.locator('[data-opp-id="rk-top"] [data-ai-callout]').inner_text()
+        assert "Gemini" not in page.locator('[data-opp-id="rk-top"] [data-ai-callout]').inner_text()
+
+        mixed_toast = page.locator("#toast-container .jp-toast:not(.jp-toast-error):not(.jp-toast-success)").last
+        mixed_toast.wait_for(state="visible")
+        mixed_toast_txt = mixed_toast.inner_text()
+        assert "repli heuristique" in mixed_toast_txt.lower()
+        assert "Lot 2 : Timeout Gemini (35s)" in mixed_toast_txt
+
+        # 5. Pure heuristic fallback (provider_used='heuristic', used_fallback=True) -> never labeled Gemini success
+        opps_mode["mode"] = "base"
+        page.select_option("#filter-sort", "date")
+        page.click("#brief-toggle-btn")
+        page.click("#btn-run-gemini")
+        page.wait_for_function("() => document.getElementById('btn-run-gemini')?.getAttribute('aria-busy') === 'true'")
+        with page.expect_response("**/api/opportunities?limit=100"):
+            held_rank.pop().fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "status": "success",
+                        "total_evaluated": 3,
+                        "updated_count": 3,
+                        "provider_used": "heuristic",
+                        "used_fallback": True,
+                        "fallback_reason": "Clé API Gemini absente",
+                        "results": [
+                            {"id": "rk-top", "score": 82, "verdict": "Match mots-clés", "provider_used": "heuristic", "used_fallback": True},
+                        ],
+                    }
+                ),
+            )
+        page.locator("#brief-drawer").wait_for(state="hidden")
+        assert page.locator("#filter-sort").input_value() == "score"
+        heur_toast = page.locator("#toast-container .jp-toast:not(.jp-toast-error):not(.jp-toast-success)").last
+        heur_toast.wait_for(state="visible")
+        assert "Repli heuristique local" in heur_toast.inner_text()
+        assert "Clé API Gemini absente" in heur_toast.inner_text()
+
+        # 5b. Empty feed (total_evaluated: 0) with /api/opportunities 500 -> no false "vue locale mise à jour" suffix
+        opps_mode["mode"] = "fail"
+        page.click("#brief-toggle-btn")
+        page.click("#btn-run-gemini")
+        page.wait_for_function("() => document.getElementById('btn-run-gemini')?.getAttribute('aria-busy') === 'true'")
+        with page.expect_response("**/api/opportunities?limit=100"):
+            held_rank.pop().fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "status": "success",
+                        "total_evaluated": 0,
+                        "updated_count": 0,
+                        "results": [],
+                        "provider_used": "heuristic",
+                        "used_fallback": False,
+                        "fallback_reason": None,
+                        "message": "Aucune opportunité active en base à évaluer.",
+                    }
+                ),
+            )
+        page.locator("#brief-drawer").wait_for(state="hidden")
+        empty_toast = page.locator("#toast-container .jp-toast", has_text="Aucune opportunité active en base à évaluer.")
+        empty_toast.wait_for(state="visible")
+        assert "vue locale mise à jour" not in empty_toast.inner_text()
+
+        # 5c. Mixed-case 'Gemini', explicit updated_count 0, item-level fallback_reason, and invalid score resilience
+        opps_mode["mode"] = "base"
+        page.click("#brief-toggle-btn")
+        page.click("#btn-run-gemini")
+        page.wait_for_function("() => document.getElementById('btn-run-gemini')?.getAttribute('aria-busy') === 'true'")
+        with page.expect_response("**/api/opportunities?limit=100"):
+            held_rank.pop().fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "status": "success",
+                        "total_evaluated": 2,
+                        "updated_count": 0,
+                        "provider_used": "Gemini",
+                        "used_fallback": False,
+                        "fallback_reason": None,
+                        "results": [
+                            {"id": "rk-top", "score": 90, "verdict": "Top", "provider_used": " Gemini ", "used_fallback": False},
+                            {"id": "rk-mid", "score": 70, "verdict": "Mid", "provider_used": "Gemini", "used_fallback": False},
+                        ],
+                    }
+                ),
+            )
+        page.locator("#brief-drawer").wait_for(state="hidden")
+        zero_count_toast = page.locator("#toast-container .jp-toast-success", has_text="0 opportunité classée")
+        zero_count_toast.wait_for(state="visible")
+
+        # 5c2. provider_used='gemini' + used_fallback=True with zero real Gemini items & non-numeric updated_count falls back to item reason + total_evaluated
+        page.click("#brief-toggle-btn")
+        page.click("#btn-run-gemini")
+        page.wait_for_function("() => document.getElementById('btn-run-gemini')?.getAttribute('aria-busy') === 'true'")
+        with page.expect_response("**/api/opportunities?limit=100"):
+            held_rank.pop().fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "status": "success",
+                        "total_evaluated": 2,
+                        "updated_count": "not-a-number",
+                        "provider_used": "gemini",
+                        "used_fallback": True,
+                        "fallback_reason": "",
+                        "results": [
+                            {"id": "rk-top", "score": 61, "verdict": "Heur 1", "provider_used": "heuristic", "used_fallback": True, "fallback_reason": "Lot 1 : Item fallback reason"},
+                            {"id": "rk-mid", "score": 49, "verdict": "Heur 2", "provider_used": "heuristic", "used_fallback": True},
+                        ],
+                    }
+                ),
+            )
+        page.locator("#brief-drawer").wait_for(state="hidden")
+        zero_gemini_fallback_toast = page.locator("#toast-container .jp-toast", has_text="Lot 1 : Item fallback reason")
+        zero_gemini_fallback_toast.wait_for(state="visible")
+        zero_gemini_txt = zero_gemini_fallback_toast.inner_text()
+        assert "Repli heuristique local appliqué (2 opportunités classées)" in zero_gemini_txt
+        assert "partiel Gemini" not in zero_gemini_txt
+
+        # Validate mergeRankingResultsIntoOpportunities ignores boolean/whitespace/array scores while accepting 0/'88'
+        merge_check = page.evaluate(
+            """async () => {
+                const { mergeRankingResultsIntoOpportunities } = await import('/static/js/views/feed.js');
+                const opps = [
+                    { id: 'a', score: 42 },
+                    { id: 'b', score: 43 },
+                    { id: 'c', score: 44 },
+                    { id: 'd', score: 45 },
+                ];
+                return mergeRankingResultsIntoOpportunities(opps, {
+                    results: [
+                        { id: 'a', score: true },
+                        { id: 'b', score: '   ' },
+                        { id: 'c', score: [95] },
+                        { id: 'd', score: '88' },
+                    ],
+                });
+            }"""
+        )
+        assert [item["score"] for item in merge_check] == [42, 43, 44, 88]
+
+        # 5d. Held PUT /api/profile/brief serialization before POST /api/ai/rank-by-brief
+        held_put = []
+        rank_seen_after_put = {"put_resolved": False, "rank_saw_put_resolved": False}
+        page.route("**/api/profile/brief", lambda r: held_put.append(r))
+        page.unroute("**/api/ai/rank-by-brief")
+
+        def handle_serialized_rank(route):
+            rank_seen_after_put["rank_saw_put_resolved"] = rank_seen_after_put["put_resolved"]
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "status": "success",
+                        "total_evaluated": 1,
+                        "updated_count": 1,
+                        "provider_used": "gemini",
+                        "used_fallback": False,
+                        "results": [{"id": "rk-top", "score": 95, "verdict": "Top", "provider_used": "gemini", "used_fallback": False}],
+                    }
+                ),
+            )
+
+        page.route("**/api/ai/rank-by-brief", handle_serialized_rank)
+        page.click("#brief-toggle-btn")
+        page.fill("#brief-input", "Serialized brief edit")
+        with page.expect_request("**/api/profile/brief"):
+            page.locator("#brief-input").blur()
+        deadline = time.monotonic() + 2.0
+        while len(held_put) < 1 and time.monotonic() < deadline:
+            page.evaluate("() => new Promise(resolve => setTimeout(resolve, 0))")
+        assert len(held_put) == 1
+        page.click("#btn-run-gemini")
+        page.wait_for_function("() => document.getElementById('btn-run-gemini')?.disabled === true")
+        assert rank_seen_after_put["rank_saw_put_resolved"] is False
+
+        rank_seen_after_put["put_resolved"] = True
+        with page.expect_response("**/api/ai/rank-by-brief"):
+            held_put.pop().fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"status": "saved", "ideal_job_brief": "Serialized brief edit"}),
+            )
+        page.locator("#brief-drawer").wait_for(state="hidden")
+        assert rank_seen_after_put["rank_saw_put_resolved"] is True
+
+        # Drag-cancel on #btn-prefill (pointerdown on button -> blur -> pointerup outside) triggers auto-save
+        page.click("#brief-toggle-btn")
+        page.fill("#brief-input", "Drag cancel saved brief")
+        page.evaluate(
+            """() => {
+                const input = document.getElementById('brief-input');
+                const btn = document.getElementById('btn-prefill');
+                btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                input.blur();
+            }"""
+        )
+        assert len(held_put) == 0
+        with page.expect_request("**/api/profile/brief"):
+            page.evaluate("() => document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))")
+        deadline = time.monotonic() + 2.0
+        while len(held_put) < 1 and time.monotonic() < deadline:
+            page.evaluate("() => new Promise(resolve => setTimeout(resolve, 0))")
+        assert len(held_put) == 1
+        assert held_put[0].request.post_data_json == {"brief": "Drag cancel saved brief"}
+        held_put.pop().fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"status": "saved", "ideal_job_brief": "Drag cancel saved brief"}),
+        )
+        assert errors == []
+    finally:
+        context.close()
+
+    # 6. Mobile 375x812 (collapsed + expanded) & offline Tailwind CDN .hidden check + pageerror tracking
+    ctx_mob, page_mob = _new_isolated_page(browser, width=375, height=812)
+    errors_mob = []
+    page_mob.on("pageerror", lambda err: errors_mob.append(str(err)))
+    page_mob.route("https://cdn.tailwindcss.com/**", lambda r: r.abort())
+    _mock_base_apis(
+        page_mob,
+        profile={
+            "profile": {
+                "user_id": "usr_m",
+                "target_roles": ["Product Designer"],
+                "skills": ["Figma"],
+                "ideal_job_brief": "Brief très long pour tester la troncature sans débordement horizontal sur mobile 375px",
+            }
+        },
+    )
+    try:
+        page_mob.goto(live_server_url, wait_until="networkidle")
+
+        # Offline CSS rule #brief-drawer.hidden hides drawer even without CDN
+        assert not page_mob.locator("#brief-drawer").is_visible()
+        assert 38 <= page_mob.locator("#brief-box").bounding_box()["height"] <= 50
+        assert not page_mob.evaluate("() => document.documentElement.scrollWidth > window.innerWidth")
+
+        # Expanded on 375x812: 0 horizontal overflow and min font >= 12px
+        page_mob.click("#brief-toggle-btn")
+        assert page_mob.locator("#brief-drawer").is_visible()
+        assert page_mob.locator("#btn-prefill").is_visible()
+        assert page_mob.locator("#btn-run-gemini").is_visible()
+        assert not page_mob.evaluate("() => document.documentElement.scrollWidth > window.innerWidth")
+        min_font = page_mob.evaluate(
+            """() => {
+                let minPx = 999;
+                for (const el of document.querySelectorAll('#brief-box *')) {
+                    const style = getComputedStyle(el);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    const hasDirectText = Array.from(el.childNodes).some(
+                        n => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 0
+                    );
+                    if (hasDirectText) {
+                        minPx = Math.min(minPx, parseFloat(style.fontSize));
+                    }
+                }
+                return minPx;
+            }"""
+        )
+        assert min_font >= 12.0
+        assert errors_mob == []
+    finally:
+        ctx_mob.close()
+
+
+def test_brief_drawer_e2e_unmocked_sqlite_persistence(browser, live_server_url, monkeypatch, tmp_path):
+    from jobby.config import JobbyConfig, save_config
+
+    db_path = tmp_path / "e2e_brief_drawer.db"
+    cfg_path = tmp_path / "e2e_brief_config.yaml"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    save_config(
+        JobbyConfig(
+            target_roles=["Lead Product Designer"],
+            skills_keywords=["Figma", "Design System"],
+            remote_only=True,
+            ai_provider="gemini",
+            ai_api_key=None,
+            database_path=str(db_path),
+            digest_output_path=str(tmp_path / "digest.md"),
+        ),
+        config_path=cfg_path,
+    )
+
+    storage = Storage(db_path=db_path)
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="e2e-opp-old-match",
+            source="wttj",
+            title="Lead Product Designer Design System",
+            company="Porcelain",
+            location="Paris, France",
+            remote_policy="full",
+            description="Figma, Design System, tokens, full remote.",
+            published_at="2026-11-10T10:00:00+00:00",
+            discovered_at="2026-11-10T10:00:00+00:00",
+            url="https://example.com/e2e-match",
+            score=20.0,
+        )
+    )
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="e2e-opp-new-unrelated",
+            source="indeed",
+            title="Comptable Junior",
+            company="Cabinet X",
+            location="Marseille, France",
+            remote_policy="onsite",
+            description="Saisie comptable sur site uniquement.",
+            published_at="2026-11-11T12:00:00+00:00",
+            discovered_at="2026-11-11T12:00:00+00:00",
+            url="https://example.com/e2e-unrelated",
+            score=50.0,
+        )
+    )
+
+    context, page = _new_isolated_page(browser)
+    errors = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+        assert "Aucun brief actif" in page.locator("#brief-preview-text").inner_text()
+
+        # Initially sorted by date: unrelated newer opp first
+        assert page.locator("#feed-list article[data-opp-id]").first.get_attribute("data-opp-id") == "e2e-opp-new-unrelated"
+
+        # Open drawer, prefill from profile, blur -> persists to SQLite across reload
+        page.click("#brief-toggle-btn")
+        page.click("#btn-prefill")
+        prefilled = page.locator("#brief-input").input_value()
+        assert "Lead Product Designer" in prefilled
+        assert "Figma, Design System" in prefilled
+        assert "100% Remote" in prefilled
+
+        with page.expect_response("**/api/profile/brief"):
+            page.locator("#brief-input").blur()
+
+        page.reload(wait_until="networkidle")
+        assert page.locator("#brief-dot").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(21, 128, 61)"
+        assert "Lead Product Designer" in page.locator("#brief-preview-text").inner_text()
+
+        # Open drawer, launch real POST /api/ai/rank-by-brief (heuristic fallback without Gemini key)
+        page.click("#brief-toggle-btn")
+        with page.expect_response("**/api/opportunities?limit=100"):
+            page.click("#btn-run-gemini")
+
+        page.locator("#brief-drawer").wait_for(state="hidden")
+        assert page.locator("#filter-sort").input_value() == "score"
+
+        # Matching card now ranks first with #F7F5F0 Synthèse callout and honest fallback toast
+        assert page.locator("#feed-list article[data-opp-id]").first.get_attribute("data-opp-id") == "e2e-opp-old-match"
+        assert "Synthèse :" in page.locator('[data-opp-id="e2e-opp-old-match"] [data-ai-callout]').inner_text()
+        toast_el = page.locator("#toast-container .jp-toast:not(.jp-toast-error):not(.jp-toast-success)").last
+        toast_el.wait_for(state="visible")
+        assert "Repli heuristique local" in toast_el.inner_text()
+
+        # Reload confirms updated scores and ai_match persist in SQLite
+        page.reload(wait_until="networkidle")
+        page.select_option("#filter-sort", "score")
+        assert page.locator("#feed-list article[data-opp-id]").first.get_attribute("data-opp-id") == "e2e-opp-old-match"
+        assert "Synthèse :" in page.locator('[data-opp-id="e2e-opp-old-match"] [data-ai-callout]').inner_text()
+        assert errors == []
+    finally:
+        context.close()

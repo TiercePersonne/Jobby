@@ -483,11 +483,35 @@ async function hydrateInitialData() {
     setConfig(null, configRes.reason?.message || 'Configuration indisponible.');
   }
 
-  if (getState().profile === initialProfileRef) {
+  const currentProfile = getState().profile;
+  if (currentProfile === initialProfileRef) {
     if (profileRes.status === 'fulfilled') {
       setProfile(profileRes.value, null);
     } else {
       setProfile(null, profileRes.reason?.message || 'Profil indisponible.');
+    }
+  } else if (
+    profileRes.status === 'fulfilled' &&
+    currentProfile &&
+    !Object.hasOwn(currentProfile, 'user_id')
+  ) {
+    const rawVal = profileRes.value;
+    const fetchedProfile =
+      rawVal && typeof rawVal === 'object' && !Array.isArray(rawVal)
+        ? Object.hasOwn(rawVal, 'profile')
+          ? rawVal.profile
+          : rawVal
+        : null;
+    if (fetchedProfile && typeof fetchedProfile === 'object' && !Array.isArray(fetchedProfile)) {
+      setProfile(
+        {
+          ...fetchedProfile,
+          ideal_job_brief: Object.hasOwn(currentProfile, 'ideal_job_brief')
+            ? currentProfile.ideal_job_brief
+            : fetchedProfile.ideal_job_brief,
+        },
+        null
+      );
     }
   }
 }

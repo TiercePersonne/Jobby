@@ -259,6 +259,53 @@ def test_feed_filter_bar_warm_porcelain_markup(client):
     assert 'type="search"' not in filter_section
 
 
+def test_brief_drawer_warm_porcelain_markup(client):
+    html = client.get("/").text
+    assert "Tiroir Brief IA (Epic 2)" in html
+
+    feed_section = html.split('id="view-feed"', 1)[1].split('id="view-kanban"', 1)[0]
+    assert 'id="brief-box"' in feed_section
+    assert feed_section.index('id="brief-box"') < feed_section.index('id="feed-filter-bar"')
+
+    brief_section = feed_section.split('id="brief-box"', 1)[1].split('id="feed-filter-bar"', 1)[0]
+    for marker in [
+        'id="brief-toggle-btn"',
+        'aria-labelledby="brief-label brief-toggle-text"',
+        'aria-describedby="brief-preview-text"',
+        'id="brief-dot"',
+        'id="brief-preview-text"',
+        'id="brief-drawer"',
+        'role="region" aria-labelledby="brief-label"',
+        'id="brief-input"',
+        'id="btn-prefill"',
+        'id="btn-run-gemini"',
+        "Déplier &amp; affiner",
+        "Pré-remplir depuis Mon Profil",
+        "Re-calculer le classement Gemini",
+    ]:
+        assert marker in brief_section
+
+    assert "onclick=" not in brief_section
+    assert "<script" not in brief_section.lower()
+
+    drawer_section = brief_section.split('id="brief-drawer"', 1)[1]
+    assert "hidden" in brief_section.split('id="brief-drawer"', 1)[1].split(">", 1)[0]
+    assert len(re.findall(r"<button\b", drawer_section, flags=re.IGNORECASE)) == 2
+
+    css_text = client.get("/static/css/tokens.css").text
+    for css_marker in [
+        ".jp-brief-box",
+        ".jp-brief-header",
+        ".jp-brief-header:focus-visible",
+        "#brief-drawer.hidden",
+        ".jp-btn-secondary:disabled",
+    ]:
+        assert css_marker in css_text
+
+    api_js = client.get("/static/js/api.js").text
+    assert "export function rankOpportunitiesByBrief" in api_js
+
+
 def test_opportunity_status_canonicalization_and_seen_flag(client, monkeypatch, tmp_path):
     db_path = tmp_path / "server_status.db"
     monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))

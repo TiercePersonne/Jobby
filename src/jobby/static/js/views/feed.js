@@ -2,6 +2,8 @@ import {
   fetchOpportunities,
   markAllOpportunitiesSeen,
   markOpportunitySeen,
+  rankOpportunitiesByBrief,
+  saveProfileBrief,
   updateOpportunityStatus,
 } from '../api.js';
 import {
@@ -13,9 +15,11 @@ import {
   setFeedSort,
   setFeedType,
   setHideAlternance,
+  setIdealJobBrief,
   setLoadingFeed,
   setOnlyNew,
   setOpportunities,
+  setProfile,
   subscribe,
   syncOpportunitySeen,
   syncOpportunityStatus,
@@ -68,7 +72,50 @@ const STATUS_CHIPS = Object.freeze(
   })
 );
 
+const BRIEF_EMPTY_INVITE = 'Aucun brief actif — décrivez votre poste idéal pour classer le flux.';
+const BRIEF_TOGGLE_EXPAND_LABEL = 'Déplier & affiner';
+const BRIEF_TOGGLE_COLLAPSE_LABEL = 'Replier';
+const BRIEF_RUN_DEFAULT_LABEL = 'Re-calculer le classement Gemini';
+const BRIEF_RUN_BUSY_LABEL = 'Analyse en cours...';
+
+const REMOTE_PREF_LABELS = Object.freeze(
+  Object.assign(Object.create(null), {
+    full: '100% Remote',
+    hybrid: 'Hybride',
+    partial: 'Hybride',
+    onsite: 'Sur site',
+    'on-site': 'Sur site',
+    on_site: 'Sur site',
+  })
+);
+
+const REMOTE_PREF_SYNONYMS = Object.freeze(
+  Object.assign(Object.create(null), {
+    '100% Remote': [
+      '100% remote',
+      'full remote',
+      'full-remote',
+      '100% télétravail',
+      '100% teletravail',
+      'télétravail total',
+      'teletravail total',
+      'totalement à distance',
+      'totalement a distance',
+      'remote only',
+    ],
+    Hybride: ['hybride', 'hybrid', 'télétravail partiel', 'teletravail partiel'],
+    'Sur site': ['sur site', 'sur-site', 'présentiel', 'presentiel', 'on-site', 'onsite'],
+  })
+);
+
 let isMarkingAllSeen = false;
+let briefExpanded = false;
+let briefDirty = false;
+let isRankingBrief = false;
+let inFlightBriefSave = null;
+let inFlightSubmittedBrief = null;
+let lastKnownSavedBrief = '';
+let pendingBriefActionButton = null;
 const openAccordionIds = new Set();
 const transientOnlyNewOpenIds = new Set();
 const seenPendingIds = new Set();
@@ -513,6 +560,7 @@ export function renderFeedView(snapshot = getState()) {
   const countEl = document.getElementById('feed-count');
   const model = computeFeedViewModel(snapshot);
 
+  syncBriefBoxDom(snapshot);
   syncFilterBarDom(model.filters, model.newCount, model.sourceCounts);
 
   if (!listEl) return;
@@ -727,18 +775,597 @@ function bindFilterBarEvents() {
     }
   });
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    if (!isSourcesPopoverOpen()) return;
-    if (getState().activeModal !== null) return;
-
-    event.preventDefault();
-    setSourcesPopoverOpen(false, { restoreFocus: true });
-  });
-
   window.addEventListener('resize', () => {
     if (isSourcesPopoverOpen()) {
       positionSourcesPopover();
+    }
+  });
+}
+
+function getBriefElements() {
+  return {
+    box: document.getElementById('brief-box'),
+    toggleBtn: document.getElementById('brief-toggle-btn'),
+    toggleText: document.getElementById('brief-toggle-text'),
+    dot: document.getElementById('brief-dot'),
+    previewText: document.getElementById('brief-preview-text'),
+    drawer: document.getElementById('brief-drawer'),
+    input: document.getElementById('brief-input'),
+    btnPrefill: document.getElementById('btn-prefill'),
+    btnRunGemini: document.getElementById('btn-run-gemini'),
+  };
+}
+
+function isBriefDrawerOpen() {
+  const drawer = document.getElementById('brief-drawer');
+  if (!drawer || drawer.classList.contains('hidden')) return false;
+  return !drawer.closest('[data-view-panel].hidden');
+}
+
+function getTrimmedProfileBrief(snapshot) {
+  const raw = snapshot?.profile?.ideal_job_brief;
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function formatBriefPreview(briefText) {
+  if (!briefText) return BRIEF_EMPTY_INVITE;
+  const collapsed = briefText.replace(/\s+/g, ' ').trim();
+  return collapsed ? `« ${collapsed} »` : BRIEF_EMPTY_INVITE;
+}
+
+function syncBriefActionButtons() {
+  const { input, btnPrefill, btnRunGemini } = getBriefElements();
+  if (input) {
+    input.readOnly = isRankingBrief;
+  }
+  if (btnPrefill) {
+    btnPrefill.disabled = isRankingBrief;
+  }
+  if (btnRunGemini) {
+    btnRunGemini.disabled = isRankingBrief;
+    btnRunGemini.textContent = isRankingBrief ? BRIEF_RUN_BUSY_LABEL : BRIEF_RUN_DEFAULT_LABEL;
+    if (isRankingBrief) {
+      btnRunGemini.setAttribute('aria-busy', 'true');
+    } else {
+      btnRunGemini.removeAttribute('aria-busy');
+    }
+  }
+}
+
+function applyBriefDrawerVisibility(open) {
+  const { toggleBtn, toggleText, drawer } = getBriefElements();
+  if (!toggleBtn || !drawer) return false;
+  drawer.classList.toggle('hidden', !open);
+  toggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (toggleText) {
+    toggleText.textContent = open ? BRIEF_TOGGLE_COLLAPSE_LABEL : BRIEF_TOGGLE_EXPAND_LABEL;
+  }
+  return true;
+}
+
+function syncBriefBoxDom(snapshot = getState()) {
+  const { dot, previewText, input } = getBriefElements();
+  if (!applyBriefDrawerVisibility(briefExpanded)) return;
+
+  const hasProfileProp = Boolean(snapshot && Object.hasOwn(snapshot, 'profile'));
+  const activeBrief = hasProfileProp ? getTrimmedProfileBrief(snapshot) : lastKnownSavedBrief;
+  if (hasProfileProp) {
+    lastKnownSavedBrief = activeBrief;
+    if (input && input.value.trim() === activeBrief) {
+      briefDirty = false;
+    }
+  }
+
+  if (dot) {
+    dot.classList.toggle('is-active', Boolean(activeBrief));
+  }
+  if (previewText) {
+    previewText.textContent = formatBriefPreview(activeBrief);
+  }
+  if (
+    input &&
+    !briefDirty &&
+    !inFlightBriefSave &&
+    !isRankingBrief &&
+    input.value.trim() !== activeBrief
+  ) {
+    input.value = activeBrief;
+  }
+
+  syncBriefActionButtons();
+}
+
+function isBriefModified() {
+  const input = document.getElementById('brief-input');
+  if (!input) return false;
+  return briefDirty || input.value.trim() !== lastKnownSavedBrief;
+}
+
+async function saveBriefIfDirty() {
+  while (inFlightBriefSave) {
+    const pendingVal = inFlightSubmittedBrief;
+    const prevRes = await inFlightBriefSave;
+    const currentVal = document.getElementById('brief-input')?.value.trim() ?? '';
+    if (currentVal === pendingVal && prevRes !== null) {
+      return null;
+    }
+  }
+
+  const input = document.getElementById('brief-input');
+  if (!input || !isBriefModified()) {
+    briefDirty = false;
+    return null;
+  }
+
+  const submittedTrimmed = input.value.trim();
+  inFlightSubmittedBrief = submittedTrimmed;
+  const reqPromise = (async () => {
+    try {
+      const res = await saveProfileBrief(submittedTrimmed);
+      const savedText = typeof res?.ideal_job_brief === 'string' ? res.ideal_job_brief.trim() : '';
+      lastKnownSavedBrief = savedText;
+      if (input.value.trim() === submittedTrimmed) {
+        briefDirty = false;
+      }
+      const nextBrief = res?.ideal_job_brief ?? (submittedTrimmed || null);
+      if (
+        res?.profile &&
+        typeof res.profile === 'object' &&
+        !Array.isArray(res.profile) &&
+        !getState().profile?.user_id
+      ) {
+        setProfile({ ...res.profile, ideal_job_brief: nextBrief }, null);
+      } else {
+        setIdealJobBrief(nextBrief);
+      }
+      syncBriefBoxDom(getState());
+      return res;
+    } catch {
+      briefDirty = input.value.trim() !== lastKnownSavedBrief;
+      return null;
+    } finally {
+      if (inFlightBriefSave === reqPromise) {
+        inFlightBriefSave = null;
+        inFlightSubmittedBrief = null;
+      }
+    }
+  })();
+
+  inFlightBriefSave = reqPromise;
+  return reqPromise;
+}
+
+function setBriefDrawerOpen(open, { restoreFocus = false, skipAutoSave = false } = {}) {
+  const { toggleBtn, drawer, input } = getBriefElements();
+  if (!toggleBtn || !drawer) return;
+
+  const nextOpen = Boolean(open);
+  if (briefExpanded === nextOpen) return;
+
+  const shouldAutoSave = !nextOpen && !skipAutoSave && isBriefModified();
+  briefExpanded = nextOpen;
+
+  if (!nextOpen && (restoreFocus || drawer.contains(document.activeElement))) {
+    toggleBtn.focus();
+  }
+
+  applyBriefDrawerVisibility(nextOpen);
+
+  if (nextOpen) {
+    if (input && !briefDirty && !inFlightBriefSave && !isRankingBrief) {
+      const activeBrief = getTrimmedProfileBrief(getState());
+      if (input.value.trim() !== activeBrief) {
+        input.value = activeBrief;
+      }
+    }
+    input?.focus();
+  } else if (shouldAutoSave) {
+    saveBriefIfDirty();
+  }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function foldDiacritics(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function containsBriefTerm(normalizedExisting, term) {
+  const foldedHaystack = foldDiacritics(normalizedExisting);
+  const needle = foldDiacritics(term).replace(/\s+/g, ' ').trim();
+  if (!needle) return true;
+  const pattern = new RegExp(
+    `(^|[^\\p{L}\\p{N}_+#])${escapeRegExp(needle)}(?=$|[^\\p{L}\\p{N}_+#])`,
+    'iu'
+  );
+  return pattern.test(foldedHaystack);
+}
+
+function formatRemotePreferenceLabel(rawRemote) {
+  const cleaned = String(rawRemote || '').trim();
+  if (!cleaned) return '';
+  const key = cleaned.toLowerCase();
+  if (key === 'unknown' || key === 'none') return '';
+  return Object.hasOwn(REMOTE_PREF_LABELS, key) ? REMOTE_PREF_LABELS[key] : cleaned;
+}
+
+function isRemotePreferencePresent(normalizedExisting, remoteLabel) {
+  if (!remoteLabel) return true;
+  if (containsBriefTerm(normalizedExisting, remoteLabel)) return true;
+  const synonyms = REMOTE_PREF_SYNONYMS[remoteLabel];
+  if (!Array.isArray(synonyms)) return false;
+  return synonyms.some((syn) => containsBriefTerm(normalizedExisting, syn));
+}
+
+function uniqueCleanList(items) {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set();
+  const out = [];
+  items.forEach((raw) => {
+    const cleaned = String(raw ?? '').replace(/\s+/g, ' ').trim();
+    if (!cleaned) return;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(cleaned);
+  });
+  return out;
+}
+
+/**
+ * Builds or appends profile roles, skills, remote preference and bio into the Brief IA without duplication or overwriting.
+ */
+export function buildNonDestructiveBriefWithProfile(existingText, profile) {
+  if (!profile || typeof profile !== 'object') {
+    return { status: 'empty_profile', text: existingText || '' };
+  }
+
+  const roles = uniqueCleanList(profile.target_roles);
+  const skills = uniqueCleanList(profile.skills);
+  const remoteLabel = formatRemotePreferenceLabel(profile.remote_preference);
+  const bio = typeof profile.bio === 'string' ? profile.bio.replace(/\s+/g, ' ').trim() : '';
+
+  if (roles.length === 0 && skills.length === 0 && !remoteLabel && !bio) {
+    return { status: 'empty_profile', text: existingText || '' };
+  }
+
+  const currentRaw = typeof existingText === 'string' ? existingText : '';
+  const currentTrimmed = currentRaw.trim();
+  const normalizedExisting = currentTrimmed.replace(/\s+/g, ' ');
+
+  const missingRoles = currentTrimmed
+    ? roles.filter((role) => !containsBriefTerm(normalizedExisting, role))
+    : roles;
+  const missingSkills = currentTrimmed
+    ? skills.filter((skill) => !containsBriefTerm(normalizedExisting, skill))
+    : skills;
+  const includeRemote = Boolean(
+    remoteLabel && (!currentTrimmed || !isRemotePreferencePresent(normalizedExisting, remoteLabel))
+  );
+  const foldedExistingLower = foldDiacritics(normalizedExisting).toLowerCase();
+  const bioCore = bio.replace(/[.!?;,]+$/g, '').trim();
+  const foldedBioLower = foldDiacritics(bioCore || bio).toLowerCase();
+  const includeBio = Boolean(
+    bio &&
+      (!currentTrimmed ||
+        (!containsBriefTerm(normalizedExisting, bioCore || bio) &&
+          !(foldedBioLower.length >= 12 && foldedExistingLower.includes(foldedBioLower))))
+  );
+
+  const additions = [];
+  if (missingRoles.length > 0) {
+    additions.push(`Rôles visés : ${missingRoles.join(', ')}.`);
+  }
+  if (missingSkills.length > 0) {
+    additions.push(`Compétences : ${missingSkills.join(', ')}.`);
+  }
+  if (includeRemote) {
+    additions.push(`Mode souhaité : ${remoteLabel}.`);
+  }
+  if (includeBio) {
+    const bioSentence = /[.!?]$/.test(bio) ? bio : `${bio}.`;
+    additions.push(`Parcours : ${bioSentence}`);
+  }
+
+  if (additions.length === 0) {
+    return { status: 'already_present', text: currentRaw };
+  }
+
+  const nextText = currentTrimmed
+    ? `${currentRaw.trimEnd()}\n${additions.join('\n')}`
+    : additions.join('\n');
+  return { status: currentTrimmed ? 'appended' : 'filled', text: nextText };
+}
+
+function handlePrefillFromProfile() {
+  if (isRankingBrief) return;
+  const { input } = getBriefElements();
+  if (!input) return;
+
+  const { profile, profileError } = getState();
+  if (!profile && !profileError) {
+    showToast('Profil en cours de chargement, veuillez patienter.', 'info');
+    return;
+  }
+  const res = buildNonDestructiveBriefWithProfile(input.value, profile);
+  if (res.status === 'empty_profile') {
+    showToast(
+      profileError
+        ? 'Profil indisponible pour le pré-remplissage.'
+        : 'Aucune information de profil disponible à importer.',
+      'info'
+    );
+    return;
+  }
+  if (res.status === 'already_present') {
+    showToast('Les éléments du profil sont déjà présents dans le brief.', 'info');
+    return;
+  }
+
+  input.value = res.text;
+  briefDirty = input.value.trim() !== lastKnownSavedBrief;
+  input.focus();
+}
+
+/**
+ * Merges /api/ai/rank-by-brief results into cached opportunities if full feed refresh fails.
+ */
+export function mergeRankingResultsIntoOpportunities(opportunities, rankResult) {
+  const currentList = Array.isArray(opportunities) ? opportunities : [];
+  const results = Array.isArray(rankResult?.results) ? rankResult.results : [];
+  if (results.length === 0) return currentList;
+
+  const byId = new Map();
+  results.forEach((entry) => {
+    if (entry && typeof entry.id === 'string' && entry.id) {
+      byId.set(entry.id, entry);
+    }
+  });
+
+  return currentList.map((opp) => {
+    const ranked = byId.get(opp?.id);
+    if (!ranked) return opp;
+
+    const numericScore = Number(ranked.score);
+    const hasValidScore =
+      (typeof ranked.score === 'number' ||
+        (typeof ranked.score === 'string' && ranked.score.trim() !== '')) &&
+      Number.isFinite(numericScore);
+    const nextScore = hasValidScore ? numericScore : opp.score;
+    const verdict = typeof ranked.verdict === 'string' ? ranked.verdict.trim() : '';
+    const existingMeta =
+      opp.raw_metadata && typeof opp.raw_metadata === 'object' && !Array.isArray(opp.raw_metadata)
+        ? opp.raw_metadata
+        : {};
+
+    return {
+      ...opp,
+      score: nextScore,
+      score_reasons: verdict ? [verdict] : opp.score_reasons,
+      raw_metadata: {
+        ...existingMeta,
+        ai_match: {
+          ...ranked,
+          provider_used: ranked.provider_used ?? rankResult?.provider_used,
+          used_fallback: ranked.used_fallback ?? rankResult?.used_fallback,
+          fallback_reason: ranked.fallback_reason ?? rankResult?.fallback_reason ?? null,
+        },
+      },
+    };
+  });
+}
+
+function parseFiniteCount(raw) {
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function buildRankingToast(rankResult, refreshFailed) {
+  const resultsList = Array.isArray(rankResult?.results) ? rankResult.results : [];
+  const totalEvaluatedNum = parseFiniteCount(rankResult?.total_evaluated);
+  const totalEvaluated = totalEvaluatedNum !== null ? totalEvaluatedNum : resultsList.length;
+  const updatedCountNum = parseFiniteCount(rankResult?.updated_count);
+  const count = updatedCountNum !== null ? updatedCountNum : totalEvaluated;
+  const countLabel = `${count} opportunité${count > 1 ? 's' : ''} classée${count > 1 ? 's' : ''}`;
+  const refreshSuffix = refreshFailed
+    ? ' (rafraîchissement complet indisponible, vue locale mise à jour)'
+    : '';
+
+  if (totalEvaluated === 0 && resultsList.length === 0) {
+    const emptyMsg =
+      typeof rankResult?.message === 'string' && rankResult.message.trim()
+        ? rankResult.message.trim().replace(/\.$/, '')
+        : 'Aucune opportunité active à classer';
+    return { message: `${emptyMsg}.`, variant: 'info' };
+  }
+
+  const providerUsed = String(rankResult?.provider_used || '').trim().toLowerCase();
+  const hasFallbackItem = resultsList.some((item) => {
+    const itemProvider = String(item?.provider_used || '').trim().toLowerCase();
+    return item?.used_fallback === true || (itemProvider !== '' && itemProvider !== 'gemini');
+  });
+  const hasGeminiItem = resultsList.some((item) => {
+    const itemProvider = String(item?.provider_used || '').trim().toLowerCase();
+    return itemProvider === 'gemini' && item?.used_fallback !== true;
+  });
+  const usedFallback = Boolean(rankResult?.used_fallback) || hasFallbackItem;
+  const topReason =
+    typeof rankResult?.fallback_reason === 'string' ? rankResult.fallback_reason.trim() : '';
+  const firstItemReason =
+    resultsList
+      .map((item) => (typeof item?.fallback_reason === 'string' ? item.fallback_reason.trim() : ''))
+      .find(Boolean) || '';
+  const rawReason = topReason || firstItemReason;
+  const reasonText = rawReason.length > 140 ? `${rawReason.slice(0, 137)}...` : rawReason;
+
+  if (providerUsed === 'gemini' && !usedFallback) {
+    return {
+      message: `Analyse Gemini terminée : ${countLabel}${refreshSuffix}.`,
+      variant: refreshFailed ? 'info' : 'success',
+    };
+  }
+
+  if (providerUsed === 'gemini' && usedFallback && hasGeminiItem) {
+    const reasonPart = reasonText ? ` — ${reasonText}` : '';
+    return {
+      message: `Classement partiel Gemini avec repli heuristique local (${countLabel})${reasonPart}${refreshSuffix}.`,
+      variant: 'info',
+    };
+  }
+
+  if (usedFallback) {
+    const reasonPart = reasonText ? ` — ${reasonText}` : '';
+    return {
+      message: `Repli heuristique local appliqué (${countLabel})${reasonPart}${refreshSuffix}.`,
+      variant: 'info',
+    };
+  }
+
+  const engineLabel = providerUsed && providerUsed !== 'heuristic' ? providerUsed : 'heuristique local';
+  return {
+    message: `Classement ${engineLabel} terminé : ${countLabel}${refreshSuffix}.`,
+    variant: 'info',
+  };
+}
+
+async function handleRankByBrief() {
+  if (isRankingBrief) return;
+  const { input } = getBriefElements();
+  const briefText = (input?.value || '').trim();
+
+  if (!briefText) {
+    showToast('Veuillez saisir un brief avant de lancer le classement.', 'error');
+    input?.focus();
+    return;
+  }
+
+  isRankingBrief = true;
+  syncBriefActionButtons();
+
+  try {
+    if (inFlightBriefSave) {
+      await inFlightBriefSave.catch(() => null);
+    }
+
+    let rankResult;
+    try {
+      rankResult = await rankOpportunitiesByBrief(briefText, 100);
+    } catch {
+      // Error toast emitted by api.js; keep drawer open so user can edit and retry.
+      return;
+    }
+
+    lastKnownSavedBrief = briefText;
+    if (input && input.value.trim() === briefText) {
+      briefDirty = false;
+    }
+    setIdealJobBrief(briefText);
+
+    let nextOpportunities;
+    let refreshFailed = false;
+    try {
+      nextOpportunities = await fetchOpportunities({ limit: 100 });
+    } catch {
+      refreshFailed = true;
+      nextOpportunities = mergeRankingResultsIntoOpportunities(
+        getState().opportunities,
+        rankResult
+      );
+    }
+
+    setBriefDrawerOpen(false, { skipAutoSave: true, restoreFocus: true });
+    setFeedSort('score');
+    setOpportunities(nextOpportunities);
+
+    const { message, variant } = buildRankingToast(rankResult, refreshFailed);
+    showToast(message, variant);
+  } finally {
+    isRankingBrief = false;
+    syncBriefActionButtons();
+  }
+}
+
+function bindBriefDrawerEvents() {
+  const { toggleBtn, input, btnPrefill, btnRunGemini } = getBriefElements();
+  const briefActionButtons = [toggleBtn, btnPrefill, btnRunGemini].filter(Boolean);
+
+  briefActionButtons.forEach((btn) => {
+    btn.addEventListener('pointerdown', () => {
+      pendingBriefActionButton = btn;
+    });
+  });
+
+  const settlePendingActionPointer = (event) => {
+    const activeBtn = pendingBriefActionButton;
+    if (!activeBtn) return;
+    const isCancelled =
+      event.type === 'pointercancel' ||
+      !(event.target instanceof Node && activeBtn.contains(event.target));
+    pendingBriefActionButton = null;
+    if (isCancelled && isBriefDrawerOpen() && document.activeElement !== input) {
+      saveBriefIfDirty();
+    }
+  };
+  document.addEventListener('pointerup', settlePendingActionPointer);
+  document.addEventListener('pointercancel', settlePendingActionPointer);
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      setBriefDrawerOpen(!isBriefDrawerOpen());
+    });
+  }
+
+  if (input) {
+    input.addEventListener('input', () => {
+      briefDirty = input.value.trim() !== lastKnownSavedBrief;
+    });
+
+    input.addEventListener('blur', (event) => {
+      const nextTarget = event.relatedTarget;
+      if (pendingBriefActionButton || briefActionButtons.includes(nextTarget)) {
+        return;
+      }
+      saveBriefIfDirty();
+    });
+  }
+
+  if (btnPrefill) {
+    btnPrefill.addEventListener('click', () => {
+      handlePrefillFromProfile();
+    });
+  }
+
+  if (btnRunGemini) {
+    btnRunGemini.addEventListener('click', () => {
+      handleRankByBrief();
+    });
+  }
+}
+
+function bindFeedEscapeKey() {
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (getState().activeModal !== null) return;
+
+    if (isSourcesPopoverOpen()) {
+      event.preventDefault();
+      setSourcesPopoverOpen(false, { restoreFocus: true });
+      return;
+    }
+
+    if (isBriefDrawerOpen()) {
+      event.preventDefault();
+      setBriefDrawerOpen(false, { restoreFocus: true });
     }
   });
 }
@@ -916,6 +1543,13 @@ export function initFeedView() {
   seenPendingIds.clear();
   statusPendingRequests.clear();
   pendingFocusTarget = null;
+  briefExpanded = false;
+  briefDirty = false;
+  isRankingBrief = false;
+  inFlightBriefSave = null;
+  inFlightSubmittedBrief = null;
+  lastKnownSavedBrief = '';
+  pendingBriefActionButton = null;
 
   const listEl = document.getElementById('feed-list');
   if (listEl) {
@@ -994,24 +1628,31 @@ export function initFeedView() {
     });
   }
 
+  bindBriefDrawerEvents();
   bindFilterBarEvents();
+  bindFeedEscapeKey();
 
   let prev = getState();
   subscribe((snapshot) => {
     if (snapshot.activeView !== prev.activeView && snapshot.activeView !== 'feed') {
       setSourcesPopoverOpen(false);
+      setBriefDrawerOpen(false);
     }
     if (snapshot.feedFilters !== prev.feedFilters) {
       transientOnlyNewOpenIds.clear();
     }
-    const changed =
+    const profileChanged =
+      snapshot.profile !== prev.profile || snapshot.profileError !== prev.profileError;
+    const feedChanged =
       snapshot.opportunities !== prev.opportunities ||
       snapshot.feedFilters !== prev.feedFilters ||
       snapshot.isLoadingFeed !== prev.isLoadingFeed ||
       snapshot.feedError !== prev.feedError;
     prev = snapshot;
-    if (changed) {
+    if (feedChanged) {
       renderFeedView(snapshot);
+    } else if (profileChanged) {
+      syncBriefBoxDom(snapshot);
     }
   });
 

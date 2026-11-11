@@ -297,9 +297,14 @@ body {
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.jp-btn-secondary:hover {
+.jp-btn-secondary:hover:not(:disabled) {
   background-color: var(--surface-subtle);
   border-color: var(--border-strong);
+}
+
+.jp-btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* Cartes & Panneaux statiques (zéro box-shadow) */
@@ -429,8 +434,128 @@ body {
 [data-view-panel].hidden,
 .jp-modal-backdrop.hidden,
 .jp-popover.hidden,
+#brief-drawer.hidden,
 #sources-active-count.hidden {
   display: none;
+}
+
+/* Tiroir Brief IA (Warm Porcelain, ~44px replié, zéro box-shadow) */
+.jp-brief-box {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.jp-brief-header {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background-color: transparent;
+  border: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.3;
+  color: var(--ink-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.jp-brief-header:hover {
+  background-color: var(--surface-subtle);
+}
+
+.jp-brief-header:focus-visible {
+  outline-offset: -2px;
+  border-radius: var(--radius-lg);
+}
+
+.jp-brief-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 0%;
+}
+
+.jp-brief-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background-color: var(--border-strong);
+  flex-shrink: 0;
+}
+
+.jp-brief-dot.is-active {
+  background-color: var(--accent-sage);
+}
+
+.jp-brief-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-primary);
+  flex-shrink: 0;
+}
+
+.jp-brief-preview {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--ink-muted);
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jp-brief-toggle-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  background-color: var(--surface-subtle);
+  border: 1px solid var(--border-hairline);
+  color: var(--ink-primary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.jp-brief-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border-hairline);
+  background-color: var(--surface-card);
+}
+
+.jp-brief-textarea {
+  resize: vertical;
+  min-height: 78px;
+  line-height: 1.5;
+}
+
+.jp-brief-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#btn-run-gemini[aria-busy="true"] {
+  cursor: progress;
 }
 
 /* Barre de filtres combinables (Warm Porcelain, zéro box-shadow statique) */
@@ -867,6 +992,23 @@ body {
   .jp-nav-tab {
     padding: 6px 10px;
     font-size: var(--text-xs);
+  }
+
+  .jp-brief-header {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .jp-brief-summary {
+    gap: 8px;
+  }
+
+  .jp-brief-drawer {
+    padding: 10px 12px 12px;
+  }
+
+  .jp-brief-actions > button {
+    width: 100%;
   }
 
   .jp-filter-bar {

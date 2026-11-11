@@ -7,7 +7,25 @@
     <span id="feed-count" class="jp-label" aria-live="polite">Chargement...</span>
   </div>
 
-  <!-- Slot réservé : Tiroir Brief IA (Epic 2) -->
+  <!-- Tiroir Brief IA (Epic 2) -->
+  <div id="brief-box" class="jp-brief-box">
+    <button type="button" id="brief-toggle-btn" class="jp-brief-header" aria-expanded="false" aria-controls="brief-drawer" aria-labelledby="brief-label brief-toggle-text" aria-describedby="brief-preview-text">
+      <span class="jp-brief-summary">
+        <span id="brief-dot" class="jp-brief-dot" aria-hidden="true"></span>
+        <span id="brief-label" class="jp-brief-label">Brief IA</span>
+        <span id="brief-preview-text" class="jp-brief-preview">Aucun brief actif — décrivez votre poste idéal pour classer le flux.</span>
+      </span>
+      <span id="brief-toggle-text" class="jp-brief-toggle-chip">Déplier &amp; affiner</span>
+    </button>
+
+    <div id="brief-drawer" class="jp-brief-drawer hidden" role="region" aria-labelledby="brief-label">
+      <textarea id="brief-input" rows="3" class="jp-input jp-brief-textarea" aria-label="Description de votre poste idéal" placeholder="Décrivez votre poste idéal (rôle, séniorité, remote, stack, secteur, critères éliminatoires)..."></textarea>
+      <div class="jp-brief-actions">
+        <button type="button" id="btn-prefill" class="jp-btn-secondary">Pré-remplir depuis Mon Profil</button>
+        <button type="button" id="btn-run-gemini" class="jp-btn-primary">Re-calculer le classement Gemini</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Barre de filtres combinables (Story 1.2) -->
   <div id="feed-filter-bar" class="jp-filter-bar" role="region" aria-label="Filtres du flux">

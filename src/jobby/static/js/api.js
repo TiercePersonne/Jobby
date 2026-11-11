@@ -195,6 +195,16 @@ export function saveProfileBrief(brief) {
   });
 }
 
+export function rankOpportunitiesByBrief(brief, limit = 100) {
+  return request('/api/ai/rank-by-brief', {
+    method: 'POST',
+    body: {
+      brief,
+      limit,
+    },
+  });
+}
+
 export function updateOpportunityStatus(oppId, status) {
   return request(`/api/opportunities/${encodeURIComponent(oppId)}/status`, {
     method: 'PATCH',
