@@ -1,7 +1,6 @@
 # Jobby - Autonomous Job & Post Hunter Agent (Production Dockerfile)
 FROM python:3.11-slim
 
-# Set timezone and noninteractive frontend
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     JOBBY_DATABASE_PATH=/data/jobby.db \
@@ -13,20 +12,34 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
-    libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency configuration and source
+# Pre-install dependencies to maximize Docker layer cache
 COPY pyproject.toml README.md ./
-COPY src/ ./src/
-
-# Install python dependencies and project
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+    && pip install --no-cache-dir \
+        "beautifulsoup4>=4.15.0" \
+        "fastapi>=0.162.4" \
+        "httpx>=0.28.1" \
+        "jinja2>=3.1.6" \
+        "pillow>=13.0.0" \
+        "playwright>=1.49.0" \
+        "pydantic>=2.14.3" \
+        "pypdf>=5.0.0" \
+        "python-dateutil>=4.0.0" \
+        "python-multipart>=0.0.18" \
+        "pyyaml>=6.0.3" \
+        "rich>=15.0.0" \
+        "typer>=0.29.0" \
+        "uvicorn[standard]>=0.54.0"
 
 # Install Playwright Chromium with all needed system dependencies
 RUN playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy application source code (fast layer for updates)
+COPY src/ ./src/
+RUN pip install --no-cache-dir --no-deps -e .
 
 # Create persistent storage mount directory
 RUN mkdir -p /data
