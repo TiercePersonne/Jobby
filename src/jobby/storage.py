@@ -15,7 +15,9 @@ from jobby.models import JobOpportunity, OpportunityType
 class Storage:
     """Handles local SQLite storage and queries for job opportunities."""
 
-    def __init__(self, db_path: str | Path = "_bmad-output/jobby.db"):
+    def __init__(self, db_path: str | Path | None = None):
+        if db_path is None:
+            db_path = os.environ.get("JOBBY_DATABASE_PATH", "_bmad-output/jobby.db")
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()

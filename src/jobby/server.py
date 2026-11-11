@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import logging
+import os
 from pathlib import Path
+import secrets
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -11,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
+from starlette.responses import Response
 
 from jobby.ai_analyzer import analyze_post_heuristic, analyze_post_with_llm, detect_remote_policy
 from jobby.config import JobbyConfig, load_config, save_config
@@ -27,6 +31,39 @@ STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
 
 app = FastAPI(title="Jobby API", version="0.1.0")
+
+
+@app.middleware("http")
+async def basic_auth_middleware(request: Request, call_next):
+    auth_user = os.environ.get("JOBBY_AUTH_USER")
+    auth_pass = os.environ.get("JOBBY_AUTH_PASSWORD")
+    if not auth_user or not auth_pass:
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Basic "):
+        return Response(
+            content="Authentification requise pour accéder à Jobby",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="Jobby Pro"'},
+        )
+
+    try:
+        encoded = auth_header.split(" ", 1)[1]
+        decoded = base64.b64decode(encoded).decode("utf-8")
+        username, password = decoded.split(":", 1)
+        valid_user = secrets.compare_digest(username, auth_user)
+        valid_pass = secrets.compare_digest(password, auth_pass)
+        if not (valid_user and valid_pass):
+            raise ValueError("Identifiants incorrects")
+    except Exception:
+        return Response(
+            content="Identifiants invalides",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="Jobby Pro"'},
+        )
+
+    return await call_next(request)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

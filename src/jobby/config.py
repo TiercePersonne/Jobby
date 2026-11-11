@@ -39,7 +39,9 @@ class JobbyConfig(BaseModel):
     digest_output_path: str = Field(default="_bmad-output/latest_digest.md")
 
 
-def load_config(config_path: str | Path = "_bmad-output/jobby_config.yaml") -> JobbyConfig:
+def load_config(config_path: str | Path | None = None) -> JobbyConfig:
+    if config_path is None:
+        config_path = os.environ.get("JOBBY_CONFIG_PATH", "_bmad-output/jobby_config.yaml")
     path = Path(config_path)
     data = {}
     if path.exists():
@@ -49,6 +51,10 @@ def load_config(config_path: str | Path = "_bmad-output/jobby_config.yaml") -> J
                 data = loaded
 
     # Environment variables overrides
+    db_env = os.environ.get("JOBBY_DATABASE_PATH")
+    if db_env:
+        data["database_path"] = db_env
+
     li_at_env = os.environ.get("LINKEDIN_LI_AT")
     if li_at_env:
         data["linkedin_li_at"] = li_at_env
@@ -66,7 +72,9 @@ def load_config(config_path: str | Path = "_bmad-output/jobby_config.yaml") -> J
     return JobbyConfig(**data)
 
 
-def save_config(config: JobbyConfig, config_path: str | Path = "_bmad-output/jobby_config.yaml") -> None:
+def save_config(config: JobbyConfig, config_path: str | Path | None = None) -> None:
+    if config_path is None:
+        config_path = os.environ.get("JOBBY_CONFIG_PATH", "_bmad-output/jobby_config.yaml")
     path = Path(config_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:

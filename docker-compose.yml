@@ -1,0 +1,51 @@
+services:
+  jobby:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jobby:latest
+    container_name: jobby-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - JOBBY_DATABASE_PATH=/data/jobby.db
+      - JOBBY_CONFIG_PATH=/data/jobby_config.yaml
+      # Authentification optionnelle pour protéger l'accès public
+      - JOBBY_AUTH_USER=${JOBBY_AUTH_USER:-}
+      - JOBBY_AUTH_PASSWORD=${JOBBY_AUTH_PASSWORD:-}
+      # Clés d'APIs & sessions
+      - LINKEDIN_LI_AT=${LINKEDIN_LI_AT:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      - ./data:/data
+    networks:
+      - jobby-network
+
+  # Optionnel : Reverse Proxy Caddy pour HTTPS automatique sur votre nom de domaine
+  # Décommentez pour activer HTTPS automatique (requis pour PWA complète sur iOS/Android en production)
+  # caddy:
+  #   image: caddy:2-alpine
+  #   container_name: jobby-caddy
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   depends_on:
+  #     - jobby
+  #   networks:
+  #     - jobby-network
+
+networks:
+  jobby-network:
+    driver: bridge
+
+# volumes:
+#   caddy_data:
+#   caddy_config:

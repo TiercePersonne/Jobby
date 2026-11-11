@@ -52,3 +52,23 @@ def test_api_stats(client):
     assert response.status_code == 200
     data = response.json()
     assert "total" in data
+
+
+def test_basic_auth_middleware(monkeypatch):
+    monkeypatch.setenv("JOBBY_AUTH_USER", "admin")
+    monkeypatch.setenv("JOBBY_AUTH_PASSWORD", "secret123")
+    
+    with TestClient(app) as auth_client:
+        # Without credentials -> 401
+        res = auth_client.get("/")
+        assert res.status_code == 401
+        assert "Basic" in res.headers.get("www-authenticate", "")
+
+        # With wrong credentials -> 401
+        res = auth_client.get("/", auth=("admin", "wrong"))
+        assert res.status_code == 401
+
+        # With valid credentials -> 200
+        res = auth_client.get("/", auth=("admin", "secret123"))
+        assert res.status_code == 200
+

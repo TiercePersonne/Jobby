@@ -1,0 +1,16 @@
+# Configuration Caddy pour Jobby avec HTTPS automatique
+# Remplacez jobby.votredomaine.fr par votre sous-domaine pointant vers l'IP de votre VPS
+#
+# jobby.votredomaine.fr {
+#     reverse_proxy jobby:8000
+#
+#     # Compression gzip / zstd
+#     encode gzip zstd
+#
+#     # Headers de sécurité
+#     header {
+#         X-Content-Type-Options nosniff
+#         X-Frame-Options DENY
+#         Referrer-Policy strict-origin-when-cross-origin
+#     }
+# }
