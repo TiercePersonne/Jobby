@@ -35,6 +35,10 @@ app = FastAPI(title="Jobby API", version="0.1.0")
 
 @app.middleware("http")
 async def basic_auth_middleware(request: Request, call_next):
+    # Whitelist health checks and public PWA assets
+    if request.url.path in ["/manifest.json", "/sw.js", "/health", "/favicon.ico"] or request.url.path.startswith("/static/"):
+        return await call_next(request)
+
     auth_user = os.environ.get("JOBBY_AUTH_USER")
     auth_pass = os.environ.get("JOBBY_AUTH_PASSWORD")
     if not auth_user or not auth_pass:
@@ -91,6 +95,11 @@ class AITestRequest(BaseModel):
     api_key: Optional[str] = None
     ollama_url: Optional[str] = "http://localhost:11434"
     sample_text: Optional[str] = None
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 
 @app.get("/manifest.json")
