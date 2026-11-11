@@ -523,6 +523,8 @@ Voici un exemple de texte écrit par le candidat. Analyse son style (vocabulaire
             else:
                 sample_instruction = f"Adopte un ton : {writing_tone}. Pas de formules pompeuses, sois humain, direct et orienté valeur."
 
+            company_str = opportunity_data.get("company") or "L'équipe"
+            author_str = opportunity_data.get("author_name") or ""
             prompt = f"""Tu es le candidat lui-même. Rédige une lettre de motivation sur-mesure pour postuler à cette opportunité.
 
 --- CONSIGNES DE STYLE ---
@@ -547,8 +549,8 @@ CV :
 
 --- L'OFFRE / LE POST ---
 Titre : {opportunity_data.get('title')}
-Entreprise : {opportunity_data.get('company') or 'L\'équipe'}
-Contact / Recruteur : {opportunity_data.get('author_name') or ''}
+Entreprise : {company_str}
+Contact / Recruteur : {author_str}
 Contenu :
 \"\"\"
 {(opportunity_data.get('description') or '')[:3000]}
