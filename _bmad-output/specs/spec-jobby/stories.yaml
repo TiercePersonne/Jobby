@@ -1,0 +1,53 @@
+- id: "1"
+  title: "Core Data Models & Provider Architecture"
+  description: >-
+    Define the canonical JobOpportunity schema, the SQLite persistence layer,
+    and the abstract JobSourceProvider interface for extensible connectors.
+  spec_checkpoint: false
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Implement in Python using Pydantic and SQLite. Ensure provider registry allows
+    registering new sources dynamically.
+
+- id: "2"
+  title: "LinkedIn Hunter (Jobs & Hiring Posts)"
+  description: >-
+    Implement the LinkedIn provider capable of searching official job postings
+    and scanning social posts containing hiring keywords (CAP-1).
+  spec_checkpoint: true
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Support session cookies (li_at) and Playwright browser fallback. Implement
+    rate limiting and realistic delays to respect anti-bot measures.
+
+- id: "3"
+  title: "Multi-Source Connectors (WTTJ & HelloWork)"
+  description: >-
+    Implement provider plugins for Welcome to the Jungle and HelloWork to validate
+    the multi-source architecture (CAP-2).
+  spec_checkpoint: false
+  done_checkpoint: false
+  invoke_dev_with: >-
+    Use public search endpoints/APIs where available to avoid unnecessary browser overhead.
+
+- id: "4"
+  title: "Deduplication & Semantic Scoring Engine"
+  description: >-
+    Build the deduplication logic across providers and the scoring algorithm
+    matching opportunities against candidate preferences (CAP-3, CAP-4).
+  spec_checkpoint: false
+  done_checkpoint: false
+  invoke_dev_with: >-
+    Combine deterministic deduplication (company + title + location hash) and
+    keyword/profile relevance scoring.
+
+- id: "5"
+  title: "CLI Interface & Markdown / Alert Reporting"
+  description: >-
+    Create the CLI entry point (`jobby search`, `jobby list`) and automated report
+    generation in Markdown and console table formats (CAP-5).
+  spec_checkpoint: false
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Use Typer/Click and Rich for beautiful terminal output, and export structured
+    Markdown digests.
