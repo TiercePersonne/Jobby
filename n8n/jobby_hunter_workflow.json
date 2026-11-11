@@ -1,0 +1,104 @@
+{
+  "name": "Jobby — Chasseur Autonome & Alertes",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8,14 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Chaque jour ouvré (8h & 14h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://jobby:8000/api/webhooks/trigger-search",
+        "options": {}
+      },
+      "id": "call-jobby",
+      "name": "Déclencher la Chasse Jobby",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.new_opportunities }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "check-new",
+      "name": "Nouvelles opportunités ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "VOTRE_CHAT_ID_TELEGRAM",
+        "text": "=🎯 *Jobby — Nouvelles Opportunités !*\n\nJobby vient de détecter *{{ $json.new_opportunities }}* nouvelles opportunités adaptées à votre profil.\n\n👉 Connectez-vous à votre tableau de bord Jobby pour générer vos messages d'approche et lettres de motivation !",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-alert",
+      "name": "Alerte Telegram (Optionnel)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [920, 240]
+    }
+  ],
+  "connections": {
+    "Chaque jour ouvré (8h & 14h)": {
+      "main": [
+        [
+          {
+            "node": "Déclencher la Chasse Jobby",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Déclencher la Chasse Jobby": {
+      "main": [
+        [
+          {
+            "node": "Nouvelles opportunités ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nouvelles opportunités ?": {
+      "main": [
+        [
+          {
+            "node": "Alerte Telegram (Optionnel)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

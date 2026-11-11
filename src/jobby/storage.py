@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import json
-import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
+import json
+import os
 from pathlib import Path
+import sqlite3
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-from jobby.models import JobOpportunity, OpportunityType
+from jobby.models import Application, ApplicationStatus, JobOpportunity, MatchEvaluation, OpportunityType, User, UserProfile
 
 
 class Storage:
@@ -71,6 +72,73 @@ class Storage:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON opportunities (status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_score ON opportunities (score)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_discovered ON opportunities (discovered_at)")
+
+            # Users table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    email TEXT UNIQUE NOT NULL,
+                    full_name TEXT NOT NULL DEFAULT '',
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            # User profiles & CVs table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    user_id TEXT PRIMARY KEY,
+                    cv_filename TEXT,
+                    cv_text TEXT,
+                    portfolio_url TEXT,
+                    github_url TEXT,
+                    linkedin_url TEXT,
+                    bio TEXT,
+                    writing_sample TEXT,
+                    writing_tone TEXT,
+                    target_roles TEXT,
+                    skills TEXT,
+                    min_salary INTEGER,
+                    remote_preference TEXT,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+
+            # Application Kanban Pipeline tracking table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS applications (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    opportunity_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'saved',
+                    notes TEXT,
+                    contact_name TEXT,
+                    contact_email TEXT,
+                    salary_offered INTEGER,
+                    applied_at TEXT,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY(opportunity_id) REFERENCES opportunities(id) ON DELETE CASCADE
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_app_user ON applications (user_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_app_status ON applications (status)")
+
+            # Match evaluations table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS match_evaluations (
+                    user_id TEXT NOT NULL,
+                    opportunity_id TEXT NOT NULL,
+                    score REAL NOT NULL,
+                    verdict TEXT NOT NULL,
+                    strengths TEXT,
+                    weaknesses TEXT,
+                    pitch TEXT,
+                    cover_letter TEXT,
+                    PRIMARY KEY(user_id, opportunity_id)
+                )
+            """)
             conn.commit()
 
     def upsert_opportunity(self, opp: JobOpportunity) -> Tuple[bool, JobOpportunity]:
@@ -239,3 +307,314 @@ class Storage:
             post_intent=post_intent,
             ai_summary=ai_summary,
         )
+
+    # -------------------------------------------------------------
+    # User Management
+    # -------------------------------------------------------------
+    def create_user(self, user: User) -> User:
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO users (id, email, full_name, password_hash, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    user.id,
+                    user.email.strip().lower(),
+                    user.full_name,
+                    user.password_hash,
+                    user.created_at.isoformat(),
+                ),
+            )
+            conn.commit()
+        return user
+
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE lower(email) = lower(?)",
+                (email.strip(),),
+            ).fetchone()
+            if not row:
+                return None
+            return User(
+                id=row["id"],
+                email=row["email"],
+                full_name=row["full_name"],
+                password_hash=row["password_hash"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+            )
+
+    def get_user_by_id(self, user_id: str) -> Optional[User]:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if not row:
+                return None
+            return User(
+                id=row["id"],
+                email=row["email"],
+                full_name=row["full_name"],
+                password_hash=row["password_hash"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+            )
+
+    # -------------------------------------------------------------
+    # User Profile, CV & Tone of Voice
+    # -------------------------------------------------------------
+    def get_profile(self, user_id: str) -> Optional[UserProfile]:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM user_profiles WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            if not row:
+                return None
+            return UserProfile(
+                user_id=row["user_id"],
+                cv_filename=row["cv_filename"],
+                cv_text=row["cv_text"],
+                portfolio_url=row["portfolio_url"],
+                github_url=row["github_url"],
+                linkedin_url=row["linkedin_url"],
+                bio=row["bio"],
+                writing_sample=row["writing_sample"],
+                writing_tone=row["writing_tone"] or "naturel, direct, enthousiaste et percutant",
+                target_roles=json.loads(row["target_roles"]) if row["target_roles"] else [],
+                skills=json.loads(row["skills"]) if row["skills"] else [],
+                min_salary=row["min_salary"],
+                remote_preference=row["remote_preference"],
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+            )
+
+    def save_profile(self, profile: UserProfile) -> None:
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO user_profiles (
+                    user_id, cv_filename, cv_text, portfolio_url, github_url,
+                    linkedin_url, bio, writing_sample, writing_tone, target_roles,
+                    skills, min_salary, remote_preference, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    cv_filename = excluded.cv_filename,
+                    cv_text = excluded.cv_text,
+                    portfolio_url = excluded.portfolio_url,
+                    github_url = excluded.github_url,
+                    linkedin_url = excluded.linkedin_url,
+                    bio = excluded.bio,
+                    writing_sample = excluded.writing_sample,
+                    writing_tone = excluded.writing_tone,
+                    target_roles = excluded.target_roles,
+                    skills = excluded.skills,
+                    min_salary = excluded.min_salary,
+                    remote_preference = excluded.remote_preference,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    profile.user_id,
+                    profile.cv_filename,
+                    profile.cv_text,
+                    profile.portfolio_url,
+                    profile.github_url,
+                    profile.linkedin_url,
+                    profile.bio,
+                    profile.writing_sample,
+                    profile.writing_tone,
+                    json.dumps(profile.target_roles),
+                    json.dumps(profile.skills),
+                    profile.min_salary,
+                    profile.remote_preference,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            conn.commit()
+
+    # -------------------------------------------------------------
+    # Embedded Application Kanban Pipeline
+    # -------------------------------------------------------------
+    def add_application(self, app: Application) -> Application:
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO applications (
+                    id, user_id, opportunity_id, status, notes,
+                    contact_name, contact_email, salary_offered, applied_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    status = excluded.status,
+                    notes = excluded.notes,
+                    contact_name = excluded.contact_name,
+                    contact_email = excluded.contact_email,
+                    salary_offered = excluded.salary_offered,
+                    applied_at = excluded.applied_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    app.id,
+                    app.user_id,
+                    app.opportunity_id,
+                    app.status.value,
+                    app.notes,
+                    app.contact_name,
+                    app.contact_email,
+                    app.salary_offered,
+                    app.applied_at.isoformat() if app.applied_at else None,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            conn.commit()
+        return app
+
+    def get_applications(self, user_id: str) -> List[Application]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT a.*, o.*
+                FROM applications a
+                LEFT JOIN opportunities o ON a.opportunity_id = o.id
+                WHERE a.user_id = ?
+                ORDER BY a.updated_at DESC
+                """,
+                (user_id,),
+            ).fetchall()
+
+            apps = []
+            for row in rows:
+                opp = None
+                if row["title"]:  # Opportunity was joined
+                    opp = self._row_to_opportunity(row)
+                
+                applied_at = datetime.fromisoformat(row["applied_at"]) if row["applied_at"] else None
+                updated_at = datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else datetime.now(timezone.utc)
+                
+                apps.append(
+                    Application(
+                        id=row["id"],
+                        user_id=row["user_id"],
+                        opportunity_id=row["opportunity_id"],
+                        status=ApplicationStatus(row["status"]),
+                        notes=row["notes"],
+                        contact_name=row["contact_name"],
+                        contact_email=row["contact_email"],
+                        salary_offered=row["salary_offered"],
+                        applied_at=applied_at,
+                        updated_at=updated_at,
+                        opportunity=opp,
+                    )
+                )
+            return apps
+
+    def update_application_status(self, app_id: str, status: str, user_id: str) -> bool:
+        with self._connection() as conn:
+            applied_at_clause = ""
+            if status == ApplicationStatus.APPLIED.value:
+                applied_at_clause = ", applied_at = CURRENT_TIMESTAMP"
+            cur = conn.execute(
+                f"""
+                UPDATE applications
+                SET status = ?, updated_at = CURRENT_TIMESTAMP {applied_at_clause}
+                WHERE id = ? AND user_id = ?
+                """,
+                (status, app_id, user_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def update_application_notes(self, app_id: str, notes: str, user_id: str) -> bool:
+        with self._connection() as conn:
+            cur = conn.execute(
+                """
+                UPDATE applications
+                SET notes = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND user_id = ?
+                """,
+                (notes, app_id, user_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def delete_application(self, app_id: str, user_id: str) -> bool:
+        with self._connection() as conn:
+            cur = conn.execute(
+                "DELETE FROM applications WHERE id = ? AND user_id = ?",
+                (app_id, user_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    # -------------------------------------------------------------
+    # Match & Pitch Evaluations
+    # -------------------------------------------------------------
+    def save_match_evaluation(self, match: MatchEvaluation) -> None:
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO match_evaluations (
+                    user_id, opportunity_id, score, verdict,
+                    strengths, weaknesses, pitch, cover_letter
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, opportunity_id) DO UPDATE SET
+                    score = excluded.score,
+                    verdict = excluded.verdict,
+                    strengths = excluded.strengths,
+                    weaknesses = excluded.weaknesses,
+                    pitch = excluded.pitch,
+                    cover_letter = excluded.cover_letter
+                """,
+                (
+                    match.user_id,
+                    match.opportunity_id,
+                    match.score,
+                    match.verdict,
+                    json.dumps(match.strengths),
+                    json.dumps(match.weaknesses),
+                    match.pitch,
+                    match.cover_letter,
+                ),
+            )
+            conn.commit()
+
+    def get_match_evaluation(self, user_id: str, opportunity_id: str) -> Optional[MatchEvaluation]:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM match_evaluations WHERE user_id = ? AND opportunity_id = ?",
+                (user_id, opportunity_id),
+            ).fetchone()
+            if not row:
+                return None
+            return MatchEvaluation(
+                user_id=row["user_id"],
+                opportunity_id=row["opportunity_id"],
+                score=row["score"],
+                verdict=row["verdict"],
+                strengths=json.loads(row["strengths"]) if row["strengths"] else [],
+                weaknesses=json.loads(row["weaknesses"]) if row["weaknesses"] else [],
+                pitch=row["pitch"] or "",
+                cover_letter=row["cover_letter"] if "cover_letter" in row.keys() and row["cover_letter"] else "",
+            )
+
+    def get_user_matches(self, user_id: str) -> Dict[str, MatchEvaluation]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM match_evaluations WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+            result = {}
+            for r in rows:
+                result[r["opportunity_id"]] = MatchEvaluation(
+                    user_id=r["user_id"],
+                    opportunity_id=r["opportunity_id"],
+                    score=r["score"],
+                    verdict=r["verdict"],
+                    strengths=json.loads(r["strengths"]) if r["strengths"] else [],
+                    weaknesses=json.loads(r["weaknesses"]) if r["weaknesses"] else [],
+                    pitch=r["pitch"] or "",
+                    cover_letter=r["cover_letter"] if "cover_letter" in r.keys() and r["cover_letter"] else "",
+                )
+            return result

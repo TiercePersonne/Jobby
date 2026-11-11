@@ -81,6 +81,64 @@ class JobOpportunity(BaseModel):
         return f"{norm_company}:{norm_title}"
 
 
+class ApplicationStatus(str, Enum):
+    SAVED = "saved"          # Repéré / À contacter
+    APPLIED = "applied"      # Candidaté / Message envoyé
+    INTERVIEW = "interview"  # Entretien RH / Tech
+    OFFER = "offer"          # Offre reçue
+    REJECTED = "rejected"    # Archivé / Refusé
+
+
+class User(BaseModel):
+    id: str
+    email: str
+    full_name: str = ""
+    password_hash: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class UserProfile(BaseModel):
+    user_id: str
+    cv_filename: Optional[str] = None
+    cv_text: Optional[str] = None
+    portfolio_url: Optional[str] = None
+    github_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    bio: Optional[str] = None
+    writing_sample: Optional[str] = None  # Exemple de rédaction de l'usager pour cloner son style
+    writing_tone: Optional[str] = "naturel, direct, enthousiaste et percutant"  # Ton souhaité
+    target_roles: List[str] = Field(default_factory=list)
+    skills: List[str] = Field(default_factory=list)
+    min_salary: Optional[int] = None
+    remote_preference: Optional[str] = None
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class Application(BaseModel):
+    id: str
+    user_id: str
+    opportunity_id: str
+    status: ApplicationStatus = Field(default=ApplicationStatus.SAVED)
+    notes: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    salary_offered: Optional[int] = None
+    applied_at: Optional[datetime] = None
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    opportunity: Optional[JobOpportunity] = None
+
+
+class MatchEvaluation(BaseModel):
+    user_id: str
+    opportunity_id: str
+    score: float = Field(ge=0.0, le=100.0)
+    verdict: str
+    strengths: List[str] = Field(default_factory=list)
+    weaknesses: List[str] = Field(default_factory=list)
+    pitch: str = ""
+    cover_letter: str = ""
+
+
 class SearchParams(BaseModel):
     """Parameters passed to any provider during search."""
     keywords: List[str] = Field(default_factory=list, description="Keywords to match (e.g. ['python', 'backend'])")

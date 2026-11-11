@@ -94,26 +94,60 @@
           <span class="text-[11px] text-slate-500 font-medium">Capture &amp; Veille Intelligente</span>
         </div>
       </a>
+
+      <!-- View Switcher (Flux Chasseur vs Suivi Kanban) -->
+      <nav class="hidden md:flex items-center p-1 bg-slate-100/90 rounded-2xl border border-slate-200/80 ml-2">
+        <button id="nav-btn-hunter" type="button" class="nav-view-btn active px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-white text-slate-900 shadow-xs flex items-center gap-1.5 transition cursor-pointer">
+          <svg class="w-3.5 h-3.5 text-sky-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <span>Flux Chasseur</span>
+        </button>
+        <button id="nav-btn-kanban" type="button" class="nav-view-btn px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition cursor-pointer">
+          <svg class="w-3.5 h-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/>
+          </svg>
+          <span>Suivi Candidatures</span>
+          <span id="kanban-total-badge" class="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-800 font-bold">0</span>
+        </button>
+      </nav>
     </div>
 
     <!-- Actions & Quick Stats -->
     <div class="flex items-center gap-2 sm:gap-3">
       <!-- Live Counter Pill -->
-      <div class="hidden md:flex items-center gap-2 text-xs bg-white/80 backdrop-blur-md text-slate-700 px-3.5 py-1.5 rounded-full border border-slate-200/80 font-semibold shadow-xs">
+      <div class="hidden xl:flex items-center gap-2 text-xs bg-white/80 backdrop-blur-md text-slate-700 px-3.5 py-1.5 rounded-full border border-slate-200/80 font-semibold shadow-xs">
         <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
         <span id="header-stats">Synchronisation...</span>
       </div>
 
-      <!-- Auth Accounts Button -->
-      <button id="open-auth-modal-btn" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/90 backdrop-blur-md border border-slate-200/90 text-slate-700 text-xs font-bold hover:bg-white hover:text-slate-900 hover:border-slate-300 transition shadow-xs cursor-pointer">
+      <!-- Mon Profil, CV & Style d'écriture Button -->
+      <button id="open-profile-modal-btn" type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/90 backdrop-blur-md border border-slate-200/90 text-slate-700 text-xs font-bold hover:bg-white hover:text-slate-900 hover:border-slate-300 transition shadow-xs cursor-pointer">
+        <span id="profile-cv-status-dot" class="w-2 h-2 rounded-full bg-slate-300"></span>
+        <svg class="w-3.5 h-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        <span class="hidden sm:inline">Mon CV &amp; Style</span>
+      </button>
+
+      <!-- Comptes Scraping Button -->
+      <button id="open-auth-modal-btn" type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/90 backdrop-blur-md border border-slate-200/90 text-slate-700 text-xs font-bold hover:bg-white hover:text-slate-900 hover:border-slate-300 transition shadow-xs cursor-pointer">
         <svg class="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 2l-2 2m-1.5 1.5L14 9l-1.5-1.5L11 9l-1.5-1.5L8 9 2 15v7h7l6-6 1.5 1.5L18 16l1.5-1.5 1.5 1.5 2-2z"/>
         </svg>
         <span class="hidden sm:inline">Comptes &amp; IA</span>
       </button>
 
+      <!-- User Account Login/Me Button -->
+      <button id="open-user-auth-btn" type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 text-xs font-bold transition shadow-xs cursor-pointer">
+        <svg class="w-3.5 h-3.5 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        <span id="user-display-name">Connexion</span>
+      </button>
+
       <!-- PWA Install Button -->
-      <button id="pwa-install-btn" class="hidden items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950 text-white text-xs font-bold hover:bg-slate-800 transition shadow-xs cursor-pointer">
+      <button id="pwa-install-btn" type="button" class="hidden items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950 text-white text-xs font-bold hover:bg-slate-800 transition shadow-xs cursor-pointer">
         <svg class="w-3.5 h-3.5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
@@ -123,7 +157,7 @@
   </header>
 
   <!-- MAIN CONTAINER (SPLIT LAYOUT) -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+  <main id="hunter-view" class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
     <!-- MOBILE ACCORDION HEADER (ONLY VISIBLE ON < lg SCREENS) -->
     <div class="lg:hidden col-span-1 bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-3.5 shadow-sm flex items-center justify-between">
@@ -346,6 +380,213 @@
       </div>
     </section>
   </main>
+
+  <!-- KANBAN VIEW CONTAINER (FROSTED GLASS & REVOLUT STYLE EMBEDDED PIPELINE) -->
+  <section id="kanban-view" class="hidden flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col gap-6">
+    <!-- Header of Kanban View -->
+    <div class="flex items-center justify-between flex-wrap gap-4 bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-5 shadow-card">
+      <div>
+        <h2 class="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+          <span>Tableau de Suivi des Candidatures</span>
+          <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">Pipeline Intégré</span>
+        </h2>
+        <p class="text-xs text-slate-500 font-medium mt-0.5">Pilotez vos opportunités repérées, messages envoyés, entretiens et offres directement dans Jobby.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="refreshKanban()" type="button" class="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition flex items-center gap-1.5 cursor-pointer shadow-xs">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <span>Actualiser</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 5 Kanban Columns Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
+      <!-- Col 1: Repérés -->
+      <div class="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-4 shadow-card flex flex-col gap-3 min-h-[450px]">
+        <div class="flex items-center justify-between pb-2.5 border-b border-slate-100">
+          <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+            <span>Repérés</span>
+          </span>
+          <span id="kcount-saved" class="text-[11px] font-black bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">0</span>
+        </div>
+        <div id="kcol-saved" class="flex flex-col gap-3"></div>
+      </div>
+
+      <!-- Col 2: Candidaté / Message envoyé -->
+      <div class="bg-white/80 backdrop-blur-xl border border-sky-200/80 rounded-3xl p-4 shadow-card flex flex-col gap-3 min-h-[450px]">
+        <div class="flex items-center justify-between pb-2.5 border-b border-sky-100">
+          <span class="text-xs font-extrabold text-sky-950 flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+            <span>Candidaté</span>
+          </span>
+          <span id="kcount-applied" class="text-[11px] font-black bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full">0</span>
+        </div>
+        <div id="kcol-applied" class="flex flex-col gap-3"></div>
+      </div>
+
+      <!-- Col 3: Entretiens -->
+      <div class="bg-white/80 backdrop-blur-xl border border-indigo-200/80 rounded-3xl p-4 shadow-card flex flex-col gap-3 min-h-[450px]">
+        <div class="flex items-center justify-between pb-2.5 border-b border-indigo-100">
+          <span class="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+            <span>Entretiens</span>
+          </span>
+          <span id="kcount-interview" class="text-[11px] font-black bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">0</span>
+        </div>
+        <div id="kcol-interview" class="flex flex-col gap-3"></div>
+      </div>
+
+      <!-- Col 4: Offres reçues -->
+      <div class="bg-white/80 backdrop-blur-xl border border-emerald-200/80 rounded-3xl p-4 shadow-card flex flex-col gap-3 min-h-[450px]">
+        <div class="flex items-center justify-between pb-2.5 border-b border-emerald-100">
+          <span class="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span>Offres reçues</span>
+          </span>
+          <span id="kcount-offer" class="text-[11px] font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">0</span>
+        </div>
+        <div id="kcol-offer" class="flex flex-col gap-3"></div>
+      </div>
+
+      <!-- Col 5: Archivés / Refusés -->
+      <div class="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-4 shadow-card flex flex-col gap-3 min-h-[450px]">
+        <div class="flex items-center justify-between pb-2.5 border-b border-slate-100">
+          <span class="text-xs font-extrabold text-slate-500 flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-300"></span>
+            <span>Archivés</span>
+          </span>
+          <span id="kcount-rejected" class="text-[11px] font-black bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">0</span>
+        </div>
+        <div id="kcol-rejected" class="flex flex-col gap-3"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MODAL: MON PROFIL, CV & STYLE D'ÉCRITURE -->
+  <div id="profile-cv-modal" style="display: none;" class="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-md items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white/95 backdrop-blur-2xl border border-slate-200/80 rounded-3xl max-w-xl w-full p-6 sm:p-7 shadow-2xl flex flex-col gap-5 text-slate-900 my-8">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <h3 class="text-base font-black text-slate-900 flex items-center gap-2">
+          <span class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </span>
+          <span>Mon Profil, CV &amp; Style d'Écriture</span>
+        </h3>
+        <button id="close-profile-modal-btn" type="button" class="w-8 h-8 rounded-xl bg-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-200 flex items-center justify-center text-sm font-bold cursor-pointer transition">
+          ✕
+        </button>
+      </div>
+
+      <!-- CV Upload Box (Drag & Drop) -->
+      <div class="flex flex-col gap-2">
+        <label class="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">Curriculum Vitae (PDF ou TXT)</label>
+        <div id="cv-dropzone" class="border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-indigo-50/40 rounded-2xl p-5 text-center flex flex-col items-center justify-center gap-2 cursor-pointer transition">
+          <svg class="w-8 h-8 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <div class="text-xs text-slate-700 font-semibold">
+            <span class="text-indigo-600 font-bold underline">Cliquez pour téléverser votre CV</span> ou glissez-déposez ici
+          </div>
+          <span class="text-[10px] text-slate-400">PDF ou TXT (format A4 standard avec texte lisible)</span>
+          <input type="file" id="cv-file-input" accept=".pdf,.txt,.md" class="hidden">
+        </div>
+        <div id="cv-status-message" class="text-xs font-semibold text-slate-600 px-1"></div>
+      </div>
+
+      <!-- Portfolio, GitHub & LinkedIn Links -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Lien Portfolio / Projets</label>
+          <input type="url" id="profile-portfolio-input" placeholder="https://mon-portfolio.dev" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:bg-white focus:outline-none focus:border-indigo-500">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Lien GitHub</label>
+          <input type="url" id="profile-github-input" placeholder="https://github.com/pseudo" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:bg-white focus:outline-none focus:border-indigo-500">
+        </div>
+      </div>
+
+      <!-- Writing Sample (Style Cloning) -->
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">Mon style &amp; exemple de rédaction (Clonage de voix IA)</label>
+          <span class="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md">Pour la lettre sur-mesure</span>
+        </div>
+        <textarea id="profile-writing-sample-input" rows="4" placeholder="Collez ici un exemple d'email de motivation ou d'accroche que vous avez déjà écrit par le passé. L'IA analysera votre vocabulaire, votre rythme et évitera les formules creuses de robot." class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-900 font-normal focus:bg-white focus:outline-none focus:border-indigo-500 leading-relaxed"></textarea>
+      </div>
+
+      <!-- Writing Tone -->
+      <div>
+        <label class="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Ton d'écriture souhaité</label>
+        <input type="text" id="profile-writing-tone-input" placeholder="ex: naturel, direct, enthousiaste et percutant" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:bg-white focus:outline-none focus:border-indigo-500">
+      </div>
+
+      <!-- Save Button -->
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+        <button id="save-profile-btn" type="button" class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-xs cursor-pointer">
+          Enregistrer mon profil
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: COMPTE UTILISATEUR (INSCRIPTION / CONNEXION) -->
+  <div id="user-auth-modal" style="display: none;" class="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-md items-center justify-center p-4">
+    <div class="bg-white/95 backdrop-blur-2xl border border-slate-200/80 rounded-3xl max-w-sm w-full p-6 shadow-2xl flex flex-col gap-4 text-slate-900">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h3 id="user-auth-title" class="text-base font-black text-slate-900">Connexion Candidat</h3>
+        <button id="close-user-auth-modal-btn" type="button" class="w-7 h-7 rounded-xl bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center text-xs font-bold cursor-pointer">✕</button>
+      </div>
+
+      <div id="user-auth-error" class="hidden text-xs text-red-600 bg-red-50 p-2.5 rounded-xl border border-red-200"></div>
+
+      <div id="user-auth-fields" class="flex flex-col gap-3">
+        <div id="user-fullname-group" class="hidden">
+          <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Nom complet</label>
+          <input type="text" id="user-fullname-input" placeholder="ex: Alex Dupont" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:bg-white focus:outline-none focus:border-slate-900">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Email</label>
+          <input type="email" id="user-email-input" placeholder="candidat@email.com" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:bg-white focus:outline-none focus:border-slate-900">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Mot de passe</label>
+          <input type="password" id="user-password-input" placeholder="••••••••" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:bg-white focus:outline-none focus:border-slate-900">
+        </div>
+        <button id="user-auth-submit-btn" type="button" class="w-full mt-2 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs shadow-xs transition cursor-pointer">
+          Se connecter
+        </button>
+      </div>
+
+      <div class="text-center pt-2 border-t border-slate-100">
+        <button id="toggle-auth-mode-btn" type="button" class="text-xs text-sky-600 font-bold hover:underline cursor-pointer">
+          Pas encore de compte ? Créer un compte
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: AI MATCH & LETTRE DE MOTIVATION SUR-MESURE -->
+  <div id="ai-dialog-modal" style="display: none;" class="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-md items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white/95 backdrop-blur-2xl border border-slate-200/80 rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl flex flex-col gap-5 text-slate-900 my-8">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <h3 id="ai-modal-title" class="text-base font-black text-slate-900 flex items-center gap-2">
+          <span class="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+          </span>
+          <span>Assistant IA &amp; Candidature</span>
+        </h3>
+        <button id="close-ai-dialog-modal-btn" type="button" class="w-8 h-8 rounded-xl bg-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-200 flex items-center justify-center text-sm font-bold cursor-pointer transition">
+          ✕
+        </button>
+      </div>
+
+      <div id="ai-dialog-content" class="flex flex-col gap-4 text-xs leading-relaxed">
+        <!-- Dynamically injected Match details or Cover letter -->
+      </div>
+    </div>
+  </div>
 
   <!-- AUTH & AI MODAL (GLASSMORPHISM) -->
   <div id="auth-modal" style="display: none;" class="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-md items-center justify-center p-4">
@@ -1206,18 +1447,44 @@
               </div>
             `}
 
-            <!-- Footer: Tags & External link (Revolut Obsidian Gradient Button) -->
-            <div class="flex items-center justify-between gap-2 flex-wrap pt-3 border-t border-slate-100">
+            <!-- Footer Actions: Tags, AI Match, Cover Letter, Kanban & External link -->
+            <div class="flex items-center justify-between gap-3 flex-wrap pt-3 border-t border-slate-100">
               <div class="flex items-center gap-1.5 flex-wrap">
-                ${tagsHtml}
+                <!-- Tags -->
+                <div class="flex items-center gap-1 mr-1">
+                  ${tagsHtml}
+                </div>
+                <!-- Match CV & Accroche Button -->
+                <button type="button" onclick="triggerMatch('${opp.id}')" title="Évaluer la compatibilité CV et générer une accroche"
+                        class="px-2.5 py-1.5 rounded-xl bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-900 border border-sky-200/80 text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                  ${ICONS.spark("w-3.5 h-3.5 text-sky-600")}
+                  <span>Match &amp; Accroche</span>
+                </button>
+
+                <!-- Lettre de motivation sur-mesure -->
+                <button type="button" onclick="triggerCoverLetter('${opp.id}')" title="Générer une lettre de motivation adaptée à votre façon d'écrire"
+                        class="px-2.5 py-1.5 rounded-xl bg-violet-50 text-violet-700 hover:bg-violet-100 hover:text-violet-900 border border-violet-200/80 text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                  ${ICONS.fileText("w-3.5 h-3.5 text-violet-600")}
+                  <span>Lettre sur-mesure</span>
+                </button>
+
+                <!-- Suivre dans Kanban -->
+                <button type="button" onclick="addToKanban('${opp.id}')" title="Ajouter au pipeline de suivi des candidatures"
+                        class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200/80 text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                  ${ICONS.briefcase("w-3.5 h-3.5 text-slate-600")}
+                  <span>+ Suivi</span>
+                </button>
               </div>
-              <a href="${opp.url}" target="_blank" rel="noopener noreferrer" 
-                 class="px-4 py-2 rounded-xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 hover:from-slate-900 hover:to-indigo-900 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs hover:shadow-md">
-                <span>Voir ${isPost ? 'le Post' : "l'Offre"}</span>
-                <svg class="w-3.5 h-3.5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
-                </svg>
-              </a>
+
+              <div class="flex items-center gap-2">
+                <a href="${opp.url}" target="_blank" rel="noopener noreferrer" 
+                   class="px-4 py-2 rounded-xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 hover:from-slate-900 hover:to-indigo-900 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs hover:shadow-md cursor-pointer">
+                  <span>Voir ${isPost ? 'le Post' : "l'Offre"}</span>
+                  <svg class="w-3.5 h-3.5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                  </svg>
+                </a>
+              </div>
             </div>
 
           </article>
@@ -1420,6 +1687,504 @@
         }
       });
     }
+
+    // ===================================================================
+    // VIEW SWITCHER: Flux Chasseur vs Kanban
+    // ===================================================================
+    const navBtnHunter = document.getElementById('nav-btn-hunter');
+    const navBtnKanban = document.getElementById('nav-btn-kanban');
+    const hunterView = document.getElementById('hunter-view');
+    const kanbanView = document.getElementById('kanban-view');
+
+    function switchView(view) {
+      if (view === 'kanban') {
+        hunterView.classList.add('hidden');
+        kanbanView.classList.remove('hidden');
+        if (navBtnKanban) {
+          navBtnKanban.classList.add('active', 'bg-white', 'text-slate-900', 'shadow-xs', 'font-extrabold');
+          navBtnKanban.classList.remove('text-slate-600', 'font-semibold');
+        }
+        if (navBtnHunter) {
+          navBtnHunter.classList.remove('active', 'bg-white', 'text-slate-900', 'shadow-xs', 'font-extrabold');
+          navBtnHunter.classList.add('text-slate-600', 'font-semibold');
+        }
+        refreshKanban();
+      } else {
+        kanbanView.classList.add('hidden');
+        hunterView.classList.remove('hidden');
+        if (navBtnHunter) {
+          navBtnHunter.classList.add('active', 'bg-white', 'text-slate-900', 'shadow-xs', 'font-extrabold');
+          navBtnHunter.classList.remove('text-slate-600', 'font-semibold');
+        }
+        if (navBtnKanban) {
+          navBtnKanban.classList.remove('active', 'bg-white', 'text-slate-900', 'shadow-xs', 'font-extrabold');
+          navBtnKanban.classList.add('text-slate-600', 'font-semibold');
+        }
+      }
+    }
+
+    if (navBtnHunter) navBtnHunter.addEventListener('click', () => switchView('hunter'));
+    if (navBtnKanban) navBtnKanban.addEventListener('click', () => switchView('kanban'));
+
+    // ===================================================================
+    // EMBEDDED KANBAN REFRESH & CRUD
+    // ===================================================================
+    window.refreshKanban = async function() {
+      try {
+        const res = await fetch('/api/applications');
+        const apps = await res.json();
+        
+        const cols = {
+          saved: document.getElementById('kcol-saved'),
+          applied: document.getElementById('kcol-applied'),
+          interview: document.getElementById('kcol-interview'),
+          offer: document.getElementById('kcol-offer'),
+          rejected: document.getElementById('kcol-rejected'),
+        };
+        const counts = { saved: 0, applied: 0, interview: 0, offer: 0, rejected: 0 };
+        Object.values(cols).forEach(c => { if (c) c.innerHTML = ''; });
+
+        apps.forEach(app => {
+          const st = app.status || 'saved';
+          if (counts[st] !== undefined) counts[st]++;
+          const targetCol = cols[st];
+          if (!targetCol) return;
+
+          const opp = app.opportunity || {};
+          const title = opp.title || 'Opportunité sans titre';
+          const company = opp.company || 'Entreprise non précisée';
+          const url = opp.url || '#';
+          const remote = opp.remote_policy || 'unknown';
+
+          const card = document.createElement('div');
+          card.className = "bg-white/95 rounded-2xl p-4 border border-slate-200/90 shadow-xs flex flex-col gap-2.5 text-xs hover:border-slate-300 transition";
+          card.innerHTML = `
+            <div class="flex items-start justify-between gap-2">
+              <span class="font-extrabold text-slate-900 leading-tight">${escapeHtml(company)}</span>
+              <button onclick="deleteKanbanApp('${app.id}')" title="Supprimer du suivi" class="text-slate-400 hover:text-red-600 transition cursor-pointer">✕</button>
+            </div>
+            <a href="${url}" target="_blank" class="font-bold text-slate-800 hover:text-sky-600 transition leading-snug line-clamp-2">${escapeHtml(title)}</a>
+            
+            <div class="flex items-center gap-1.5 flex-wrap text-[10px]">
+              <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold">${remote}</span>
+              ${app.contact_name ? `<span class="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-semibold">${escapeHtml(app.contact_name)}</span>` : ''}
+            </div>
+
+            ${app.notes ? `<div class="p-2 rounded-xl bg-slate-50 border border-slate-100 text-[11px] text-slate-600 italic leading-snug">${escapeHtml(app.notes)}</div>` : ''}
+
+            <div class="flex items-center justify-between gap-1 pt-2 border-t border-slate-100">
+              <div class="flex items-center gap-1">
+                ${st !== 'saved' ? `<button onclick="moveKanbanApp('${app.id}', '${prevStage(st)}')" title="Étape précédente" class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-bold text-slate-600 cursor-pointer">‹</button>` : ''}
+                ${st !== 'offer' && st !== 'rejected' ? `<button onclick="moveKanbanApp('${app.id}', '${nextStage(st)}')" title="Étape suivante" class="px-2 py-1 rounded-lg bg-slate-900 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer"><span>Suivant</span><span>›</span></button>` : ''}
+              </div>
+              <div class="flex items-center gap-1">
+                <button onclick="triggerCoverLetter('${app.opportunity_id}')" title="Générer lettre de motivation" class="w-6 h-6 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 flex items-center justify-center cursor-pointer">📄</button>
+                <button onclick="promptEditNotes('${app.id}', '${escapeHtml(app.notes || '')}')" title="Modifier note" class="w-6 h-6 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center cursor-pointer">✎</button>
+              </div>
+            </div>
+          `;
+          targetCol.appendChild(card);
+        });
+
+        // Update counts
+        const cs = document.getElementById('kcount-saved'); if (cs) cs.textContent = counts.saved;
+        const ca = document.getElementById('kcount-applied'); if (ca) ca.textContent = counts.applied;
+        const ci = document.getElementById('kcount-interview'); if (ci) ci.textContent = counts.interview;
+        const co = document.getElementById('kcount-offer'); if (co) co.textContent = counts.offer;
+        const cr = document.getElementById('kcount-rejected'); if (cr) cr.textContent = counts.rejected;
+        
+        const total = apps.length;
+        const totalBadge = document.getElementById('kanban-total-badge');
+        if (totalBadge) totalBadge.textContent = total;
+
+      } catch (e) {
+        console.error("Error refreshing kanban:", e);
+      }
+    };
+
+    function nextStage(current) {
+      const order = ['saved', 'applied', 'interview', 'offer'];
+      const idx = order.indexOf(current);
+      return idx >= 0 && idx < order.length - 1 ? order[idx + 1] : current;
+    }
+
+    function prevStage(current) {
+      const order = ['saved', 'applied', 'interview', 'offer'];
+      const idx = order.indexOf(current);
+      return idx > 0 ? order[idx - 1] : 'saved';
+    }
+
+    window.moveKanbanApp = async function(appId, newStatus) {
+      try {
+        await fetch(`/api/applications/${appId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus }),
+        });
+        await refreshKanban();
+      } catch (e) {
+        alert("Erreur lors du déplacement : " + e);
+      }
+    };
+
+    window.promptEditNotes = async function(appId, currentNotes) {
+      const notes = prompt("Note / suivi pour cette candidature (ex: Date d'entretien, retour recruteur) :", currentNotes);
+      if (notes === null) return;
+      try {
+        await fetch(`/api/applications/${appId}/notes`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes }),
+        });
+        await refreshKanban();
+      } catch (e) {
+        alert("Erreur note : " + e);
+      }
+    };
+
+    window.deleteKanbanApp = async function(appId) {
+      if (!confirm("Retirer cette candidature du suivi ?")) return;
+      try {
+        await fetch(`/api/applications/${appId}`, { method: 'DELETE' });
+        await refreshKanban();
+      } catch (e) {
+        alert("Erreur suppression : " + e);
+      }
+    };
+
+    window.addToKanban = async function(oppId) {
+      try {
+        const res = await fetch('/api/applications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ opportunity_id: oppId, status: 'saved' }),
+        });
+        if (res.ok) {
+          alert("Opportunité ajoutée à votre tableau de suivi (colonne 'Repérés') !");
+          refreshKanban();
+        } else {
+          const err = await res.json();
+          alert("Information : " + (err.detail || "Déjà dans le suivi"));
+        }
+      } catch (e) {
+        alert("Erreur lors de l'ajout au suivi : " + e);
+      }
+    };
+
+    // ===================================================================
+    // AI MATCH & COVER LETTER MODAL LOGIC
+    // ===================================================================
+    const aiModal = document.getElementById('ai-dialog-modal');
+    const aiModalTitle = document.getElementById('ai-modal-title');
+    const aiModalContent = document.getElementById('ai-dialog-content');
+    const closeAiModalBtn = document.getElementById('close-ai-dialog-modal-btn');
+
+    if (closeAiModalBtn && aiModal) {
+      closeAiModalBtn.addEventListener('click', () => { aiModal.style.display = 'none'; });
+      aiModal.addEventListener('click', (e) => { if (e.target === aiModal) aiModal.style.display = 'none'; });
+    }
+
+    window.triggerMatch = async function(oppId) {
+      aiModal.style.display = 'flex';
+      aiModalTitle.innerHTML = `
+        <span class="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+          ${ICONS.spark("w-4 h-4 text-sky-600")}
+        </span>
+        <span>Analyse de Correspondance &amp; Accroche</span>
+      `;
+      aiModalContent.innerHTML = `
+        <div class="py-12 flex flex-col items-center justify-center gap-3 text-center">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div>
+          <p class="text-xs text-slate-600 font-bold">L'IA compare votre CV et portfolio avec cette offre...</p>
+        </div>
+      `;
+
+      try {
+        const res = await fetch(`/api/ai/match/${oppId}`, { method: 'POST' });
+        const data = await res.json();
+        
+        const score = Math.round(data.score || 75);
+        const scoreColor = score >= 80 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : (score >= 60 ? 'text-sky-600 bg-sky-50 border-sky-200' : 'text-amber-600 bg-amber-50 border-amber-200');
+
+        aiModalContent.innerHTML = `
+          <div class="flex items-center justify-between p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80">
+            <div>
+              <span class="text-xs text-slate-500 font-bold uppercase tracking-wider">Score d'adéquation CV</span>
+              <h4 class="text-base font-extrabold text-slate-900 mt-0.5">${escapeHtml(data.verdict || 'Analyse terminée')}</h4>
+            </div>
+            <div class="text-xl font-black px-4 py-2 rounded-2xl border ${scoreColor}">
+              ${score} %
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="p-3.5 rounded-2xl bg-emerald-50/40 border border-emerald-100 flex flex-col gap-1.5">
+              <span class="font-extrabold text-emerald-950 flex items-center gap-1.5">
+                ${ICONS.check("w-3.5 h-3.5 text-emerald-600")}
+                <span>Forces de votre profil</span>
+              </span>
+              <ul class="text-[11px] text-emerald-900 space-y-1 list-disc list-inside">
+                ${(data.strengths || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+              </ul>
+            </div>
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col gap-1.5">
+              <span class="font-extrabold text-slate-800 flex items-center gap-1.5">
+                ${ICONS.help("w-3.5 h-3.5 text-slate-500")}
+                <span>Points à valoriser</span>
+              </span>
+              <ul class="text-[11px] text-slate-600 space-y-1 list-disc list-inside">
+                ${(data.weaknesses || []).map(w => `<li>${escapeHtml(w)}</li>`).join('')}
+              </ul>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2 pt-2 border-t border-slate-100">
+            <div class="flex items-center justify-between">
+              <span class="font-extrabold text-slate-900 flex items-center gap-1.5">
+                ${ICONS.megaphone("w-3.5 h-3.5 text-indigo-600")}
+                <span>Message d'accroche personnalisé (LinkedIn / Email)</span>
+              </span>
+              <button onclick="navigator.clipboard.writeText(document.getElementById('pitch-text-val').innerText); alert('Accroche copiée !');"
+                      class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[10px] transition cursor-pointer">
+                Copier l'accroche
+              </button>
+            </div>
+            <div id="pitch-text-val" class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-800 leading-relaxed font-medium select-all">
+              ${escapeHtml(data.pitch || '')}
+            </div>
+          </div>
+        `;
+      } catch (e) {
+        aiModalContent.innerHTML = `<div class="p-4 text-xs text-red-600">Erreur : ${e}</div>`;
+      }
+    };
+
+    window.triggerCoverLetter = async function(oppId) {
+      aiModal.style.display = 'flex';
+      aiModalTitle.innerHTML = `
+        <span class="w-8 h-8 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center border border-violet-100">
+          ${ICONS.fileText("w-4 h-4 text-violet-600")}
+        </span>
+        <span>Lettre de Motivation Sur-Mesure (Votre Style)</span>
+      `;
+      aiModalContent.innerHTML = `
+        <div class="py-12 flex flex-col items-center justify-center gap-3 text-center">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600"></div>
+          <p class="text-xs text-slate-600 font-bold">L'IA rédige une lettre sur-mesure en adoptant votre style d'écriture...</p>
+        </div>
+      `;
+
+      try {
+        const res = await fetch(`/api/ai/cover-letter/${oppId}`, { method: 'POST' });
+        const data = await res.json();
+        const letter = data.cover_letter || '';
+
+        aiModalContent.innerHTML = `
+          <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+            <span class="text-xs text-slate-500 font-medium">Rédigée selon vos réalisations, votre CV et votre ton de voix</span>
+            <button onclick="navigator.clipboard.writeText(document.getElementById('letter-text-val').innerText); alert('Lettre de motivation copiée dans le presse-papier !');"
+                    class="px-3 py-1.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs">
+              <span>Copier la lettre</span>
+            </button>
+          </div>
+          <div id="letter-text-val" class="p-4 rounded-2xl bg-slate-50/90 border border-slate-200/80 text-xs text-slate-900 leading-relaxed font-normal whitespace-pre-line select-all max-h-[420px] overflow-y-auto">
+            ${escapeHtml(letter)}
+          </div>
+        `;
+      } catch (e) {
+        aiModalContent.innerHTML = `<div class="p-4 text-xs text-red-600">Erreur : ${e}</div>`;
+      }
+    };
+
+    // ===================================================================
+    // PROFILE & CV MANAGEMENT
+    // ===================================================================
+    const profileModal = document.getElementById('profile-cv-modal');
+    const openProfileBtn = document.getElementById('open-profile-modal-btn');
+    const closeProfileBtn = document.getElementById('close-profile-modal-btn');
+    const cvDropzone = document.getElementById('cv-dropzone');
+    const cvFileInput = document.getElementById('cv-file-input');
+    const cvStatusMsg = document.getElementById('cv-status-message');
+    const cvStatusDot = document.getElementById('profile-cv-status-dot');
+    const portfolioInput = document.getElementById('profile-portfolio-input');
+    const githubInput = document.getElementById('profile-github-input');
+    const writingSampleInput = document.getElementById('profile-writing-sample-input');
+    const writingToneInput = document.getElementById('profile-writing-tone-input');
+    const saveProfileBtn = document.getElementById('save-profile-btn');
+
+    if (openProfileBtn && profileModal) {
+      openProfileBtn.addEventListener('click', () => {
+        loadUserProfile();
+        profileModal.style.display = 'flex';
+      });
+      closeProfileBtn.addEventListener('click', () => { profileModal.style.display = 'none'; });
+      profileModal.addEventListener('click', (e) => { if (e.target === profileModal) profileModal.style.display = 'none'; });
+    }
+
+    if (cvDropzone && cvFileInput) {
+      cvDropzone.addEventListener('click', () => cvFileInput.click());
+      cvDropzone.addEventListener('dragover', (e) => { e.preventDefault(); cvDropzone.classList.add('border-indigo-500'); });
+      cvDropzone.addEventListener('dragleave', () => cvDropzone.classList.remove('border-indigo-500'));
+      cvDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        cvDropzone.classList.remove('border-indigo-500');
+        if (e.dataTransfer.files.length) uploadCvFile(e.dataTransfer.files[0]);
+      });
+      cvFileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) uploadCvFile(e.target.files[0]);
+      });
+    }
+
+    async function uploadCvFile(file) {
+      cvStatusMsg.textContent = "Téléversement et analyse du CV en cours...";
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const res = await fetch('/api/profile/upload-cv', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok) {
+          cvStatusMsg.innerHTML = `<span class="text-emerald-600 font-bold">✓ CV analysé (${data.filename}, ${data.characters_extracted} caractères)</span>`;
+          if (cvStatusDot) cvStatusDot.className = "w-2 h-2 rounded-full bg-emerald-500";
+        } else {
+          cvStatusMsg.innerHTML = `<span class="text-red-600 font-bold">${data.detail || "Erreur"}</span>`;
+        }
+      } catch (err) {
+        cvStatusMsg.innerHTML = `<span class="text-red-600 font-bold">Erreur : ${err}</span>`;
+      }
+    }
+
+    async function loadUserProfile() {
+      try {
+        const res = await fetch('/api/profile');
+        const data = await res.json();
+        const prof = data.profile || {};
+        if (portfolioInput) portfolioInput.value = prof.portfolio_url || '';
+        if (githubInput) githubInput.value = prof.github_url || '';
+        if (writingSampleInput) writingSampleInput.value = prof.writing_sample || '';
+        if (writingToneInput) writingToneInput.value = prof.writing_tone || 'naturel, direct, enthousiaste et percutant';
+        
+        if (data.has_cv && cvStatusDot) {
+          cvStatusDot.className = "w-2 h-2 rounded-full bg-emerald-500";
+          if (cvStatusMsg) cvStatusMsg.innerHTML = `<span class="text-emerald-700 font-bold">✓ CV enregistré (${prof.cv_filename || 'actif'})</span>`;
+        }
+      } catch (e) {
+        console.error("Error loading profile:", e);
+      }
+    }
+
+    if (saveProfileBtn) {
+      saveProfileBtn.addEventListener('click', async () => {
+        try {
+          await fetch('/api/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              portfolio_url: portfolioInput.value,
+              github_url: githubInput.value,
+              writing_sample: writingSampleInput.value,
+              writing_tone: writingToneInput.value,
+            }),
+          });
+          alert("Profil et style d'écriture enregistrés avec succès !");
+          profileModal.style.display = 'none';
+        } catch (e) {
+          alert("Erreur enregistrement profil : " + e);
+        }
+      });
+    }
+
+    // ===================================================================
+    // USER AUTH MODAL & STATE
+    // ===================================================================
+    const userAuthModal = document.getElementById('user-auth-modal');
+    const openUserAuthBtn = document.getElementById('open-user-auth-btn');
+    const closeUserAuthBtn = document.getElementById('close-user-auth-modal-btn');
+    const toggleAuthModeBtn = document.getElementById('toggle-auth-mode-btn');
+    const userAuthTitle = document.getElementById('user-auth-title');
+    const userAuthSubmitBtn = document.getElementById('user-auth-submit-btn');
+    const userFullnameGroup = document.getElementById('user-fullname-group');
+    const userFullnameInput = document.getElementById('user-fullname-input');
+    const userEmailInput = document.getElementById('user-email-input');
+    const userPasswordInput = document.getElementById('user-password-input');
+    const userAuthError = document.getElementById('user-auth-error');
+    const userDisplayName = document.getElementById('user-display-name');
+
+    let isRegisterMode = false;
+
+    if (openUserAuthBtn && userAuthModal) {
+      openUserAuthBtn.addEventListener('click', () => { userAuthModal.style.display = 'flex'; });
+      closeUserAuthBtn.addEventListener('click', () => { userAuthModal.style.display = 'none'; });
+      userAuthModal.addEventListener('click', (e) => { if (e.target === userAuthModal) userAuthModal.style.display = 'none'; });
+    }
+
+    if (toggleAuthModeBtn) {
+      toggleAuthModeBtn.addEventListener('click', () => {
+        isRegisterMode = !isRegisterMode;
+        if (isRegisterMode) {
+          userAuthTitle.textContent = "Créer un compte Candidat";
+          userAuthSubmitBtn.textContent = "Créer mon compte";
+          userFullnameGroup.classList.remove('hidden');
+          toggleAuthModeBtn.textContent = "Déjà un compte ? Se connecter";
+        } else {
+          userAuthTitle.textContent = "Connexion Candidat";
+          userAuthSubmitBtn.textContent = "Se connecter";
+          userFullnameGroup.classList.add('hidden');
+          toggleAuthModeBtn.textContent = "Pas encore de compte ? Créer un compte";
+        }
+      });
+    }
+
+    if (userAuthSubmitBtn) {
+      userAuthSubmitBtn.addEventListener('click', async () => {
+        userAuthError.classList.add('hidden');
+        const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
+        const payload = {
+          email: userEmailInput.value,
+          password: userPasswordInput.value,
+          full_name: userFullnameInput.value,
+        };
+
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            userAuthModal.style.display = 'none';
+            checkUserAuth();
+            loadUserProfile();
+            refreshKanban();
+          } else {
+            userAuthError.textContent = data.detail || "Erreur de connexion";
+            userAuthError.classList.remove('hidden');
+          }
+        } catch (e) {
+          userAuthError.textContent = "Erreur : " + e;
+          userAuthError.classList.remove('hidden');
+        }
+      });
+    }
+
+    async function checkUserAuth() {
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          userDisplayName.textContent = data.user.full_name || data.user.email;
+        } else {
+          userDisplayName.textContent = "Connexion";
+        }
+      } catch (e) {
+        console.error("Auth check error:", e);
+      }
+    }
+
+    // Call user status and kanban on init
+    checkUserAuth();
+    loadUserProfile();
+    refreshKanban();
 
     init();
   </script>

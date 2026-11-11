@@ -373,3 +373,221 @@ Tu dois renvoyer STRICTEMENT un JSON valide avec les clés :
 - "summary": une phrase concise en français résumant le post (max 100 caractères).
 - "remote_policy": une valeur parmi ["full", "hybrid", "onsite", "unknown"]
 """
+
+
+# ===================================================================
+# Deep Candidate CV Matching & Approach Pitch (Google AI Studio)
+# ===================================================================
+
+async def evaluate_candidate_match(
+    profile_data: Dict[str, Any],
+    opportunity_data: Dict[str, Any],
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Evaluates how well a candidate's CV, portfolio and skills match a specific job opportunity.
+    Returns: score (0-100), verdict, strengths, weaknesses, approach pitch.
+    """
+    gemini_key = api_key or os.environ.get("GEMINI_API_KEY")
+
+    if gemini_key:
+        try:
+            gemini_model = model or "gemini-2.0-flash"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
+            
+            prompt = f"""Tu es un expert du recrutement tech et du matching de talents.
+Évalue la compatibilité entre ce candidat (CV, portfolio, compétences) et cette offre d'emploi.
+
+--- PROFIL CANDIDAT ---
+Rôles ciblés : {', '.join(profile_data.get('target_roles', []))}
+Compétences déclarées : {', '.join(profile_data.get('skills', []))}
+Portfolio / Projets : {profile_data.get('portfolio_url') or 'Non renseigné'}
+GitHub : {profile_data.get('github_url') or 'Non renseigné'}
+Bio / Parcours : {profile_data.get('bio') or 'Non renseigné'}
+Extrait du CV :
+\"\"\"
+{(profile_data.get('cv_text') or '')[:3000]}
+\"\"\"
+
+--- OFFRE D'EMPLOI / POST ---
+Titre : {opportunity_data.get('title')}
+Entreprise : {opportunity_data.get('company') or 'Non précisée'}
+Localisation / Remote : {opportunity_data.get('location')} ({opportunity_data.get('remote_policy')})
+Auteur / Recruteur : {opportunity_data.get('author_name') or ''}
+Description de l'offre :
+\"\"\"
+{(opportunity_data.get('description') or '')[:3000]}
+\"\"\"
+
+Renvoie STRICTEMENT un objet JSON valide (sans backticks markdown si possible) avec ces clés :
+- "score": nombre flottant ou entier entre 0 et 100 représentant l'adéquation technique et humaine.
+- "verdict": courte phrase d'appréciation (ex: "Excellente opportunité", "Profil très aligné", "Gaps sur certaines technos").
+- "strengths": liste de 2 à 4 points forts concrets du profil pour cette offre précise.
+- "weaknesses": liste de 1 à 3 points d'attention ou technos secondaires manquantes.
+- "pitch": un message d'accroche personnalisé de 3 phrases maximum, direct, percutant et poli, prêt à être envoyé au recruteur sur LinkedIn ou par email pour attirer son attention.
+"""
+
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "responseMimeType": "application/json",
+                },
+            }
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    cleaned = re.sub(r"^```json\s*|\s*```$", "", raw_text.strip())
+                    parsed = json.loads(cleaned)
+                    parsed["score"] = float(parsed.get("score", 75))
+                    return parsed
+        except Exception as e:
+            logger.warning(f"Gemini CV match evaluation failed: {e}")
+
+    # Fallback heuristic calculation
+    return _heuristic_cv_match(profile_data, opportunity_data)
+
+
+def _heuristic_cv_match(profile_data: Dict[str, Any], opportunity_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Fast local heuristic matching when no LLM key is available."""
+    skills = [s.lower() for s in profile_data.get("skills", [])]
+    roles = [r.lower() for r in profile_data.get("target_roles", [])]
+    cv_text = (profile_data.get("cv_text") or "").lower()
+
+    title = (opportunity_data.get("title") or "").lower()
+    desc = (opportunity_data.get("description") or "").lower()
+    full_text = f"{title} {desc}"
+
+    matched_skills = [s for s in skills if s in full_text or s in cv_text]
+    role_match = any(r in title or r in desc for r in roles)
+
+    score = 50.0
+    if role_match:
+        score += 25.0
+    if skills:
+        score += min(25.0, (len(matched_skills) / max(len(skills), 1)) * 25.0)
+
+    score = round(min(98.0, max(40.0, score)), 1)
+    
+    verdict = "Profil très aligné" if score >= 80 else ("Bonne opportunité" if score >= 65 else "À explorer avec nuances")
+    strengths = [f"Compétence identifiée : {s.capitalize()}" for s in matched_skills[:3]] or ["Expérience générale en tech"]
+    weaknesses = ["Vérifier le niveau d'autonomie et les prérequis secondaires"]
+
+    contact = opportunity_data.get("author_name") or "Bonjour"
+    role_hint = profile_data.get("target_roles", ["développeur"])[0]
+    pitch = f"Bonjour {contact}, je viens de voir votre publication concernant le poste de {opportunity_data.get('title')}. En tant que {role_hint} passionné, vos problématiques font écho à mes projets récents. Seriez-vous ouvert à un rapide échange cette semaine ?"
+
+    return {
+        "score": score,
+        "verdict": verdict,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "pitch": pitch,
+    }
+
+
+# ===================================================================
+# Customized Cover Letter Generation (Style & Tone Cloning)
+# ===================================================================
+
+async def generate_tailored_cover_letter(
+    profile_data: Dict[str, Any],
+    opportunity_data: Dict[str, Any],
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> str:
+    """
+    Generates a personalized cover letter matching the candidate's exact tone of voice and writing style.
+    Uses Google AI Studio Gemini if available, or a smart template fallback.
+    """
+    gemini_key = api_key or os.environ.get("GEMINI_API_KEY")
+    writing_sample = profile_data.get("writing_sample") or ""
+    writing_tone = profile_data.get("writing_tone") or "naturel, direct, enthousiaste et percutant"
+
+    if gemini_key:
+        try:
+            gemini_model = model or "gemini-2.0-flash"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
+
+            sample_instruction = ""
+            if writing_sample.strip():
+                sample_instruction = f"""
+Voici un exemple de texte écrit par le candidat. Analyse son style (vocabulaire, rythme, absence de clichés corporate, authenticité, clarté) et ÉCRIS EN IMITANT EXACTEMENT SA VOIX :
+\"\"\"
+{writing_sample[:2500]}
+\"\"\"
+"""
+            else:
+                sample_instruction = f"Adopte un ton : {writing_tone}. Pas de formules pompeuses, sois humain, direct et orienté valeur."
+
+            prompt = f"""Tu es le candidat lui-même. Rédige une lettre de motivation sur-mesure pour postuler à cette opportunité.
+
+--- CONSIGNES DE STYLE ---
+{sample_instruction}
+Consignes strictes :
+- Pas de phrases creuses du genre "Je me permets de vous contacter" ou "Votre entreprise prestigieuse leader du marché".
+- Va droit au but : montre immédiatement que tu as compris les enjeux du poste et de l'entreprise.
+- Fais le lien avec des réalisations concrètes tirées de ton CV ou de ton portfolio.
+- Conclus sur une proposition d'échange simple et prompte.
+- Langue : Français, environ 3 à 4 paragraphes courts et aérés.
+
+--- TON PROFIL (CANDIDAT) ---
+Nom : {profile_data.get('full_name') or 'Le Candidat'}
+Poste visé : {', '.join(profile_data.get('target_roles', []))}
+Compétences : {', '.join(profile_data.get('skills', []))}
+Portfolio / Projets : {profile_data.get('portfolio_url') or 'Portfolio en ligne'}
+GitHub : {profile_data.get('github_url') or ''}
+CV :
+\"\"\"
+{(profile_data.get('cv_text') or '')[:3000]}
+\"\"\"
+
+--- L'OFFRE / LE POST ---
+Titre : {opportunity_data.get('title')}
+Entreprise : {opportunity_data.get('company') or 'L\'équipe'}
+Contact / Recruteur : {opportunity_data.get('author_name') or ''}
+Contenu :
+\"\"\"
+{(opportunity_data.get('description') or '')[:3000]}
+\"\"\"
+
+Rédige directement la lettre en texte brut (avec sauts de ligne clairs), sans fioritures méta ni introduction.
+"""
+
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.4,
+                },
+            }
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    letter = data["candidates"][0]["content"]["parts"][0]["text"]
+                    return letter.strip()
+        except Exception as e:
+            logger.warning(f"Gemini cover letter generation failed: {e}")
+
+    # Fallback template
+    company = opportunity_data.get("company") or "votre équipe"
+    title = opportunity_data.get("title") or "ce poste"
+    portfolio_mention = f"\nVous pouvez retrouver mes projets et réalisations sur mon portfolio : {profile_data.get('portfolio_url')}" if profile_data.get("portfolio_url") else ""
+    
+    return f"""Bonjour,
+
+J'ai découvert avec beaucoup d'intérêt votre recherche pour le rôle de {title} chez {company}. 
+
+Ce qui a retenu mon attention dans votre projet, c'est l'alignement direct avec mes compétences récentes et les défis techniques que j'apprécie particulièrement relever.
+
+Au fil de mes expériences, j'ai notamment eu l'occasion de concevoir des solutions performantes et d'aborder des problématiques similaires à celles évoquées dans votre annonce.{portfolio_mention}
+
+Je serais ravi de vous présenter plus en détail comment mon parcours et mon énergie peuvent s'intégrer au sein de votre équipe.
+
+Disponible pour un premier échange quand cela vous conviendra.
+
+Bien cordialement,"""
+
