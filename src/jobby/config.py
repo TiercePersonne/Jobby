@@ -28,10 +28,13 @@ class JobbyConfig(BaseModel):
     wttj_auth_token: Optional[str] = Field(default=None, description="WTTJ auth token")
 
     # AI & Post intelligence settings
-    ai_provider: str = Field(default="auto", description="AI Provider: auto, gemini, openai, ollama, or heuristic")
-    ai_api_key: Optional[str] = Field(default=None, description="API Key for Gemini, OpenAI or other LLM provider")
+    ai_provider: str = Field(default="gemini", description="AI Provider: auto, gemini, openai, ollama, or heuristic")
+    ai_api_key: Optional[str] = Field(
+        default=None,
+        description="API Key for Gemini, OpenAI or other LLM provider"
+    )
     ai_ollama_url: Optional[str] = Field(default="http://localhost:11434", description="Ollama API base URL")
-    ai_model: Optional[str] = Field(default=None, description="Custom model name")
+    ai_model: Optional[str] = Field(default="gemini-flash-latest", description="Custom model name")
     filter_candidate_posts: bool = Field(default=False, description="Filter out posts where candidates seek alternances or jobs")
 
     # Storage & paths

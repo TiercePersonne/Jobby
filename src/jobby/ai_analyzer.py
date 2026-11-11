@@ -304,7 +304,7 @@ async def analyze_post_with_llm(
     # Try Gemini
     if chosen_provider == "gemini" and gemini_key:
         try:
-            gemini_model = model or "gemini-1.5-flash"
+            gemini_model = model or "gemini-flash-latest"
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
             prompt = _build_llm_prompt(commentary, author_name, author_title)
             payload = {
@@ -319,6 +319,16 @@ async def analyze_post_with_llm(
                     parsed = json.loads(text_out)
                     parsed["provider"] = "gemini"
                     return parsed
+                else:
+                    # Fallback to gemma model if model is not available
+                    fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent?key={gemini_key}"
+                    resp2 = await client.post(fallback_url, json={"contents": [{"parts": [{"text": prompt}]}]})
+                    if resp2.status_code == 200:
+                        text_out = resp2.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        cleaned = re.sub(r"^```json\s*|\s*```$", "", text_out.strip())
+                        parsed = json.loads(cleaned)
+                        parsed["provider"] = "gemini-gemma"
+                        return parsed
         except Exception as e:
             logger.warning(f"Gemini API call failed: {e}")
 
@@ -393,7 +403,7 @@ async def evaluate_candidate_match(
 
     if gemini_key:
         try:
-            gemini_model = model or "gemini-2.0-flash"
+            gemini_model = model or "gemini-flash-latest"
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
             
             prompt = f"""Tu es un expert du recrutement tech et du matching de talents.
@@ -509,7 +519,7 @@ async def generate_tailored_cover_letter(
 
     if gemini_key:
         try:
-            gemini_model = model or "gemini-2.0-flash"
+            gemini_model = model or "gemini-flash-latest"
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
 
             sample_instruction = ""

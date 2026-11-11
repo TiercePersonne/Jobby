@@ -123,6 +123,53 @@ def test_kanban_tracking_lifecycle(client):
     assert del_resp.status_code == 200
 
 
+def test_kanban_auto_sync_from_triage(client):
+    """Test that clicking 'Garder' (kept) or 'Archiver' in hunt view immediately syncs to Kanban."""
+    storage = Storage()
+    opp = JobOpportunity(
+        id="test-sync-opp-42",
+        source="wttj",
+        title="Fullstack Python Engineer",
+        company="SyncLab",
+        location="Paris",
+        remote_policy="partial",
+        url="https://wttj.co/jobs/42",
+        description="Python & Vue developer",
+    )
+    storage.upsert_opportunity(opp)
+
+    # 1. User clicks 'Je garde' -> status becomes 'kept'
+    patch_resp = client.patch(f"/api/opportunities/{opp.id}/status", json={"status": "kept"})
+    assert patch_resp.status_code == 200
+
+    # Must appear in Kanban list under 'saved'
+    kanban_resp = client.get("/api/applications")
+    assert kanban_resp.status_code == 200
+    apps = kanban_resp.json()
+    sync_app = next((a for a in apps if a["opportunity_id"] == opp.id), None)
+    assert sync_app is not None
+    assert sync_app["status"] == "saved"
+
+    # 2. User clicks 'Archiver' -> status becomes 'archived'
+    patch_resp2 = client.patch(f"/api/opportunities/{opp.id}/status", json={"status": "archived"})
+    assert patch_resp2.status_code == 200
+
+    # Must appear in Kanban list under 'rejected' (Archivés)
+    kanban_resp2 = client.get("/api/applications")
+    apps2 = kanban_resp2.json()
+    sync_app2 = next((a for a in apps2 if a["opportunity_id"] == opp.id), None)
+    assert sync_app2 is not None
+    assert sync_app2["status"] == "rejected"
+
+    # 3. User un-marks -> status becomes 'new'
+    patch_resp3 = client.patch(f"/api/opportunities/{opp.id}/status", json={"status": "new"})
+    assert patch_resp3.status_code == 200
+
+    kanban_resp3 = client.get("/api/applications")
+    apps3 = kanban_resp3.json()
+    assert not any(a["opportunity_id"] == opp.id for a in apps3)
+
+
 def test_ai_match_and_cover_letter(client):
     storage = Storage()
     opp = JobOpportunity(

@@ -259,7 +259,7 @@ def list_opportunities(
 
 
 @app.patch("/api/opportunities/{opp_id}/status")
-def set_status(opp_id: str, body: StatusUpdateRequest) -> Dict[str, Any]:
+def set_status(opp_id: str, body: StatusUpdateRequest, request: Request) -> Dict[str, Any]:
     config = load_config()
     storage = Storage(config.database_path)
     valid_statuses = ["new", "saved", "favorite", "kept", "applied", "interview", "archived", "rejected"]
@@ -269,6 +269,20 @@ def set_status(opp_id: str, body: StatusUpdateRequest) -> Dict[str, Any]:
     success = storage.update_status(opp_id, body.status)
     if not success:
         raise HTTPException(status_code=404, detail="Opportunity not found")
+
+    # Synchronize with embedded application kanban pipeline
+    user = get_current_user_or_default(request, storage)
+    if body.status in ["saved", "kept", "favorite"]:
+        storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.SAVED)
+    elif body.status in ["archived", "rejected"]:
+        storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.REJECTED)
+    elif body.status == "applied":
+        storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.APPLIED)
+    elif body.status == "interview":
+        storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.INTERVIEW)
+    elif body.status == "new":
+        storage.delete_application_for_opportunity(opp_id, user.id)
+
     return {"status": "updated", "id": opp_id, "new_status": body.status}
 
 
@@ -612,6 +626,17 @@ def update_app_status(app_id: str, body: ApplicationStatusRequest, request: Requ
     success = storage.update_application_status(app_id, body.status, user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Candidature introuvable.")
+
+    # Two-way sync: update opportunity status to reflect change in kanban
+    app = storage.get_application(app_id, user.id)
+    if app and app.opportunity_id:
+        if body.status == ApplicationStatus.SAVED.value:
+            storage.update_status(app.opportunity_id, "kept")
+        elif body.status == ApplicationStatus.REJECTED.value:
+            storage.update_status(app.opportunity_id, "archived")
+        elif body.status in [ApplicationStatus.APPLIED.value, ApplicationStatus.INTERVIEW.value]:
+            storage.update_status(app.opportunity_id, body.status)
+
     return {"status": "updated", "id": app_id, "new_status": body.status}
 
 
@@ -633,9 +658,15 @@ def delete_app(app_id: str, request: Request) -> Dict[str, Any]:
     storage = Storage(config.database_path)
     user = get_current_user_or_default(request, storage)
 
+    app = storage.get_application(app_id, user.id)
+    opp_id = app.opportunity_id if app else None
+
     success = storage.delete_application(app_id, user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Candidature introuvable.")
+    if opp_id:
+        storage.update_status(opp_id, "new")
+
     return {"status": "deleted", "id": app_id}
 
 

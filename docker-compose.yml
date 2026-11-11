@@ -18,6 +18,8 @@ services:
       # Clés d'APIs & sessions
       - LINKEDIN_LI_AT=${LINKEDIN_LI_AT:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_PROVIDER=${AI_PROVIDER:-gemini}
+      - AI_MODEL=${AI_MODEL:-gemini-flash-latest}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     volumes:
       - ./data:/data

@@ -472,9 +472,67 @@ class Storage:
 
     def get_applications(self, user_id: str) -> List[Application]:
         with self._connection() as conn:
+            # Auto-sync any opportunities marked by the user in hunt view that don't yet have an application entry
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO applications (
+                    id, user_id, opportunity_id, status, notes, contact_name, updated_at
+                )
+                SELECT 
+                    'app_' || ? || '_' || o.id,
+                    ?,
+                    o.id,
+                    'saved',
+                    '',
+                    o.author_name,
+                    CURRENT_TIMESTAMP
+                FROM opportunities o
+                WHERE o.status IN ('kept', 'saved', 'favorite')
+                  AND NOT EXISTS (
+                      SELECT 1 FROM applications a 
+                      WHERE a.user_id = ? AND a.opportunity_id = o.id
+                  )
+                """,
+                (user_id, user_id, user_id),
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO applications (
+                    id, user_id, opportunity_id, status, notes, contact_name, updated_at
+                )
+                SELECT 
+                    'app_' || ? || '_' || o.id,
+                    ?,
+                    o.id,
+                    'rejected',
+                    'Archivé depuis le flux',
+                    o.author_name,
+                    CURRENT_TIMESTAMP
+                FROM opportunities o
+                WHERE o.status = 'archived'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM applications a 
+                      WHERE a.user_id = ? AND a.opportunity_id = o.id
+                  )
+                """,
+                (user_id, user_id, user_id),
+            )
+            conn.commit()
+
             rows = conn.execute(
                 """
-                SELECT a.*, o.*
+                SELECT 
+                    a.id as app_id,
+                    a.user_id as app_user_id,
+                    a.opportunity_id as app_opp_id,
+                    a.status as app_status,
+                    a.notes as app_notes,
+                    a.contact_name as app_contact_name,
+                    a.contact_email as app_contact_email,
+                    a.salary_offered as app_salary_offered,
+                    a.applied_at as app_applied_at,
+                    a.updated_at as app_updated_at,
+                    o.*
                 FROM applications a
                 LEFT JOIN opportunities o ON a.opportunity_id = o.id
                 WHERE a.user_id = ?
@@ -489,25 +547,118 @@ class Storage:
                 if row["title"]:  # Opportunity was joined
                     opp = self._row_to_opportunity(row)
                 
-                applied_at = datetime.fromisoformat(row["applied_at"]) if row["applied_at"] else None
-                updated_at = datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else datetime.now(timezone.utc)
+                applied_at = datetime.fromisoformat(row["app_applied_at"]) if row["app_applied_at"] else None
+                updated_at = datetime.fromisoformat(row["app_updated_at"]) if row["app_updated_at"] else datetime.now(timezone.utc)
                 
+                status_val = row["app_status"]
+                if status_val not in ApplicationStatus._value2member_map_:
+                    status_val = ApplicationStatus.SAVED.value
+
                 apps.append(
                     Application(
-                        id=row["id"],
-                        user_id=row["user_id"],
-                        opportunity_id=row["opportunity_id"],
-                        status=ApplicationStatus(row["status"]),
-                        notes=row["notes"],
-                        contact_name=row["contact_name"],
-                        contact_email=row["contact_email"],
-                        salary_offered=row["salary_offered"],
+                        id=row["app_id"],
+                        user_id=row["app_user_id"],
+                        opportunity_id=row["app_opp_id"],
+                        status=ApplicationStatus(status_val),
+                        notes=row["app_notes"] or "",
+                        contact_name=row["app_contact_name"],
+                        contact_email=row["app_contact_email"],
+                        salary_offered=row["app_salary_offered"],
                         applied_at=applied_at,
                         updated_at=updated_at,
                         opportunity=opp,
                     )
                 )
             return apps
+
+    def get_application(self, app_id: str, user_id: str) -> Optional[Application]:
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT 
+                    a.id as app_id,
+                    a.user_id as app_user_id,
+                    a.opportunity_id as app_opp_id,
+                    a.status as app_status,
+                    a.notes as app_notes,
+                    a.contact_name as app_contact_name,
+                    a.contact_email as app_contact_email,
+                    a.salary_offered as app_salary_offered,
+                    a.applied_at as app_applied_at,
+                    a.updated_at as app_updated_at,
+                    o.*
+                FROM applications a
+                LEFT JOIN opportunities o ON a.opportunity_id = o.id
+                WHERE a.id = ? AND a.user_id = ?
+                """,
+                (app_id, user_id),
+            ).fetchone()
+            if not row:
+                return None
+            opp = self._row_to_opportunity(row) if row["title"] else None
+            applied_at = datetime.fromisoformat(row["app_applied_at"]) if row["app_applied_at"] else None
+            updated_at = datetime.fromisoformat(row["app_updated_at"]) if row["app_updated_at"] else datetime.now(timezone.utc)
+            status_val = row["app_status"]
+            if status_val not in ApplicationStatus._value2member_map_:
+                status_val = ApplicationStatus.SAVED.value
+
+            return Application(
+                id=row["app_id"],
+                user_id=row["app_user_id"],
+                opportunity_id=row["app_opp_id"],
+                status=ApplicationStatus(status_val),
+                notes=row["app_notes"] or "",
+                contact_name=row["app_contact_name"],
+                contact_email=row["app_contact_email"],
+                salary_offered=row["app_salary_offered"],
+                applied_at=applied_at,
+                updated_at=updated_at,
+                opportunity=opp,
+            )
+
+    def sync_opportunity_to_application(
+        self, opportunity_id: str, user_id: str, status: ApplicationStatus, notes: Optional[str] = None
+    ) -> Optional[Application]:
+        with self._connection() as conn:
+            opp = self.get_opportunity(opportunity_id)
+            contact_name = opp.author_name if opp else None
+            app_id = f"app_{user_id}_{opportunity_id}"
+            
+            applied_at = datetime.now(timezone.utc).isoformat() if status == ApplicationStatus.APPLIED else None
+
+            conn.execute(
+                """
+                INSERT INTO applications (
+                    id, user_id, opportunity_id, status, notes, contact_name, applied_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, COALESCE(?, ''), ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    status = excluded.status,
+                    notes = CASE WHEN excluded.notes != '' THEN excluded.notes ELSE applications.notes END,
+                    applied_at = CASE WHEN excluded.status = 'applied' THEN CURRENT_TIMESTAMP ELSE applications.applied_at END,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    app_id,
+                    user_id,
+                    opportunity_id,
+                    status.value,
+                    notes or "",
+                    contact_name,
+                    applied_at,
+                ),
+            )
+            conn.commit()
+            return self.get_application(app_id, user_id)
+
+    def delete_application_for_opportunity(self, opportunity_id: str, user_id: str) -> bool:
+        with self._connection() as conn:
+            cur = conn.execute(
+                "DELETE FROM applications WHERE opportunity_id = ? AND user_id = ?",
+                (opportunity_id, user_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
 
     def update_application_status(self, app_id: str, status: str, user_id: str) -> bool:
         with self._connection() as conn:
