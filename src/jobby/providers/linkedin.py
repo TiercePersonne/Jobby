@@ -126,7 +126,44 @@ class LinkedInProvider(JobSourceProvider):
                     logger.error(f"Error fetching LinkedIn jobs at offset {start}: {e}")
                     break
 
+            # Enrich descriptions for fetched cards concurrently
+            if opportunities:
+                sem = asyncio.Semaphore(5)
+                async def sem_enrich(opp: JobOpportunity):
+                    async with sem:
+                        await self._enrich_job_description(client, opp)
+                        await asyncio.sleep(0.15)
+
+                await asyncio.gather(*(sem_enrich(opp) for opp in opportunities), return_exceptions=True)
+
         return opportunities
+
+    async def _enrich_job_description(self, client: httpx.AsyncClient, opp: JobOpportunity) -> None:
+        """Fetch full job posting details from LinkedIn guest API."""
+        m = re.search(r"(\d{8,12})", opp.url)
+        if not m:
+            return
+        job_id = m.group(1)
+        api_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
+        try:
+            resp = await client.get(api_url, timeout=10.0)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                desc_elem = soup.find(class_=re.compile(r"show-more-less-html__markup|description__text", re.I))
+
+                parts: List[str] = []
+                criteria = soup.find_all(class_=re.compile(r"description__job-criteria-item", re.I))
+                criteria_texts = [c.get_text(" : ", strip=True) for c in criteria if c.get_text(strip=True)]
+                if criteria_texts:
+                    parts.append("📌 Informations clés :\n• " + "\n• ".join(criteria_texts))
+
+                if desc_elem:
+                    parts.append("📝 Descriptif complet du poste :\n" + desc_elem.get_text("\n", strip=True))
+
+                if parts:
+                    opp.description = "\n\n".join(parts)
+        except Exception as e:
+            logger.debug(f"Could not enrich LinkedIn job {job_id}: {e}")
 
     def _parse_job_cards(self, html_content: str) -> List[JobOpportunity]:
         """Parse job cards from LinkedIn guest HTML response."""
