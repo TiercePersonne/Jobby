@@ -1,0 +1,27 @@
+[project]
+name = "jobby"
+version = "0.1.0"
+description = "Autonomous multi-source job & post hunter agent"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "httpx>=0.28.1",
+    "pydantic>=2.14.3",
+    "python-dateutil>=4.0.0",
+    "pyyaml>=6.0.3",
+    "rich>=15.0.0",
+    "typer>=0.29.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jobby"]
