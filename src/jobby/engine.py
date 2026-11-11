@@ -150,6 +150,13 @@ class ScoringEngine:
             if re.search(pattern, title_cleaned):
                 found_negatives.append(neg)
 
+        # Flag alternance or stage in tags
+        alt_pattern = r"\b(alternan(?:ce|t|te|ts|tes)|apprentissage|contrat\s+pro|contrat\s+de\s+professionnalisation|stage|stagiaire|stagiaires|internship|intern)\b"
+        contract_info = opp.raw_metadata.get("contract_type", "") if isinstance(opp.raw_metadata, dict) else ""
+        if re.search(alt_pattern, title_cleaned) or re.search(alt_pattern, str(contract_info).lower()):
+            if "alternance" not in opp.tags:
+                opp.tags.append("alternance")
+
         if found_negatives:
             score -= 40.0
             reasons.append(f"Mots indésirables détectés ({', '.join(found_negatives)}) (-40)")

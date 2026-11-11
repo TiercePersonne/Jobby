@@ -278,21 +278,21 @@
         </div>
       </div>
 
-      <!-- Filtres Intelligents & IA Posts -->
+      <!-- Filtres Intelligents & Alternances / Stages -->
       <div class="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50/80 to-purple-50/50 border border-indigo-100 flex flex-col gap-2">
         <div class="flex items-center justify-between">
           <span class="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
             <svg class="w-3.5 h-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
             </svg>
-            <span>Filtrage IA des Posts</span>
+            <span>Filtre Alternances &amp; Stages</span>
           </span>
-          <span class="text-[10px] text-indigo-700 font-extrabold bg-indigo-100/80 px-2 py-0.5 rounded-md">NLP Actif</span>
+          <span id="badge-alternance-filter" class="text-[10px] text-emerald-700 font-extrabold bg-emerald-100/90 border border-emerald-200/80 px-2 py-0.5 rounded-md">Masquage Actif</span>
         </div>
         <label class="flex items-start gap-2.5 cursor-pointer text-xs pt-1">
           <input type="checkbox" id="filter-candidate-alternance" checked class="mt-0.5 rounded accent-indigo-600 cursor-pointer">
           <span class="text-indigo-900 leading-snug">
-            Masquer les <strong class="font-bold text-indigo-950">candidatures d'alternance</strong> de membres (conserver uniquement les offres de recrutement)
+            Masquer toutes les <strong class="font-bold text-indigo-950">alternances &amp; stages</strong> (annonces de postes et posts candidats)
           </span>
         </label>
       </div>
@@ -831,6 +831,7 @@
         if (config.filter_candidate_posts !== undefined && filterCandidateCheckbox) {
           filterCandidateCheckbox.checked = config.filter_candidate_posts;
         }
+        updateAlternanceBadge();
 
         // Load existing stored opportunities
         await loadOpportunities();
@@ -1139,6 +1140,13 @@
 
     if (filterCandidateCheckbox) {
       filterCandidateCheckbox.addEventListener('change', () => {
+        updateAlternanceBadge();
+        render();
+      });
+    }
+
+    if (inputNegatives) {
+      inputNegatives.addEventListener('input', () => {
         render();
       });
     }
@@ -1180,6 +1188,42 @@
       await changeStatus(id, newStatus);
     }
 
+    // Comprehensive detector for Alternances & Stages (both official offers and candidate posts)
+    function isAlternanceOrStage(o) {
+      if (!o) return false;
+      const title = (o.title || '').toLowerCase();
+      const desc = (o.description || '').toLowerCase();
+      const contract = (o.contract_type || '').toLowerCase();
+      const intent = o.post_intent || '';
+
+      // 1. NLP post intent
+      if (intent === 'candidate_seeking_alternance' || intent === 'hiring_alternance') return true;
+
+      // 2. Explicit contract type
+      if (contract.includes('alternance') || contract.includes('apprentissage') || contract.includes('stage') || contract.includes('intern')) return true;
+
+      // 3. Tags
+      if (Array.isArray(o.tags) && (o.tags.includes('alternance') || o.tags.includes('stage') || o.tags.includes('alternance_ou_stage'))) return true;
+
+      // 4. Strict Title Regex matching: Stage, Alternance, Alternant(e), Apprentissage, Contrat pro, Stagiaire, etc.
+      const altRegex = /\b(alternan(?:ce|t|te|ts|tes)|apprentissage|contrat\s+pro|contrat\s+de\s+professionnalisation|stage|stagiaire|stagiaires|internship|intern)\b/i;
+      if (altRegex.test(title)) return true;
+
+      return false;
+    }
+
+    function updateAlternanceBadge() {
+      const badge = document.getElementById('badge-alternance-filter');
+      if (!badge || !filterCandidateCheckbox) return;
+      if (filterCandidateCheckbox.checked) {
+        badge.textContent = "Masquage Actif";
+        badge.className = "text-[10px] text-emerald-700 font-extrabold bg-emerald-100/90 border border-emerald-200/80 px-2 py-0.5 rounded-md";
+      } else {
+        badge.textContent = "Désactivé (Tout afficher)";
+        badge.className = "text-[10px] text-slate-500 font-extrabold bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded-md";
+      }
+    }
+
     // RENDER CARDS (FROSTED GLASSMORPHISM & CLEAN VECTOR BADGES)
     function render() {
       const q = quickFilter.value.toLowerCase().trim();
@@ -1190,6 +1234,10 @@
         const db = new Date(b.discovered_at || 0).getTime();
         return db - da;
       });
+
+      const hideAlternances = filterCandidateCheckbox?.checked ?? true;
+      const negRaw = inputNegatives?.value || '';
+      const negKeywords = negRaw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
       // Filter active (non-archived) vs archived
       const activeOpps = allOpportunities.filter(o => o.status !== 'archived');
@@ -1219,8 +1267,6 @@
       const postOpps = activeOpps.filter(o => o.opportunity_type === 'post');
       setVal('count-hiring', postOpps.filter(o => o.post_intent !== 'candidate_seeking_alternance' && o.post_intent !== 'candidate_seeking_job').length);
       setVal('count-candidates', postOpps.filter(o => o.post_intent === 'candidate_seeking_alternance' || o.post_intent === 'candidate_seeking_job').length);
-
-      const hideCandidateAlternance = filterCandidateCheckbox?.checked ?? false;
 
       // Filtered list
       let filtered = allOpportunities.filter(o => {
@@ -1257,9 +1303,19 @@
           }
         }
 
-        // Sidebar checkbox: automatically filter out student candidates seeking alternance
-        if (hideCandidateAlternance && postSubfilter !== 'candidate_alternance' && currentFilter !== 'archived') {
-          if (isCandidateSeeking) return false;
+        // 1. Alternance & Stage Filter: If checked, hide ALL alternances and stages (both offers and candidate posts!)
+        if (hideAlternances && postSubfilter !== 'candidate_alternance' && currentFilter !== 'archived') {
+          if (isAlternanceOrStage(o) || isCandidateSeeking) return false;
+        }
+
+        // 2. Real-time Negative Keywords Exclusion
+        if (negKeywords.length > 0 && currentFilter !== 'archived') {
+          const tLower = (o.title || '').toLowerCase();
+          const hasNeg = negKeywords.some(kw => {
+            const re = new RegExp('\\b' + kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+            return re.test(tLower);
+          });
+          if (hasNeg) return false;
         }
 
         if (q) {
