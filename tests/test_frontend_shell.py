@@ -11,7 +11,9 @@ import pytest
 import uvicorn
 from playwright.sync_api import sync_playwright
 
+from jobby.models import JobOpportunity, OpportunityType
 from jobby.server import app
+from jobby.storage import Storage
 
 
 def _find_free_port() -> int:
@@ -634,5 +636,699 @@ def test_service_worker_registration_and_cache_eviction(browser, live_server_url
         cache_keys = page.evaluate("async () => await caches.keys()")
         assert "jobby-v3" not in cache_keys
         assert "jobby-v4" in cache_keys
+    finally:
+        context.close()
+
+
+def test_feed_filters_matrix_and_alternance_counters(browser, live_server_url):
+    context, page = _new_isolated_page(browser)
+    opps = [
+        {
+            "id": "opp-li-offer",
+            "source": "linkedin",
+            "opportunity_type": "offer",
+            "title": "Senior Python Engineer",
+            "company": "Acme",
+            "location": "Paris, France",
+            "remote_policy": "full",
+            "description": "Vous encadrerez des stagiaires sur la stack Python.",
+            "published_at": "2026-11-11T10:00:00+00:00",
+            "discovered_at": "2026-11-11T10:00:00+00:00",
+            "score": 82,
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "opp-li-post",
+            "source": "linkedin",
+            "opportunity_type": "post",
+            "title": "Post Recrutement Lead Tech",
+            "company": "Scale Studio",
+            "location": "Berlin, Germany",
+            "remote_policy": "hybrid",
+            "description": "Nous recrutons un Lead Tech en hybride.",
+            "published_at": "2026-11-11T11:00:00+00:00",
+            "discovered_at": "2026-11-11T11:00:00+00:00",
+            "score": 95,
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "opp-wttj-freelance",
+            "source": "wttj",
+            "opportunity_type": "freelance",
+            "title": "Mission Freelance Data",
+            "company": "DataFlow",
+            "location": "New York, USA",
+            "remote_policy": "onsite",
+            "description": "Mission sur site.",
+            "published_at": "2026-11-11T09:00:00+00:00",
+            "discovered_at": "2026-11-11T09:00:00+00:00",
+            "score": 70,
+            "status": "kept",
+            "is_seen": True,
+        },
+        {
+            "id": "opp-unknown-other",
+            "source": "indeed",
+            "opportunity_type": "offer",
+            "title": "Software Architect",
+            "company": "GlobalTech",
+            "location": "Tokyo",
+            "remote_policy": "unknown",
+            "description": "Architecture logicielle.",
+            "published_at": "2026-11-11T08:00:00+00:00",
+            "discovered_at": "2026-11-11T08:00:00+00:00",
+            "score": None,
+            "status": "new",
+            "is_seen": True,
+        },
+        {
+            "id": "opp-alt",
+            "source": "wttj",
+            "opportunity_type": "offer",
+            "title": "Alternance Développeur Python",
+            "company": "CampusTech",
+            "location": "Lyon, France",
+            "remote_policy": "hybrid",
+            "description": "Alternance 12 mois.",
+            "published_at": "2026-11-11T12:00:00+00:00",
+            "discovered_at": "2026-11-11T12:00:00+00:00",
+            "score": 88,
+            "status": "new",
+            "is_seen": False,
+        },
+    ]
+    _mock_base_apis(page, opps=opps)
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+
+        # Default: Masquer alternances is checked -> 4 visible of 5 active, N = 2, WTTJ = 1, LinkedIn = 2
+        assert page.locator("#filter-hide-alternance").is_checked()
+        assert page.locator("#feed-count").inner_text() == "4 opportunités sur 5"
+        assert page.locator('[data-opp-id="opp-alt"]').count() == 0
+        assert page.locator('[data-opp-id="opp-li-offer"]').is_visible()  # strict: description with 'stagiaires' not hidden
+        assert page.locator("#filter-new-count").inner_text() == "2"
+        assert page.locator('[data-source-count="linkedin"]').inner_text() == "2"
+        assert page.locator('[data-source-count="wttj"]').inner_text() == "1"
+        assert page.locator('[data-source-count="indeed"]').inner_text() == "1"
+        assert page.locator('[data-source-count="hellowork"]').inner_text() == "0"
+        assert page.locator('[data-source-count="glassdoor"]').inner_text() == "0"
+        assert page.locator('[data-source-count="teamtailor"]').inner_text() == "0"
+        assert page.locator('[data-source-count="jobgether"]').inner_text() == "0"
+
+        # Nouveau (#15803D) badge visible on unseen cards and absent on seen cards
+        new_badge = page.locator('[data-opp-id="opp-li-offer"] [data-new-badge]')
+        assert new_badge.is_visible()
+        assert "Nouveau" in new_badge.inner_text()
+        badge_color = new_badge.evaluate("el => getComputedStyle(el).color")
+        assert badge_color == "rgb(21, 128, 61)"
+        assert page.locator('[data-opp-id="opp-wttj-freelance"] [data-new-badge]').count() == 0
+
+        # Uncheck Masquer alternances -> N becomes 3, WTTJ count becomes 2, opp-alt visible
+        page.uncheck("#filter-hide-alternance")
+        assert page.locator("#feed-count").inner_text() == "5 opportunités"
+        assert page.locator('[data-opp-id="opp-alt"]').is_visible()
+        assert page.locator("#filter-new-count").inner_text() == "3"
+        assert page.locator('[data-source-count="wttj"]').inner_text() == "2"
+        page.check("#filter-hide-alternance")
+        assert page.locator("#feed-count").inner_text() == "4 opportunités sur 5"
+        assert page.locator("#filter-new-count").inner_text() == "2"
+
+        # #filter-only-new toggle on/off + aria-pressed & .is-active states
+        only_new_btn = page.locator("#filter-only-new")
+        assert only_new_btn.get_attribute("aria-pressed") == "false"
+        assert "is-active" not in (only_new_btn.get_attribute("class") or "")
+        only_new_btn.click()
+        assert only_new_btn.get_attribute("aria-pressed") == "true"
+        assert "is-active" in (only_new_btn.get_attribute("class") or "")
+        assert page.locator("#feed-count").inner_text() == "2 opportunités sur 5"
+        assert page.locator('[data-opp-id="opp-wttj-freelance"]').count() == 0
+        only_new_btn.click()
+        assert only_new_btn.get_attribute("aria-pressed") == "false"
+        assert "is-active" not in (only_new_btn.get_attribute("class") or "")
+        assert page.locator("#feed-count").inner_text() == "4 opportunités sur 5"
+
+        # Sources popover: 7 sources, multi-select OR (linkedin + indeed), active count badge
+        page.click("#btn-sources-popover")
+        assert page.locator("#popover-sources").is_visible()
+        assert page.locator("#btn-sources-popover").get_attribute("aria-expanded") == "true"
+        assert page.locator('#popover-sources input[type="checkbox"]').count() == 7
+
+        # Select LinkedIn + Indeed -> OR across sources, "(2)" active badge & .is-active
+        page.check('[data-filter-source="linkedin"]')
+        page.check('[data-filter-source="indeed"]')
+        assert page.locator("#sources-active-count").is_visible()
+        assert page.locator("#sources-active-count").inner_text() == "(2)"
+        assert "is-active" in (page.locator("#btn-sources-popover").get_attribute("class") or "")
+        assert page.locator('[data-opp-id="opp-li-offer"]').is_visible()
+        assert page.locator('[data-opp-id="opp-li-post"]').is_visible()
+        assert page.locator('[data-opp-id="opp-unknown-other"]').is_visible()
+        assert page.locator('[data-opp-id="opp-wttj-freelance"]').count() == 0
+        assert page.locator("#feed-count").inner_text() == "3 opportunités sur 5"
+
+        # Keep only LinkedIn -> includes both LinkedIn offer and LinkedIn post
+        page.uncheck('[data-filter-source="indeed"]')
+        assert page.locator("#sources-active-count").inner_text() == "(1)"
+        assert page.locator('[data-opp-id="opp-li-offer"]').is_visible()
+        assert page.locator('[data-opp-id="opp-li-post"]').is_visible()
+        assert page.locator('[data-opp-id="opp-unknown-other"]').count() == 0
+
+        # Esc closes popover & restores focus to #btn-sources-popover when activeModal === null
+        page.keyboard.press("Escape")
+        assert not page.locator("#popover-sources").is_visible()
+        assert page.locator("#btn-sources-popover").get_attribute("aria-expanded") == "false"
+        assert page.evaluate("() => document.activeElement?.id") == "btn-sources-popover"
+
+        # Orthogonality Sources = LinkedIn + Type = Posts Réseau -> only opp-li-post
+        page.click('[data-filter-type="post"]')
+        assert page.locator('[data-opp-id="opp-li-post"]').is_visible()
+        assert page.locator('[data-opp-id="opp-li-offer"]').count() == 0
+        assert page.locator("#feed-count").inner_text() == "1 opportunité sur 5"
+
+        # Re-open popover, test outside click closes it
+        page.click("#btn-sources-popover")
+        assert page.locator("#popover-sources").is_visible()
+        page.click("#view-feed-heading")
+        assert not page.locator("#popover-sources").is_visible()
+
+        # When activeModal !== null, Esc closes modal only and does NOT close popover until next Esc
+        page.click("#btn-sources-popover")
+        assert page.locator("#popover-sources").is_visible()
+        page.evaluate(
+            """async () => {
+                const { openModal } = await import('/static/js/app.js');
+                openModal('modal-hunt');
+            }"""
+        )
+        assert page.locator("#modal-hunt").is_visible()
+        page.keyboard.press("Escape")
+        assert not page.locator("#modal-hunt").is_visible()
+        assert page.locator("#popover-sources").is_visible()
+        page.keyboard.press("Escape")
+        assert not page.locator("#popover-sources").is_visible()
+        assert page.evaluate("() => document.activeElement?.id") == "btn-sources-popover"
+
+        # Uncheck LinkedIn -> 0 source checked = all sources; Type = Offres includes offer + freelance
+        page.click("#btn-sources-popover")
+        page.uncheck('[data-filter-source="linkedin"]')
+        assert not page.locator("#sources-active-count").is_visible()
+        assert "is-active" not in (page.locator("#btn-sources-popover").get_attribute("class") or "")
+        page.keyboard.press("Escape")
+        page.click('[data-filter-type="offer"]')
+        assert page.locator('[data-opp-id="opp-li-offer"]').is_visible()
+        assert page.locator('[data-opp-id="opp-wttj-freelance"]').is_visible()
+        assert page.locator('[data-opp-id="opp-unknown-other"]').is_visible()
+        assert page.locator('[data-opp-id="opp-li-post"]').count() == 0
+
+        # Reset Type = Tout
+        page.click('[data-filter-type="all"]')
+
+        # Mode multi-select: specific selection excludes unknown; Tous includes unknown
+        page.click('[data-filter-mode="full"]')
+        page.click('[data-filter-mode="hybrid"]')
+        assert page.locator('[data-opp-id="opp-li-offer"]').is_visible()
+        assert page.locator('[data-opp-id="opp-li-post"]').is_visible()
+        assert page.locator('[data-opp-id="opp-unknown-other"]').count() == 0
+        assert page.locator('[data-opp-id="opp-wttj-freelance"]').count() == 0
+
+        page.click('[data-filter-mode="all"]')
+        assert page.locator('[data-opp-id="opp-unknown-other"]').is_visible()
+
+        # Regions multi-select: FR + US excludes EU hors FR & other
+        page.click('[data-filter-region="france"]')
+        page.click('[data-filter-region="usa"]')
+        assert page.locator('[data-opp-id="opp-li-offer"]').is_visible()
+        assert page.locator('[data-opp-id="opp-wttj-freelance"]').is_visible()
+        assert page.locator('[data-opp-id="opp-li-post"]').count() == 0
+        assert page.locator('[data-opp-id="opp-unknown-other"]').count() == 0
+
+        # Deselect FR + US -> empty region selection restores all including other
+        page.click('[data-filter-region="france"]')
+        page.click('[data-filter-region="usa"]')
+        assert page.locator('[data-opp-id="opp-unknown-other"]').is_visible()
+
+        # Sorting: Score (95 -> 82 -> 70 -> null) & Region (FR -> EU -> US -> other)
+        page.select_option("#filter-sort", "score")
+        ids_by_score = page.locator("#feed-list article[data-opp-id]").evaluate_all(
+            "els => els.map(el => el.getAttribute('data-opp-id'))"
+        )
+        assert ids_by_score == ["opp-li-post", "opp-li-offer", "opp-wttj-freelance", "opp-unknown-other"]
+
+        page.select_option("#filter-sort", "region")
+        ids_by_region = page.locator("#feed-list article[data-opp-id]").evaluate_all(
+            "els => els.map(el => el.getAttribute('data-opp-id'))"
+        )
+        assert ids_by_region == ["opp-li-offer", "opp-li-post", "opp-wttj-freelance", "opp-unknown-other"]
+
+        # Filtered empty state + Réinitialiser les filtres restores defaults and focus
+        page.click("#filter-only-new")
+        page.click('[data-filter-mode="onsite"]')
+        assert page.locator("#feed-count").inner_text() == "0 opportunité sur 5"
+        assert "Aucune opportunité ne correspond à ces critères." in page.locator("#feed-list").inner_text()
+        assert page.locator("#btn-reset-filters").is_visible()
+        page.click("#btn-reset-filters")
+        assert page.locator("#feed-list article[data-opp-id]").count() == 4
+        assert page.locator("#feed-count").inner_text() == "4 opportunités sur 5"
+        assert page.locator("#filter-only-new").get_attribute("aria-pressed") == "false"
+        assert "is-active" not in (page.locator("#filter-only-new").get_attribute("class") or "")
+        assert page.locator("#filter-sort").input_value() == "date"
+        assert page.evaluate("() => document.activeElement?.id") == "filter-only-new"
+
+        # Performance: full renderFeedView() across 200 items in real DOM completes < 50 ms
+        perf_result = page.evaluate(
+            """async () => {
+                const { renderFeedView } = await import('/static/js/views/feed.js');
+                const items = Array.from({ length: 200 }, (_, i) => ({
+                    id: `perf-${i}`,
+                    source: i % 2 === 0 ? 'linkedin' : 'wttj',
+                    opportunity_type: i % 5 === 0 ? 'post' : 'offer',
+                    title: `Backend Engineer ${i}`,
+                    company: `Studio ${i}`,
+                    location: i % 3 === 0 ? 'Paris, France' : 'London, UK',
+                    remote_policy: i % 4 === 0 ? 'full' : 'hybrid',
+                    published_at: '2026-11-11T10:00:00+00:00',
+                    url: `https://example.com/job/${i}`,
+                    score: i % 100,
+                    status: 'new',
+                    is_seen: i % 2 === 0,
+                }));
+                const snapshot = {
+                    opportunities: items,
+                    isLoadingFeed: false,
+                    feedError: null,
+                    feedFilters: {
+                        onlyNew: false,
+                        sources: [],
+                        modes: [],
+                        regions: [],
+                        type: 'all',
+                        sortBy: 'score',
+                        hideAlternance: true,
+                    },
+                };
+                const start = performance.now();
+                renderFeedView(snapshot);
+                const end = performance.now();
+                return {
+                    elapsedMs: end - start,
+                    domCount: document.querySelectorAll('#feed-list article[data-opp-id]').length,
+                };
+            }"""
+        )
+        assert perf_result["domCount"] == 200
+        assert perf_result["elapsedMs"] < 50.0
+    finally:
+        context.close()
+
+
+def test_mark_all_seen_persistence_and_rollback_and_seen_api(browser, live_server_url, monkeypatch, tmp_path):
+    db_path = tmp_path / "e2e_seen.db"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+
+    storage = Storage(db_path=db_path)
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="e2e-1",
+            source="linkedin",
+            title="Python Staff Engineer",
+            company="Porcelain Lab",
+            location="Paris",
+            url="https://linkedin.com/jobs/view/e2e1",
+            is_seen=False,
+        )
+    )
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="e2e-2",
+            source="wttj",
+            title="Design Engineer",
+            company="Studio Warm",
+            location="Paris",
+            url="https://wttj.co/jobs/e2e2",
+            is_seen=False,
+        )
+    )
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="e2e-3",
+            source="indeed",
+            title="Already Seen Role",
+            company="OldCorp",
+            location="Paris",
+            url="https://indeed.com/jobs/e2e3",
+            is_seen=True,
+        )
+    )
+
+    context, page = _new_isolated_page(browser)
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+        assert page.locator("#filter-new-count").inner_text() == "2"
+        assert page.locator('[data-opp-id="e2e-1"] [data-new-badge]').is_visible()
+        assert page.locator('[data-opp-id="e2e-2"] [data-new-badge]').is_visible()
+        assert page.locator('[data-opp-id="e2e-3"] [data-new-badge]').count() == 0
+
+        # Test PATCH /seen via api.js + state.js live update
+        page.evaluate(
+            """async () => {
+                const { markOpportunitySeen } = await import('/static/js/api.js');
+                const { syncOpportunitySeen } = await import('/static/js/state.js');
+                await markOpportunitySeen('e2e-1', true);
+                syncOpportunitySeen('e2e-1', true);
+            }"""
+        )
+        assert page.locator("#filter-new-count").inner_text() == "1"
+        assert page.locator('[data-opp-id="e2e-1"] [data-new-badge]').count() == 0
+        assert storage.get_opportunity("e2e-1").is_seen is True
+
+        # Click Tout marquer comme vu -> persists in SQLite across F5 reload & disables button
+        assert page.locator("#btn-mark-all-seen").is_enabled()
+        with page.expect_response("**/api/opportunities/mark-all-seen"):
+            page.click("#btn-mark-all-seen")
+        assert page.locator("#filter-new-count").inner_text() == "0"
+        assert page.locator("#btn-mark-all-seen").is_disabled()
+        assert page.locator("[data-new-badge]").count() == 0
+        assert storage.get_opportunity("e2e-2").is_seen is True
+
+        page.reload(wait_until="networkidle")
+        assert page.locator("#filter-new-count").inner_text() == "0"
+        assert page.locator("#btn-mark-all-seen").is_disabled()
+        assert page.locator("[data-new-badge]").count() == 0
+    finally:
+        context.close()
+
+    # Rollback + toast when mark-all-seen API fails
+    context_err, page_err = _new_isolated_page(browser)
+    _mock_base_apis(
+        page_err,
+        opps=[
+            {
+                "id": "rb-1",
+                "source": "wttj",
+                "opportunity_type": "offer",
+                "title": "Rollback Offer 1",
+                "company": "Co",
+                "location": "Paris",
+                "url": "https://example.com/rb1",
+                "status": "new",
+                "is_seen": False,
+            },
+            {
+                "id": "rb-2",
+                "source": "linkedin",
+                "opportunity_type": "offer",
+                "title": "Rollback Offer 2",
+                "company": "Co",
+                "location": "Paris",
+                "url": "https://example.com/rb2",
+                "status": "new",
+                "is_seen": False,
+            },
+        ],
+    )
+    page_err.route(
+        "**/api/opportunities/mark-all-seen",
+        lambda route: route.fulfill(
+            status=500,
+            content_type="application/json",
+            body='{"detail":"Erreur marquage"}',
+        ),
+    )
+
+    try:
+        page_err.goto(live_server_url, wait_until="networkidle")
+        assert page_err.locator("#filter-new-count").inner_text() == "2"
+
+        page_err.click("#filter-only-new")
+        page_err.click("#btn-mark-all-seen")
+
+        toast = page_err.locator("#toast-container .jp-toast-error")
+        toast.first.wait_for(state="visible")
+        assert "Erreur marquage" in toast.first.inner_text()
+
+        # Rolled back cleanly: N == 2, cards restored under onlyNew filter, badges visible, button re-enabled
+        assert page_err.locator("#filter-new-count").inner_text() == "2"
+        assert page_err.locator("#btn-mark-all-seen").is_enabled()
+        assert page_err.locator('[data-opp-id="rb-1"] [data-new-badge]').is_visible()
+        assert page_err.locator('[data-opp-id="rb-2"] [data-new-badge]').is_visible()
+    finally:
+        context_err.close()
+
+
+def test_mobile_filter_bar_and_sources_popover_bounds(browser, live_server_url):
+    context, page = _new_isolated_page(browser, width=430, height=812)
+    _mock_base_apis(
+        page,
+        opps=[
+            {
+                "id": "mob-1",
+                "source": "linkedin",
+                "opportunity_type": "offer",
+                "title": "Mobile Lead Engineer",
+                "company": "Warm Co",
+                "location": "Paris, France",
+                "url": "https://example.com/mob1",
+                "status": "new",
+                "is_seen": False,
+            }
+        ],
+    )
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+        assert not page.evaluate("() => document.documentElement.scrollWidth > window.innerWidth")
+
+        # Open Sources popover on 430px viewport where button sits near right edge -> clamped inside 430px
+        page.click("#btn-sources-popover")
+        assert page.locator("#popover-sources").is_visible()
+        box_430 = page.locator("#popover-sources").bounding_box()
+        assert box_430 is not None
+        assert box_430["x"] >= 0
+        assert box_430["x"] + box_430["width"] <= 430
+        assert not page.evaluate("() => document.documentElement.scrollWidth > window.innerWidth")
+
+        # Resize viewport to 375x812 while popover is open -> window.resize repositions popover within 375px
+        page.set_viewport_size({"width": 375, "height": 812})
+        page.wait_for_function(
+            """() => {
+                const el = document.getElementById('popover-sources');
+                if (!el) return false;
+                const r = el.getBoundingClientRect();
+                return r.left >= 0 && r.right <= 375;
+            }"""
+        )
+        box_375 = page.locator("#popover-sources").bounding_box()
+        assert box_375 is not None
+        assert box_375["x"] >= 0
+        assert box_375["x"] + box_375["width"] <= 375
+        assert not page.evaluate("() => document.documentElement.scrollWidth > window.innerWidth")
+
+        min_font = page.evaluate(
+            """() => {
+                let minPx = 999;
+                for (const el of document.querySelectorAll('body *')) {
+                    const style = getComputedStyle(el);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    const hasDirectText = Array.from(el.childNodes).some(
+                        n => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 0
+                    );
+                    if (hasDirectText) {
+                        minPx = Math.min(minPx, parseFloat(style.fontSize));
+                    }
+                }
+                return minPx;
+            }"""
+        )
+        assert min_font >= 12.0
+
+        # Switching away from feed tab closes the popover and stops Escape from targeting it
+        page.evaluate(
+            """async () => {
+                const { setActiveView } = await import('/static/js/state.js');
+                setActiveView('kanban');
+            }"""
+        )
+        assert page.locator("#view-kanban").is_visible()
+        assert page.locator("#popover-sources").evaluate("el => el.classList.contains('hidden')")
+        assert page.locator("#btn-sources-popover").get_attribute("aria-expanded") == "false"
+        page.keyboard.press("Escape")
+        assert page.evaluate("() => document.activeElement?.id") != "btn-sources-popover"
+    finally:
+        context.close()
+
+
+def test_is_alternance_strict_metadata_tags_and_state_noop(browser, live_server_url):
+    context, page = _new_isolated_page(browser)
+    _mock_base_apis(page)
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+        checks = page.evaluate(
+            """async () => {
+                const { isAlternanceOrStage } = await import('/static/js/utils.js');
+                const stateMod = await import('/static/js/state.js');
+
+                const altChecks = {
+                    rawContract: isAlternanceOrStage({
+                        title: 'Backend Engineer',
+                        raw_metadata: { contract_type: 'apprenticeship' },
+                    }),
+                    upperApprenticeshipTag: isAlternanceOrStage({
+                        title: 'Backend Engineer',
+                        tags: ['APPRENTICESHIP'],
+                    }),
+                    upperStageTag: isAlternanceOrStage({
+                        title: 'Product Designer',
+                        tags: ['STAGE'],
+                    }),
+                    paddedAlternanceTag: isAlternanceOrStage({
+                        title: 'Data Engineer',
+                        tags: [' Alternance '],
+                    }),
+                    descriptionIgnored: isAlternanceOrStage({
+                        title: 'Senior Python Engineer',
+                        description: 'Vous encadrerez des stagiaires',
+                    }),
+                };
+
+                stateMod.setOpportunities([
+                    { id: 'st-1', source: 'linkedin', status: 'new', is_seen: true },
+                ]);
+                let emitCount = 0;
+                const unsub = stateMod.subscribe(() => { emitCount += 1; });
+
+                // No-op mutators & invalid source key must NOT emit
+                stateMod.setOnlyNew(false);
+                stateMod.setHideAlternance(true);
+                stateMod.toggleFeedMode('all');
+                stateMod.toggleFeedSource('unknown-source');
+                stateMod.markAllOpportunitiesSeenInState();
+                const noopEmits = emitCount;
+
+                // Valid mutations DO emit
+                stateMod.toggleFeedSource('linkedin');
+                const afterValidEmit = emitCount;
+                unsub();
+
+                return {
+                    altChecks,
+                    noopEmits,
+                    afterValidEmit,
+                    sourcesAfter: stateMod.getState().feedFilters.sources,
+                };
+            }"""
+        )
+        assert checks["altChecks"] == {
+            "rawContract": True,
+            "upperApprenticeshipTag": True,
+            "upperStageTag": True,
+            "paddedAlternanceTag": True,
+            "descriptionIgnored": False,
+        }
+        assert checks["noopEmits"] == 0
+        assert checks["afterValidEmit"] == 1
+        assert checks["sourcesAfter"] == ["linkedin"]
+    finally:
+        context.close()
+
+
+def test_sort_date_score_tiebreak_and_invalid_published_at(browser, live_server_url):
+    context, page = _new_isolated_page(browser)
+    opps = [
+        {
+            "id": "s-4",
+            "source": "wttj",
+            "opportunity_type": "offer",
+            "title": "Old High Score",
+            "company": "Alpha",
+            "location": "Paris",
+            "published_at": "2026-11-11T08:00:00+00:00",
+            "discovered_at": "2026-11-11T08:00:00+00:00",
+            "url": "https://example.com/s4",
+            "score": 90,
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "s-2",
+            "source": "linkedin",
+            "opportunity_type": "offer",
+            "title": "Invalid Published Fallback",
+            "company": "Beta",
+            "location": "Paris",
+            "published_at": "not-a-valid-date",
+            "discovered_at": "2026-11-11T11:00:00+00:00",
+            "url": "https://example.com/s2",
+            "score": None,
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "s-1",
+            "source": "indeed",
+            "opportunity_type": "offer",
+            "title": "Newest Mid Score",
+            "company": "Gamma",
+            "location": "Paris",
+            "published_at": "2026-11-11T12:00:00+00:00",
+            "discovered_at": "2026-11-11T12:00:00+00:00",
+            "url": "https://example.com/s1",
+            "score": 50,
+            "status": "new",
+            "is_seen": False,
+        },
+        {
+            "id": "s-3",
+            "source": "hellowork",
+            "opportunity_type": "offer",
+            "title": "Missing Published Fallback",
+            "company": "Delta",
+            "location": "Paris",
+            "published_at": None,
+            "discovered_at": "2026-11-11T09:00:00+00:00",
+            "url": "https://example.com/s3",
+            "score": None,
+            "status": "new",
+            "is_seen": False,
+        },
+    ]
+    _mock_base_apis(page, opps=opps)
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+
+        # Initial default 'date' sort uses valid discovered_at fallback when published_at is invalid/null
+        ids_default = page.locator("#feed-list article[data-opp-id]").evaluate_all(
+            "els => els.map(el => el.getAttribute('data-opp-id'))"
+        )
+        assert ids_default == ["s-1", "s-2", "s-3", "s-4"]
+        assert "Récemment" not in page.locator('[data-opp-id="s-2"]').inner_text()
+
+        # Switch to 'score': 90 -> 50 -> null tie-broken by date (s-2 before s-3)
+        page.select_option("#filter-sort", "score")
+        ids_score = page.locator("#feed-list article[data-opp-id]").evaluate_all(
+            "els => els.map(el => el.getAttribute('data-opp-id'))"
+        )
+        assert ids_score == ["s-4", "s-1", "s-2", "s-3"]
+
+        # Switch back to 'date'
+        page.select_option("#filter-sort", "date")
+        ids_back_date = page.locator("#feed-list article[data-opp-id]").evaluate_all(
+            "els => els.map(el => el.getAttribute('data-opp-id'))"
+        )
+        assert ids_back_date == ["s-1", "s-2", "s-3", "s-4"]
+
+        # Switch to 'score' then hit empty state and click #btn-reset-filters -> restores #filter-sort to 'date'
+        page.select_option("#filter-sort", "score")
+        page.click('[data-filter-type="post"]')
+        assert page.locator("#btn-reset-filters").is_visible()
+        page.click("#btn-reset-filters")
+        assert page.locator("#filter-sort").input_value() == "date"
+        ids_after_reset = page.locator("#feed-list article[data-opp-id]").evaluate_all(
+            "els => els.map(el => el.getAttribute('data-opp-id'))"
+        )
+        assert ids_after_reset == ["s-1", "s-2", "s-3", "s-4"]
     finally:
         context.close()

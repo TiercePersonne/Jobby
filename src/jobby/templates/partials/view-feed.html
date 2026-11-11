@@ -8,7 +8,113 @@
   </div>
 
   <!-- Slot réservé : Tiroir Brief IA (Epic 2) -->
-  <!-- Slot réservé : Barre de filtres combinables (Story 1.2) -->
+
+  <!-- Barre de filtres combinables (Story 1.2) -->
+  <div id="feed-filter-bar" class="jp-filter-bar" role="region" aria-label="Filtres du flux">
+    <button type="button" id="filter-only-new" class="jp-filter-pill-standalone jp-filter-pill-new" aria-pressed="false">
+      <span class="jp-dot-sage" aria-hidden="true"></span>
+      <span>Nouvelles (<span id="filter-new-count">0</span>)</span>
+    </button>
+
+    <button type="button" id="btn-mark-all-seen" class="jp-filter-action" disabled>
+      Tout marquer comme vu
+    </button>
+
+    <div id="filter-sources-wrapper" class="relative">
+      <button type="button" id="btn-sources-popover" class="jp-filter-pill-standalone" aria-expanded="false" aria-controls="popover-sources">
+        <span>Sources</span>
+        <span id="sources-active-count" class="hidden"></span>
+        <span aria-hidden="true">&#9662;</span>
+      </button>
+
+      <div id="popover-sources" class="jp-popover hidden" role="group" aria-label="Filtrer par source">
+        <div class="flex flex-col gap-0.5">
+          <label class="jp-popover-option">
+            <span class="inline-flex items-center gap-2 min-w-0">
+              <input type="checkbox" data-filter-source="linkedin">
+              <span>LinkedIn</span>
+            </span>
+            <span class="jp-source-count" data-source-count="linkedin">0</span>
+          </label>
+          <label class="jp-popover-option">
+            <span class="inline-flex items-center gap-2 min-w-0">
+              <input type="checkbox" data-filter-source="wttj">
+              <span>WTTJ</span>
+            </span>
+            <span class="jp-source-count" data-source-count="wttj">0</span>
+          </label>
+          <label class="jp-popover-option">
+            <span class="inline-flex items-center gap-2 min-w-0">
+              <input type="checkbox" data-filter-source="indeed">
+              <span>Indeed</span>
+            </span>
+            <span class="jp-source-count" data-source-count="indeed">0</span>
+          </label>
+          <label class="jp-popover-option">
+            <span class="inline-flex items-center gap-2 min-w-0">
+              <input type="checkbox" data-filter-source="hellowork">
+              <span>HelloWork</span>
+            </span>
+            <span class="jp-source-count" data-source-count="hellowork">0</span>
+          </label>
+          <label class="jp-popover-option">
+            <span class="inline-flex items-center gap-2 min-w-0">
+              <input type="checkbox" data-filter-source="glassdoor">
+              <span>Glassdoor</span>
+            </span>
+            <span class="jp-source-count" data-source-count="glassdoor">0</span>
+          </label>
+          <label class="jp-popover-option">
+            <span class="inline-flex items-center gap-2 min-w-0">
+              <input type="checkbox" data-filter-source="teamtailor">
+              <span>Teamtailor</span>
+            </span>
+            <span class="jp-source-count" data-source-count="teamtailor">0</span>
+          </label>
+          <label class="jp-popover-option">
+            <span class="inline-flex items-center gap-2 min-w-0">
+              <input type="checkbox" data-filter-source="jobgether">
+              <span>Jobgether</span>
+            </span>
+            <span class="jp-source-count" data-source-count="jobgether">0</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="jp-filter-group" role="group" aria-label="Mode de travail">
+      <button type="button" class="jp-filter-pill is-active" data-filter-mode="all" aria-pressed="true">Tous</button>
+      <button type="button" class="jp-filter-pill" data-filter-mode="full" aria-pressed="false">100% Remote</button>
+      <button type="button" class="jp-filter-pill" data-filter-mode="hybrid" aria-pressed="false">Hybride</button>
+      <button type="button" class="jp-filter-pill" data-filter-mode="onsite" aria-pressed="false">Sur site</button>
+    </div>
+
+    <div class="jp-filter-group" role="group" aria-label="Région">
+      <button type="button" class="jp-filter-pill" data-filter-region="france" aria-pressed="false">FR</button>
+      <button type="button" class="jp-filter-pill" data-filter-region="europe" aria-pressed="false">EU hors FR</button>
+      <button type="button" class="jp-filter-pill" data-filter-region="usa" aria-pressed="false">US</button>
+    </div>
+
+    <div class="jp-filter-group" role="group" aria-label="Type d'opportunité">
+      <button type="button" class="jp-filter-pill is-active" data-filter-type="all" aria-pressed="true">Tout</button>
+      <button type="button" class="jp-filter-pill" data-filter-type="offer" aria-pressed="false">Offres</button>
+      <button type="button" class="jp-filter-pill" data-filter-type="post" aria-pressed="false">Posts Réseau</button>
+    </div>
+
+    <label class="inline-flex items-center gap-1.5 jp-label" for="filter-sort">
+      <span>Tri</span>
+      <select id="filter-sort" class="jp-filter-select">
+        <option value="date" selected>Plus récentes</option>
+        <option value="score">Score</option>
+        <option value="region">Région</option>
+      </select>
+    </label>
+
+    <label class="jp-filter-checkbox" for="filter-hide-alternance">
+      <input type="checkbox" id="filter-hide-alternance" checked>
+      <span>Masquer alternances</span>
+    </label>
+  </div>
 
   <div id="feed-list" class="flex flex-col gap-3">
     <div class="jp-card jp-body text-center py-8" role="status">

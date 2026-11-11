@@ -55,6 +55,7 @@ class Storage:
                     score_reasons TEXT,
                     tags TEXT,
                     status TEXT NOT NULL DEFAULT 'new',
+                    is_seen INTEGER NOT NULL DEFAULT 0,
                     dedup_key TEXT NOT NULL,
                     raw_metadata TEXT,
                     post_intent TEXT,
@@ -67,9 +68,19 @@ class Storage:
                 conn.execute("ALTER TABLE opportunities ADD COLUMN post_intent TEXT")
             if "ai_summary" not in cols:
                 conn.execute("ALTER TABLE opportunities ADD COLUMN ai_summary TEXT")
+            if "is_seen" not in cols:
+                conn.execute("BEGIN")
+                try:
+                    conn.execute("ALTER TABLE opportunities ADD COLUMN is_seen INTEGER NOT NULL DEFAULT 0")
+                    conn.execute("UPDATE opportunities SET is_seen = 1 WHERE status != 'new'")
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
             conn.execute("CREATE INDEX IF NOT EXISTS idx_dedup ON opportunities (dedup_key)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_source ON opportunities (source)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON opportunities (status)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_is_seen ON opportunities (is_seen)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_score ON opportunities (score)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_discovered ON opportunities (discovered_at)")
 
@@ -151,68 +162,76 @@ class Storage:
         Returns: (is_new, updated_or_saved_opp)
         """
         with self._connection() as conn:
-            existing = conn.execute(
-                "SELECT id, status, score FROM opportunities WHERE id = ?", (opp.id,)
-            ).fetchone()
-            
-            is_new = existing is None
-            status = existing["status"] if existing else opp.status
-            score = opp.score if opp.score is not None else (existing["score"] if existing else None)
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                existing = conn.execute(
+                    "SELECT id, status, score, is_seen FROM opportunities WHERE id = ?", (opp.id,)
+                ).fetchone()
+                
+                is_new = existing is None
+                status = existing["status"] if existing else opp.status
+                score = opp.score if opp.score is not None else (existing["score"] if existing else None)
+                is_seen = bool(existing["is_seen"]) if existing else bool(opp.is_seen)
 
-            published_str = opp.published_at.isoformat() if opp.published_at else None
-            discovered_str = opp.discovered_at.isoformat()
-            reasons_json = json.dumps(opp.score_reasons, ensure_ascii=False)
-            tags_json = json.dumps(opp.tags, ensure_ascii=False)
-            raw_meta_json = json.dumps(opp.raw_metadata, ensure_ascii=False)
+                published_str = opp.published_at.isoformat() if opp.published_at else None
+                discovered_str = opp.discovered_at.isoformat()
+                reasons_json = json.dumps(opp.score_reasons, ensure_ascii=False)
+                tags_json = json.dumps(opp.tags, ensure_ascii=False)
+                raw_meta_json = json.dumps(opp.raw_metadata, ensure_ascii=False)
 
-            conn.execute("""
-                INSERT INTO opportunities (
-                    id, source, opportunity_type, title, company, location,
-                    remote_policy, salary_raw, url, author_name, author_profile_url,
-                    author_title, description, published_at, discovered_at,
-                    score, score_reasons, tags, status, dedup_key, raw_metadata,
-                    post_intent, ai_summary
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    title = excluded.title,
-                    company = COALESCE(excluded.company, opportunities.company),
-                    location = COALESCE(excluded.location, opportunities.location),
-                    remote_policy = COALESCE(excluded.remote_policy, opportunities.remote_policy),
-                    description = excluded.description,
-                    score = COALESCE(excluded.score, opportunities.score),
-                    score_reasons = excluded.score_reasons,
-                    tags = excluded.tags,
-                    post_intent = COALESCE(excluded.post_intent, opportunities.post_intent),
-                    ai_summary = COALESCE(excluded.ai_summary, opportunities.ai_summary)
-            """, (
-                opp.id,
-                opp.source,
-                opp.opportunity_type.value,
-                opp.title,
-                opp.company,
-                opp.location,
-                opp.remote_policy,
-                opp.salary_raw,
-                opp.url,
-                opp.author_name,
-                opp.author_profile_url,
-                opp.author_title,
-                opp.description,
-                published_str,
-                discovered_str,
-                score,
-                reasons_json,
-                tags_json,
-                status,
-                opp.dedup_key,
-                raw_meta_json,
-                opp.post_intent,
-                opp.ai_summary
-            ))
-            conn.commit()
+                conn.execute("""
+                    INSERT INTO opportunities (
+                        id, source, opportunity_type, title, company, location,
+                        remote_policy, salary_raw, url, author_name, author_profile_url,
+                        author_title, description, published_at, discovered_at,
+                        score, score_reasons, tags, status, is_seen, dedup_key, raw_metadata,
+                        post_intent, ai_summary
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        title = excluded.title,
+                        company = COALESCE(excluded.company, opportunities.company),
+                        location = COALESCE(excluded.location, opportunities.location),
+                        remote_policy = COALESCE(excluded.remote_policy, opportunities.remote_policy),
+                        description = excluded.description,
+                        score = COALESCE(excluded.score, opportunities.score),
+                        score_reasons = excluded.score_reasons,
+                        tags = excluded.tags,
+                        post_intent = COALESCE(excluded.post_intent, opportunities.post_intent),
+                        ai_summary = COALESCE(excluded.ai_summary, opportunities.ai_summary)
+                """, (
+                    opp.id,
+                    opp.source,
+                    opp.opportunity_type.value,
+                    opp.title,
+                    opp.company,
+                    opp.location,
+                    opp.remote_policy,
+                    opp.salary_raw,
+                    opp.url,
+                    opp.author_name,
+                    opp.author_profile_url,
+                    opp.author_title,
+                    opp.description,
+                    published_str,
+                    discovered_str,
+                    score,
+                    reasons_json,
+                    tags_json,
+                    status,
+                    int(is_seen),
+                    opp.dedup_key,
+                    raw_meta_json,
+                    opp.post_intent,
+                    opp.ai_summary
+                ))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
         opp.status = status
         opp.score = score
+        opp.is_seen = is_seen
         return is_new, opp
 
     def get_opportunity(self, opp_id: str) -> Optional[JobOpportunity]:
@@ -256,12 +275,37 @@ class Storage:
 
     def update_status(self, opp_id: str, new_status: str) -> bool:
         with self._connection() as conn:
+            if new_status != "new":
+                cur = conn.execute(
+                    "UPDATE opportunities SET status = ?, is_seen = 1 WHERE id = ?",
+                    (new_status, opp_id),
+                )
+            else:
+                cur = conn.execute(
+                    "UPDATE opportunities SET status = ? WHERE id = ?",
+                    (new_status, opp_id),
+                )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def mark_opportunity_seen(self, opp_id: str, is_seen: bool = True) -> bool:
+        """Persist seen state for a single opportunity; returns False if missing."""
+        with self._connection() as conn:
             cur = conn.execute(
-                "UPDATE opportunities SET status = ? WHERE id = ?",
-                (new_status, opp_id)
+                "UPDATE opportunities SET is_seen = ? WHERE id = ?",
+                (int(bool(is_seen)), opp_id),
             )
             conn.commit()
             return cur.rowcount > 0
+
+    def mark_all_opportunities_seen(self) -> int:
+        """Mark all unseen opportunities as seen; returns number of updated rows."""
+        with self._connection() as conn:
+            cur = conn.execute(
+                "UPDATE opportunities SET is_seen = 1 WHERE is_seen = 0"
+            )
+            conn.commit()
+            return cur.rowcount
 
     def get_stats(self) -> Dict[str, Any]:
         with self._connection() as conn:
@@ -286,6 +330,7 @@ class Storage:
 
         post_intent = row["post_intent"] if "post_intent" in row.keys() else None
         ai_summary = row["ai_summary"] if "ai_summary" in row.keys() else None
+        is_seen = bool(row["is_seen"]) if "is_seen" in row.keys() else False
 
         return JobOpportunity(
             id=row["id"],
@@ -307,6 +352,7 @@ class Storage:
             score_reasons=reasons,
             tags=tags,
             status=row["status"],
+            is_seen=is_seen,
             raw_metadata=raw_meta,
             post_intent=post_intent,
             ai_summary=ai_summary,

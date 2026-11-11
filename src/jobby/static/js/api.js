@@ -191,6 +191,19 @@ export function updateOpportunityStatus(oppId, status) {
   });
 }
 
+export function markOpportunitySeen(oppId, isSeen = true) {
+  return request(`/api/opportunities/${encodeURIComponent(oppId)}/seen`, {
+    method: 'PATCH',
+    body: { is_seen: Boolean(isSeen) },
+  });
+}
+
+export function markAllOpportunitiesSeen() {
+  return request('/api/opportunities/mark-all-seen', {
+    method: 'POST',
+  });
+}
+
 export function updateApplicationStatus(appId, status) {
   return request(`/api/applications/${encodeURIComponent(appId)}/status`, {
     method: 'PATCH',

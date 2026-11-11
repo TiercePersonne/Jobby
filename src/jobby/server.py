@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 import uuid
 
 import httpx
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -99,6 +99,10 @@ class SearchRequest(BaseModel):
 
 class StatusUpdateRequest(BaseModel):
     status: str
+
+
+class SeenUpdateRequest(BaseModel):
+    is_seen: bool
 
 
 class AITestRequest(BaseModel):
@@ -285,6 +289,30 @@ def set_status(opp_id: str, body: StatusUpdateRequest, request: Request) -> Dict
         storage.delete_application_for_opportunity(opp_id, user.id)
 
     return {"status": "updated", "id": opp_id, "new_status": body.status}
+
+
+@app.patch("/api/opportunities/{opp_id}/seen")
+def mark_opportunity_seen(
+    opp_id: str,
+    body: Optional[SeenUpdateRequest] = Body(default=None),
+) -> Dict[str, Any]:
+    config = load_config()
+    storage = Storage(config.database_path)
+    seen_value = body.is_seen if body is not None else True
+
+    success = storage.mark_opportunity_seen(opp_id, is_seen=seen_value)
+    if not success:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+
+    return {"status": "updated", "id": opp_id, "is_seen": seen_value}
+
+
+@app.post("/api/opportunities/mark-all-seen")
+def mark_all_opportunities_seen() -> Dict[str, Any]:
+    config = load_config()
+    storage = Storage(config.database_path)
+    updated_count = storage.mark_all_opportunities_seen()
+    return {"status": "updated", "updated_count": updated_count}
 
 
 @app.post("/api/search")

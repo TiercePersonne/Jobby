@@ -156,6 +156,14 @@ export function detectClientRemotePolicy(opp) {
 }
 
 const ALT_REGEX = /\b(alternan(?:ce|t|te|ts|tes)|apprentissage|contrat\s+pro|contrat\s+de\s+professionnalisation|stage|stagiaire|stagiaires|internship|intern)\b/i;
+const ALT_TAGS = new Set([
+  'alternance',
+  'stage',
+  'alternance_ou_stage',
+  'apprenticeship',
+  'internship',
+  'intern',
+]);
 
 /**
  * Detects internships and apprenticeship offers/posts.
@@ -163,13 +171,14 @@ const ALT_REGEX = /\b(alternan(?:ce|t|te|ts|tes)|apprentissage|contrat\s+pro|con
 export function isAlternanceOrStage(opp) {
   if (!opp) return false;
   const title = (opp.title || '').toLowerCase();
-  const contract = (opp.contract_type || '').toLowerCase();
+  const contract = String(opp?.contract_type || opp?.raw_metadata?.contract_type || '').toLowerCase();
   const intent = opp.post_intent || '';
 
   if (intent === 'candidate_seeking_alternance' || intent === 'hiring_alternance') return true;
   if (
     contract.includes('alternance') ||
     contract.includes('apprentissage') ||
+    contract.includes('apprenticeship') ||
     contract.includes('stage') ||
     contract.includes('intern')
   ) {
@@ -177,7 +186,7 @@ export function isAlternanceOrStage(opp) {
   }
   if (
     Array.isArray(opp.tags) &&
-    (opp.tags.includes('alternance') || opp.tags.includes('stage') || opp.tags.includes('alternance_ou_stage'))
+    opp.tags.some((t) => ALT_TAGS.has(String(t || '').trim().toLowerCase()))
   ) {
     return true;
   }
@@ -209,16 +218,21 @@ export function detectOpportunityRegion(opp) {
   return { isFrance, isEurope: isEuropeOther, isUSA, primary };
 }
 
+export const FEED_SOURCES = Object.freeze([
+  Object.freeze({ key: 'linkedin', label: 'LinkedIn' }),
+  Object.freeze({ key: 'wttj', label: 'WTTJ' }),
+  Object.freeze({ key: 'indeed', label: 'Indeed' }),
+  Object.freeze({ key: 'hellowork', label: 'HelloWork' }),
+  Object.freeze({ key: 'glassdoor', label: 'Glassdoor' }),
+  Object.freeze({ key: 'teamtailor', label: 'Teamtailor' }),
+  Object.freeze({ key: 'jobgether', label: 'Jobgether' }),
+]);
+
 const SOURCE_LABELS = Object.freeze(
-  Object.assign(Object.create(null), {
-    wttj: 'WTTJ',
-    linkedin: 'LinkedIn',
-    hellowork: 'HelloWork',
-    indeed: 'Indeed',
-    glassdoor: 'Glassdoor',
-    teamtailor: 'Teamtailor',
-    jobgether: 'Jobgether',
-  })
+  FEED_SOURCES.reduce((acc, item) => {
+    acc[item.key] = item.label;
+    return acc;
+  }, Object.create(null))
 );
 
 /**

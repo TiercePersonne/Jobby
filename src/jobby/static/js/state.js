@@ -3,6 +3,8 @@
  * Views read and mutate shared state here instead of importing each other.
  */
 
+import { FEED_SOURCES } from './utils.js';
+
 export const VALID_VIEWS = Object.freeze(['feed', 'kanban', 'profile', 'settings']);
 
 const STATUS_ALIASES = Object.freeze(
@@ -14,6 +16,31 @@ const STATUS_ALIASES = Object.freeze(
 
 const INACTIVE_KANBAN_STATUSES = new Set(['rejected', 'archived']);
 const VALID_APPLICATION_STAGES = new Set(['saved', 'applied', 'interview', 'offer', 'rejected']);
+const VALID_FEED_TYPES = new Set(['all', 'offer', 'post']);
+const VALID_FEED_SORTS = new Set(['date', 'score', 'region']);
+const VALID_FEED_MODES = new Set(['full', 'hybrid', 'onsite']);
+const VALID_FEED_REGIONS = new Set(['france', 'europe', 'usa']);
+const VALID_FEED_SOURCES = new Set(FEED_SOURCES.map((s) => s.key));
+
+export function createDefaultFeedFilters() {
+  return {
+    onlyNew: false,
+    sources: [],
+    modes: [],
+    regions: [],
+    type: 'all',
+    sortBy: 'date',
+    hideAlternance: true,
+  };
+}
+
+function toggleArrayItem(list, item) {
+  const idx = list.indexOf(item);
+  if (idx >= 0) {
+    return list.filter((entry) => entry !== item);
+  }
+  return [...list, item];
+}
 
 /**
  * Normalizes legacy SQLite opportunity statuses ('favorite', 'saved') to 'kept'.
@@ -44,6 +71,7 @@ function createInitialState() {
     isLoadingFeed: false,
     feedError: null,
     activeModal: null,
+    feedFilters: createDefaultFeedFilters(),
   };
 }
 
@@ -96,6 +124,7 @@ export function setOpportunities(list) {
     ? list.map((opp) => ({
         ...opp,
         status: normalizeOpportunityStatus(opp?.status),
+        is_seen: Boolean(opp?.is_seen),
       }))
     : [];
   state = {
@@ -239,4 +268,145 @@ export function updateApplicationStage(appId, newStage) {
   };
   emit();
   return normalizedStage;
+}
+
+function updateFeedFilters(nextPartial) {
+  state = {
+    ...state,
+    feedFilters: {
+      ...state.feedFilters,
+      ...nextPartial,
+    },
+  };
+  emit();
+  return state.feedFilters;
+}
+
+export function setOnlyNew(onlyNew) {
+  const next = Boolean(onlyNew);
+  if (state.feedFilters.onlyNew === next) return state.feedFilters;
+  return updateFeedFilters({ onlyNew: next });
+}
+
+export function toggleFeedSource(sourceKey) {
+  const key = String(sourceKey || '').trim().toLowerCase();
+  if (!VALID_FEED_SOURCES.has(key)) return state.feedFilters;
+  return updateFeedFilters({ sources: toggleArrayItem(state.feedFilters.sources, key) });
+}
+
+export function toggleFeedMode(modeKey) {
+  const key = String(modeKey || '').trim().toLowerCase();
+  if (key === 'all') {
+    if (state.feedFilters.modes.length === 0) return state.feedFilters;
+    return updateFeedFilters({ modes: [] });
+  }
+  if (!VALID_FEED_MODES.has(key)) return state.feedFilters;
+  return updateFeedFilters({ modes: toggleArrayItem(state.feedFilters.modes, key) });
+}
+
+export function toggleFeedRegion(regionKey) {
+  const key = String(regionKey || '').trim().toLowerCase();
+  if (!VALID_FEED_REGIONS.has(key)) return state.feedFilters;
+  return updateFeedFilters({ regions: toggleArrayItem(state.feedFilters.regions, key) });
+}
+
+export function setFeedType(type) {
+  const key = String(type || 'all').trim().toLowerCase();
+  const nextType = VALID_FEED_TYPES.has(key) ? key : 'all';
+  if (state.feedFilters.type === nextType) return state.feedFilters;
+  return updateFeedFilters({ type: nextType });
+}
+
+export function setFeedSort(sortBy) {
+  const key = String(sortBy || 'date').trim().toLowerCase();
+  const nextSort = VALID_FEED_SORTS.has(key) ? key : 'date';
+  if (state.feedFilters.sortBy === nextSort) return state.feedFilters;
+  return updateFeedFilters({ sortBy: nextSort });
+}
+
+export function setHideAlternance(hideAlternance) {
+  const next = Boolean(hideAlternance);
+  if (state.feedFilters.hideAlternance === next) return state.feedFilters;
+  return updateFeedFilters({ hideAlternance: next });
+}
+
+export function resetFeedFilters() {
+  state = {
+    ...state,
+    feedFilters: createDefaultFeedFilters(),
+  };
+  emit();
+  return state.feedFilters;
+}
+
+/**
+ * Updates an opportunity's seen flag in the store and emits to subscribers.
+ */
+export function syncOpportunitySeen(oppId, isSeen = true) {
+  const nextSeen = Boolean(isSeen);
+  let matched = false;
+  let changed = false;
+  const nextOpportunities = state.opportunities.map((opp) => {
+    if (opp.id !== oppId) return opp;
+    matched = true;
+    if (opp.is_seen === nextSeen) return opp;
+    changed = true;
+    return { ...opp, is_seen: nextSeen };
+  });
+
+  if (!matched) return false;
+  if (!changed) return true;
+  state = {
+    ...state,
+    opportunities: nextOpportunities,
+  };
+  emit();
+  return true;
+}
+
+/**
+ * Optimistically marks all opportunities in the store as seen.
+ */
+export function markAllOpportunitiesSeenInState() {
+  let changed = false;
+  const nextOpportunities = state.opportunities.map((opp) => {
+    if (opp.is_seen) return opp;
+    changed = true;
+    return { ...opp, is_seen: true };
+  });
+  if (!changed) return;
+  state = {
+    ...state,
+    opportunities: nextOpportunities,
+  };
+  emit();
+}
+
+/**
+ * Restores opportunity is_seen flags from a Map or plain object snapshot on rollback.
+ */
+export function restoreOpportunitiesSeen(seenSnapshot) {
+  if (!seenSnapshot) return;
+  const getSaved = (id) =>
+    seenSnapshot instanceof Map
+      ? seenSnapshot.get(id)
+      : Object.hasOwn(seenSnapshot, id)
+        ? seenSnapshot[id]
+        : undefined;
+
+  let changed = false;
+  const nextOpportunities = state.opportunities.map((opp) => {
+    const restored = getSaved(opp.id);
+    if (restored === undefined) return opp;
+    const flag = Boolean(restored);
+    if (opp.is_seen === flag) return opp;
+    changed = true;
+    return { ...opp, is_seen: flag };
+  });
+  if (!changed) return;
+  state = {
+    ...state,
+    opportunities: nextOpportunities,
+  };
+  emit();
 }

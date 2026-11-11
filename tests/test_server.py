@@ -1,7 +1,9 @@
 import re
 import pytest
 from fastapi.testclient import TestClient
+from jobby.models import JobOpportunity
 from jobby.server import app
+from jobby.storage import Storage
 
 
 @pytest.fixture
@@ -165,5 +167,96 @@ def test_manifest_and_sw_warm_porcelain(client):
     sw_resp = client.get("/sw.js")
     assert sw_resp.status_code == 200
     assert "jobby-v4" in sw_resp.text
+
+
+def test_opportunity_seen_and_mark_all_seen_endpoints(client, monkeypatch, tmp_path):
+    db_path = tmp_path / "server_seen.db"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+
+    storage = Storage(db_path=db_path)
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="srv-opp-1",
+            source="linkedin",
+            title="Senior Python",
+            url="https://linkedin.com/jobs/view/1",
+        )
+    )
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="srv-opp-2",
+            source="wttj",
+            title="Staff Designer",
+            url="https://wttj.co/jobs/2",
+        )
+    )
+
+    list_resp = client.get("/api/opportunities")
+    assert list_resp.status_code == 200
+    by_id = {item["id"]: item for item in list_resp.json()}
+    assert by_id["srv-opp-1"]["is_seen"] is False
+    assert by_id["srv-opp-2"]["is_seen"] is False
+
+    # Missing opp_id -> 404
+    missing_resp = client.patch("/api/opportunities/does-not-exist/seen")
+    assert missing_resp.status_code == 404
+
+    # PATCH without body defaults to is_seen=True
+    patch_resp = client.patch("/api/opportunities/srv-opp-1/seen")
+    assert patch_resp.status_code == 200
+    assert patch_resp.json() == {"status": "updated", "id": "srv-opp-1", "is_seen": True}
+
+    by_id_after_patch = {item["id"]: item for item in client.get("/api/opportunities").json()}
+    assert by_id_after_patch["srv-opp-1"]["is_seen"] is True
+    assert by_id_after_patch["srv-opp-2"]["is_seen"] is False
+
+    # PATCH with explicit body can toggle is_seen=False
+    unsee_resp = client.patch("/api/opportunities/srv-opp-1/seen", json={"is_seen": False})
+    assert unsee_resp.status_code == 200
+    assert unsee_resp.json()["is_seen"] is False
+
+    # PATCH with empty object or invalid payload types returns 422
+    assert client.patch("/api/opportunities/srv-opp-1/seen", json={}).status_code == 422
+    assert client.patch("/api/opportunities/srv-opp-1/seen", json={"is_seen": "not-a-bool"}).status_code == 422
+    assert client.patch("/api/opportunities/srv-opp-1/seen", json={"is_seen": []}).status_code == 422
+
+    # POST mark-all-seen marks all remaining opportunities seen
+    mark_all_resp = client.post("/api/opportunities/mark-all-seen")
+    assert mark_all_resp.status_code == 200
+    assert mark_all_resp.json() == {"status": "updated", "updated_count": 2}
+
+    by_id_final = {item["id"]: item for item in client.get("/api/opportunities").json()}
+    assert by_id_final["srv-opp-1"]["is_seen"] is True
+    assert by_id_final["srv-opp-2"]["is_seen"] is True
+
+
+def test_feed_filter_bar_warm_porcelain_markup(client):
+    html = client.get("/").text
+    for marker in [
+        'id="feed-filter-bar"',
+        'id="filter-only-new"',
+        'id="btn-mark-all-seen"',
+        'id="btn-sources-popover"',
+        'id="popover-sources"',
+        'id="filter-sort"',
+        'id="filter-hide-alternance"',
+        "Nouvelles",
+        "Tout marquer comme vu",
+        "100% Remote",
+        "Hybride",
+        "Sur site",
+        "EU hors FR",
+        "Posts Réseau",
+        "Plus récentes",
+        "Masquer alternances",
+        "Tiroir Brief IA (Epic 2)",
+    ]:
+        assert marker in html
+
+    # No free-text search input inside the filter bar
+    filter_section = html.split('id="feed-filter-bar"', 1)[1].split('id="feed-list"', 1)[0]
+    assert 'type="text"' not in filter_section
+    assert 'type="search"' not in filter_section
+
 
 

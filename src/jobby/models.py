@@ -54,6 +54,7 @@ class JobOpportunity(BaseModel):
     score_reasons: List[str] = Field(default_factory=list, description="Explanations for the assigned score")
     tags: List[str] = Field(default_factory=list, description="Extracted keywords, tech stack, skills")
     status: str = Field(default="new", description="Lifecycle: new, saved, contacted, applied, archived")
+    is_seen: bool = Field(default=False, description="Whether the opportunity has been explicitly viewed/acknowledged")
     raw_metadata: dict[str, Any] = Field(default_factory=dict, description="Arbitrary raw payload from provider")
 
     def model_post_init(self, __context: Any) -> None:
