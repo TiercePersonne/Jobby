@@ -338,7 +338,7 @@
               <span class="text-slate-400 font-bold text-[11px]">Tri :</span>
               <select id="select-sort" class="bg-transparent text-slate-900 font-bold text-xs focus:outline-none cursor-pointer">
                 <option value="date">Plus récentes</option>
-                <option value="region">Par Région (FR → EU → US)</option>
+                <option value="region">Par Région (FR → EU hors FR → US)</option>
                 <option value="score">Score de match</option>
               </select>
             </div>
@@ -410,9 +410,9 @@
               <span>France</span>
               <span id="rcount-france" class="text-[10px] opacity-80">(0)</span>
             </button>
-            <button type="button" class="region-pill px-3 py-1 rounded-xl text-[11px] font-semibold bg-slate-100/90 text-slate-700 hover:bg-slate-200/80 border border-slate-200/80 shrink-0 cursor-pointer transition flex items-center gap-1.5" data-region="europe">
+            <button type="button" class="region-pill px-3 py-1 rounded-xl text-[11px] font-semibold bg-slate-100/90 text-slate-700 hover:bg-slate-200/80 border border-slate-200/80 shrink-0 cursor-pointer transition flex items-center gap-1.5" data-region="europe" title="Europe à l'international (hors France)">
               <span class="font-black text-[9px] px-1 py-0.5 rounded bg-indigo-100 text-indigo-900 leading-none">EU</span>
-              <span>Europe</span>
+              <span>Europe (hors FR)</span>
               <span id="rcount-europe" class="text-[10px] opacity-80">(0)</span>
             </button>
             <button type="button" class="region-pill px-3 py-1 rounded-xl text-[11px] font-semibold bg-slate-100/90 text-slate-700 hover:bg-slate-200/80 border border-slate-200/80 shrink-0 cursor-pointer transition flex items-center gap-1.5" data-region="usa">
@@ -1304,16 +1304,16 @@
       const full = loc + ' ' + title;
 
       const isFrance = FR_REGEX.test(loc) || FR_REGEX.test(full);
-      const isEuropeOther = EU_OTHER_REGEX.test(loc) || EU_OTHER_REGEX.test(full);
-      const isEurope = isFrance || isEuropeOther;
-      const isUSA = US_REGEX.test(loc) || US_REGEX.test(full);
+      // Europe strictement hors France
+      const isEuropeOther = !isFrance && (EU_OTHER_REGEX.test(loc) || EU_OTHER_REGEX.test(full));
+      const isUSA = !isFrance && (US_REGEX.test(loc) || US_REGEX.test(full));
 
       let primary = 'other';
       if (isFrance) primary = 'france';
       else if (isEuropeOther) primary = 'europe';
       else if (isUSA) primary = 'usa';
 
-      return { isFrance, isEurope, isUSA, primary };
+      return { isFrance, isEurope: isEuropeOther, isUSA, primary };
     }
 
     function getRegionBadge(opp) {
@@ -1497,7 +1497,7 @@
       const headerSummary = document.getElementById('header-filter-summary');
       if (headerSummary) {
         if (sortBy === 'region') {
-          headerSummary.textContent = "Trié par Région (FR → EU → US)";
+          headerSummary.textContent = "Trié par Région (FR → EU hors FR → US)";
         } else if (sortBy === 'score') {
           headerSummary.textContent = "Trié par Score IA";
         } else {
