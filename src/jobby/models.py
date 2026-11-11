@@ -111,6 +111,8 @@ class UserProfile(BaseModel):
     skills: List[str] = Field(default_factory=list)
     min_salary: Optional[int] = None
     remote_preference: Optional[str] = None
+    ideal_job_brief: Optional[str] = None
+    raw_metadata: dict[str, Any] = Field(default_factory=dict)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

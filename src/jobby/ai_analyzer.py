@@ -10,11 +10,12 @@ Provides:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 import httpx
 
 logger = logging.getLogger("jobby.ai")
@@ -602,4 +603,179 @@ Je serais ravi de vous présenter plus en détail comment mon parcours et mon é
 Disponible pour un premier échange quand cela vous conviendra.
 
 Bien cordialement,"""
+
+
+# ===================================================================
+# "3ème Voie" : Ranking & Semantic Matching by Ideal Job Brief
+# ===================================================================
+
+async def rank_opportunities_by_ideal_brief(
+    brief: str,
+    opportunities: List[Any],
+    profile_data: Optional[Dict[str, Any]] = None,
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Ranks a list of job opportunities / social posts against the user's verbose 'Ideal Job Brief'.
+    Uses Google AI Studio Gemini Flash for semantic multi-factor scoring and advice,
+    with a robust keyword & semantic heuristic fallback.
+    """
+    if not brief or not opportunities:
+        return []
+
+    gemini_key = api_key or os.environ.get("GEMINI_API_KEY")
+    gemini_model = model or "gemini-flash-latest"
+
+    # Normalize opportunity inputs to dict
+    items_to_score = []
+    for opp in opportunities:
+        if isinstance(opp, dict):
+            opp_id = opp.get("id") or ""
+            title = opp.get("title") or ""
+            company = opp.get("company") or ""
+            loc = opp.get("location") or ""
+            remote = opp.get("remote_policy") or ""
+            desc = opp.get("description") or ""
+            opp_type = opp.get("opportunity_type") or "offer"
+        else:
+            opp_id = getattr(opp, "id", "")
+            title = getattr(opp, "title", "")
+            company = getattr(opp, "company", "")
+            loc = getattr(opp, "location", "")
+            remote = getattr(opp, "remote_policy", "")
+            desc = getattr(opp, "description", "")
+            opp_type = getattr(opp, "opportunity_type", "offer")
+            if hasattr(opp_type, "value"):
+                opp_type = opp_type.value
+
+        items_to_score.append({
+            "id": opp_id,
+            "title": title,
+            "company": company,
+            "location": loc,
+            "remote": remote,
+            "type": str(opp_type),
+            "description": desc[:600],
+        })
+
+    results_by_id: Dict[str, Dict[str, Any]] = {}
+
+    # Attempt Gemini batch scoring
+    if gemini_key:
+        profile_context = ""
+        if profile_data:
+            roles = ", ".join(profile_data.get("target_roles", []))
+            skills = ", ".join(profile_data.get("skills", []))
+            profile_context = f"\nContexte candidat : Rôles visés: [{roles}], Compétences: [{skills}]"
+
+        # Split into batches of 25 to respect prompt token limits and optimize latency
+        batch_size = 25
+        batches = [items_to_score[i:i + batch_size] for i in range(0, len(items_to_score), batch_size)]
+
+        async def process_batch(batch_items: List[Dict[str, Any]]) -> None:
+            prompt = f"""Tu es l'agent IA de matching de carrière Jobby.
+Le candidat a rédigé le brief verbeux de son 'Job Idéal' :
+\"\"\"
+{brief.strip()}
+\"\"\"
+{profile_context}
+
+Analyse chaque opportunité d'emploi ou post LinkedIn ci-dessous par rapport aux souhaits, stack, culture, séniorité et dealbreakers exprimés dans le brief.
+
+--- LISTE DES OPPORTUNITÉS ---
+{json.dumps(batch_items, ensure_ascii=False, indent=1)}
+
+Pour CHAQUE élément de la liste, évalue précisément :
+1. "id" : l'identifiant exact fourni
+2. "score" : entier de 0 à 100 :
+   - 90-100 : Match Idéal (parfaitement aligné avec les souhaits clés du brief)
+   - 75-89 : Très bon match (solide adéquation technique, culturelle ou de rôle)
+   - 45-74 : Match partiel (bonnes compétences mais compromis sur secteur, rôle ou remote)
+   - 0-44 : Peu ou pas pertinent (hors sujet, alternance non voulue, décalage)
+3. "verdict" : phrase concise (max 15 mots) résumant la raison de la note (ex: "Idéal : rôle Lead Product Designer en full remote avec Figma").
+4. "pitch" : phrase d'accroche ou conseil stratégique pour postuler.
+
+Réponds UNIQUEMENT avec un tableau JSON strict, sans backticks markdown, sans texte additionnel :
+[
+  {{ "id": "...", "score": 92, "verdict": "...", "pitch": "..." }}
+]
+"""
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "responseMimeType": "application/json",
+                },
+            }
+            try:
+                async with httpx.AsyncClient(timeout=12.0) as client:
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        raw_data = resp.json()
+                        text_resp = raw_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                        # Clean backticks if any
+                        text_resp = re.sub(r"^```(?:json)?\s*", "", text_resp)
+                        text_resp = re.sub(r"\s*```$", "", text_resp)
+                        parsed = json.loads(text_resp)
+                        if isinstance(parsed, list):
+                            for entry in parsed:
+                                if isinstance(entry, dict) and "id" in entry:
+                                    results_by_id[entry["id"]] = {
+                                        "id": entry["id"],
+                                        "score": float(max(0, min(100, int(entry.get("score", 50))))),
+                                        "verdict": str(entry.get("verdict", "")),
+                                        "pitch": str(entry.get("pitch", "")),
+                                    }
+            except Exception as e:
+                logger.warning(f"Batch Gemini scoring failed: {e}")
+
+        # Run batches concurrently
+        await asyncio.gather(*[process_batch(b) for b in batches])
+
+    # Fallback heuristic for any unscored items
+    brief_lower = brief.lower()
+    brief_words = set(re.findall(r"\b[a-zA-Zà-üÀ-Ü]{4,}\b", brief_lower))
+    # Exclude common stopwords
+    stopwords = {"dans", "pour", "avec", "sans", "plus", "tout", "tous", "cette", "comme", "mais", "faire", "cherche", "poste", "job", "souhaite"}
+    key_words = brief_words - stopwords
+
+    final_results = []
+    for item in items_to_score:
+        opp_id = item["id"]
+        if opp_id in results_by_id:
+            final_results.append(results_by_id[opp_id])
+            continue
+
+        # Heuristic scoring
+        full_text = f"{item['title']} {item['company']} {item['location']} {item['description']}".lower()
+        matched = [w for w in key_words if w in full_text]
+        match_ratio = len(matched) / max(len(key_words), 1)
+        base_score = 35.0 + min(55.0, match_ratio * 120.0)
+
+        # Bonus remote if asked in brief
+        if "remote" in brief_lower or "télétravail" in brief_lower:
+            if item["remote"] == "full":
+                base_score += 10.0
+            elif item["remote"] == "hybrid":
+                base_score += 5.0
+
+        score = float(max(10, min(95, round(base_score))))
+        verdict = f"Match sémantique ({len(matched)} mots-clés alignés : {', '.join(matched[:3])})" if matched else "Pertinence moyenne basée sur le profil"
+        pitch = "Mettez en avant vos compétences alignées avec l'offre et votre autonomie."
+
+        fallback_entry = {
+            "id": opp_id,
+            "score": score,
+            "verdict": verdict,
+            "pitch": pitch,
+        }
+        results_by_id[opp_id] = fallback_entry
+        final_results.append(fallback_entry)
+
+    # Sort descending by score
+    final_results.sort(key=lambda x: x["score"], reverse=True)
+    return final_results
+
 

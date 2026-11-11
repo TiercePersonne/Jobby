@@ -69,7 +69,11 @@ class ScoringEngine:
     def __init__(self, config: JobbyConfig):
         self.config = config
 
-    def score_opportunity(self, opp: JobOpportunity) -> Tuple[float, List[str]]:
+    def score_opportunity(
+        self,
+        opp: JobOpportunity,
+        active_keywords: Optional[List[str]] = None,
+    ) -> Tuple[float, List[str]]:
         score = 0.0
         reasons: List[str] = []
 
@@ -89,12 +93,19 @@ class ScoringEngine:
         desc_cleaned = clean_text(opp.description)
         full_text = f"{title_cleaned} {desc_cleaned}"
 
+        # Combine configured target roles with active search query keywords
+        roles_to_match = list(self.config.target_roles or [])
+        if active_keywords:
+            for kw in active_keywords:
+                if kw and kw not in roles_to_match:
+                    roles_to_match.append(kw)
+
         # 1. Target roles / Métier match (up to 55 pts)
         matched_in_post = False
         if opp.opportunity_type == OpportunityType.POST:
             # For social posts, strictly evaluate the post body itself,
             # completely ignoring the author's title, current job or headline.
-            for role in self.config.target_roles:
+            for role in roles_to_match:
                 norm_role = clean_text(role)
                 if norm_role and norm_role in desc_cleaned:
                     score += 55.0
@@ -105,7 +116,7 @@ class ScoringEngine:
                 score -= 30.0
                 reasons.append("Poste ciblé absent du texte du post (-30)")
         else:
-            for role in self.config.target_roles:
+            for role in roles_to_match:
                 norm_role = clean_text(role)
                 if norm_role and (norm_role in title_cleaned or norm_role in full_text):
                     score += 55.0

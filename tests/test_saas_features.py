@@ -199,3 +199,43 @@ def test_ai_match_and_cover_letter(client):
     letter_data = letter_resp.json()
     assert "cover_letter" in letter_data
     assert "Startup Studio" in letter_data["cover_letter"] or "Python" in letter_data["cover_letter"]
+
+
+def test_ideal_brief_ranking_3rd_way(client):
+    """Test the '3ème Voie' : semantic matching and ranking of opportunities against an ideal brief."""
+    storage = Storage()
+    opp1 = JobOpportunity(
+        id="opp_lead_designer",
+        source="wttj",
+        title="Lead Product Designer Figma Design System",
+        company="Studio Supernova",
+        location="Paris (Full Remote)",
+        remote_policy="full",
+        description="Nous cherchons un Lead Designer autonome pour piloter notre Design System et nos apps Figma en full remote.",
+        url="https://wttj.co/jobs/1",
+    )
+    opp2 = JobOpportunity(
+        id="opp_devops",
+        source="indeed",
+        title="Ingénieur Kubernetes DevOps Sur Site",
+        company="BigCorp Infra",
+        location="Marseille",
+        remote_policy="onsite",
+        description="Maintenance des clusters Kubernetes sur site 5j/5.",
+        url="https://indeed.com/jobs/2",
+    )
+    storage.upsert_opportunity(opp1)
+    storage.upsert_opportunity(opp2)
+
+    brief = "Je cherche un poste de Lead Product Designer ou Design Ops, full remote, orienté Figma et Design Systems."
+    resp = client.post("/api/ai/rank-by-brief", json={"brief": brief, "limit": 20})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert data["updated_count"] >= 2
+    assert len(data["results"]) >= 2
+
+    # opp1 should have a significantly higher score than opp2
+    scores = {r["id"]: r["score"] for r in data["results"]}
+    assert scores["opp_lead_designer"] > scores["opp_devops"]
+

@@ -368,9 +368,6 @@
           <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0 cursor-pointer transition" data-filter="teamtailor">Teamtailor (<span id="count-teamtailor">0</span>)</button>
           <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0 cursor-pointer transition" data-filter="jobgether">Jobgether (<span id="count-jobgether">0</span>)</button>
           <span class="text-slate-300 mx-1 shrink-0">|</span>
-          <button class="tab-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-50/90 text-emerald-800 border border-emerald-200 hover:bg-emerald-100/70 shrink-0 cursor-pointer transition" data-filter="remote">100% Remote (<span id="count-remote">0</span>)</button>
-          <button class="tab-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-sky-50/90 text-sky-800 border border-sky-200 hover:bg-sky-100/70 shrink-0 cursor-pointer transition" data-filter="hybrid">Hybride (<span id="count-hybrid">0</span>)</button>
-          <span class="text-slate-300 mx-1 shrink-0">|</span>
           <button class="tab-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-50/90 text-amber-900 border border-amber-200 hover:bg-amber-100/70 shrink-0 cursor-pointer transition" data-filter="favorite">Favoris (<span id="count-favorite">0</span>)</button>
           <button class="tab-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-50/90 text-emerald-900 border border-emerald-200 hover:bg-emerald-100/70 shrink-0 cursor-pointer transition" data-filter="kept">Je garde (<span id="count-kept">0</span>)</button>
           <button class="tab-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100/90 text-slate-600 border border-slate-200 hover:text-slate-900 shrink-0 cursor-pointer transition" data-filter="archived">Archivés (<span id="count-archived">0</span>)</button>
@@ -422,6 +419,107 @@
             </button>
           </div>
           <span class="text-[10px] text-slate-400 font-medium italic hidden sm:inline ml-auto">Choix multiples autorisés</span>
+        </div>
+
+        <!-- Workplace Mode Multi-select Filter Bar -->
+        <div class="flex items-center gap-2 pt-2.5 border-t border-slate-100 text-xs flex-wrap">
+          <span class="text-slate-500 text-[11px] font-bold flex items-center gap-1.5 shrink-0">
+            <svg class="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <span>Mode de travail :</span>
+          </span>
+          <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5" id="remote-pills-container">
+            <button type="button" class="remote-pill active px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-900 text-white shadow-xs shrink-0 cursor-pointer transition flex items-center gap-1.5 ring-2 ring-slate-900/20" data-remote="all">
+              <span>Tous les modes</span>
+              <span id="mcount-all" class="text-[10px] opacity-80">(0)</span>
+            </button>
+            <button type="button" class="remote-pill px-3 py-1 rounded-xl text-[11px] font-semibold bg-slate-100/90 text-slate-700 hover:bg-slate-200/80 border border-slate-200/80 shrink-0 cursor-pointer transition flex items-center gap-1.5" data-remote="full">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>100% Remote</span>
+              <span id="mcount-full" class="text-[10px] opacity-80">(0)</span>
+            </button>
+            <button type="button" class="remote-pill px-3 py-1 rounded-xl text-[11px] font-semibold bg-slate-100/90 text-slate-700 hover:bg-slate-200/80 border border-slate-200/80 shrink-0 cursor-pointer transition flex items-center gap-1.5" data-remote="hybrid">
+              <span class="w-2 h-2 rounded-full bg-sky-500"></span>
+              <span>Hybride</span>
+              <span id="mcount-hybrid" class="text-[10px] opacity-80">(0)</span>
+            </button>
+            <button type="button" class="remote-pill px-3 py-1 rounded-xl text-[11px] font-semibold bg-slate-100/90 text-slate-700 hover:bg-slate-200/80 border border-slate-200/80 shrink-0 cursor-pointer transition flex items-center gap-1.5" data-remote="onsite">
+              <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span>Sur site</span>
+              <span id="mcount-onsite" class="text-[10px] opacity-80">(0)</span>
+            </button>
+          </div>
+          <span class="text-[10px] text-slate-400 font-medium italic hidden sm:inline ml-auto">Choix multiples autorisés</span>
+        </div>
+      </div>
+
+      <!-- LA 3ÈME VOIE : BRIEF IA DU JOB IDÉAL -->
+      <div class="bg-gradient-to-br from-white/95 via-indigo-50/40 to-sky-50/30 backdrop-blur-xl border border-indigo-200/70 rounded-3xl p-5 shadow-card flex flex-col gap-3 transition-all duration-300" id="ideal-brief-card">
+        <!-- Header with toggle and badge -->
+        <div class="flex items-center justify-between gap-3 cursor-pointer select-none" onclick="toggleIdealBriefPanel()">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-2xl bg-gradient-to-br from-indigo-600 via-sky-600 to-indigo-800 text-white flex items-center justify-center shadow-xs shrink-0">
+              <svg class="w-5 h-5 text-amber-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
+              </svg>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-black text-slate-900 tracking-tight">La 3ème Voie : Votre Job Idéal analysé par Gemini</h3>
+                <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">Matching Sémantique</span>
+              </div>
+              <p class="text-xs text-slate-500 font-medium mt-0.5">Décrivez votre poste idéal en langage naturel. Gemini classe l'intégralité du flux selon votre vision.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] font-bold text-indigo-700 bg-white/80 border border-indigo-100 px-3 py-1 rounded-xl shadow-2xs hidden sm:inline" id="brief-status-tag">
+              Prêt à matcher
+            </span>
+            <span class="text-slate-400 font-bold text-xs p-1" id="brief-chevron">▼</span>
+          </div>
+        </div>
+
+        <!-- Expandable Content -->
+        <div id="ideal-brief-content" class="flex flex-col gap-3 pt-3 border-t border-indigo-100/80">
+          <div class="relative">
+            <textarea id="input-ideal-brief" rows="3" 
+                      placeholder="Ex: Je cherche un poste de Lead Product Designer ou Directeur Artistique Senior dans une startup ou agence créative humaine. Idéalement en 100% full remote (ou max 1j/semaine à Paris). Stack : Figma, Design Systems, Tokens, Spline 3D, Webflow. Je refuse les ESN corpo, les process lourds et le micro-management. Je veux une équipe qui valorise le craft et l'impact..."
+                      class="w-full bg-white/95 border border-slate-200 rounded-2xl p-3.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 font-medium leading-relaxed resize-y transition shadow-2xs"></textarea>
+          </div>
+
+          <!-- Actions Row -->
+          <div class="flex items-center justify-between flex-wrap gap-2.5">
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="prefillBriefFromProfile()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200/80 text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                <svg class="w-3.5 h-3.5 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>Pré-remplir depuis mon Profil &amp; CV</span>
+              </button>
+              <button type="button" onclick="clearBrief()" class="px-2.5 py-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-[11px] font-semibold transition cursor-pointer">
+                Effacer
+              </button>
+            </div>
+
+            <button type="button" id="btn-run-brief-ranking" onclick="executeIdealBriefRanking()" 
+                    class="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-900 hover:from-indigo-700 hover:to-indigo-950 text-white font-black text-xs transition flex items-center gap-2 shadow-md shadow-indigo-600/20 active:scale-[0.99] cursor-pointer">
+              <svg id="brief-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+              <svg class="w-3.5 h-3.5 text-amber-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
+              </svg>
+              <span id="brief-btn-label">✨ Analyser &amp; Classer le flux avec Gemini</span>
+            </button>
+          </div>
+
+          <!-- Live Toast / Feedback inside panel -->
+          <div id="brief-feedback" class="hidden p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span id="brief-feedback-text"></span>
+          </div>
         </div>
       </div>
 
@@ -887,6 +985,7 @@
         // Load existing stored opportunities
         await loadOpportunities();
         await updateStats();
+        await loadIdealJobBrief();
       } catch (err) {
         console.error('Init error:', err);
       }
@@ -1070,6 +1169,54 @@
       </span>`;
     }
 
+    function getMatchScoreBadge(opp) {
+      const score = Number(opp.score);
+      if (!score || isNaN(score) || score <= 0) return '';
+      const s = Math.round(score);
+      if (s >= 85) {
+        return `<span class="text-[11px] font-black px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-950 border border-emerald-300 flex items-center gap-1 shadow-xs" title="Score de correspondance IA : ${s}/100">
+          <span class="text-amber-500 text-[10px]">✨</span>
+          <span>${s}% Match Idéal</span>
+        </span>`;
+      }
+      if (s >= 70) {
+        return `<span class="text-[11px] font-black px-2.5 py-0.5 rounded-lg bg-indigo-100 text-indigo-950 border border-indigo-300 flex items-center gap-1 shadow-xs" title="Score de correspondance IA : ${s}/100">
+          <span class="text-indigo-600 text-[10px]">✨</span>
+          <span>${s}% Bon match</span>
+        </span>`;
+      }
+      if (s >= 45) {
+        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1" title="Score de correspondance IA : ${s}/100">
+          <span>${s}% Match partiel</span>
+        </span>`;
+      }
+      return `<span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-50 text-slate-400 border border-slate-200 flex items-center gap-1" title="Score de correspondance IA : ${s}/100">
+        <span>${s}% Peu adapté</span>
+      </span>`;
+    }
+
+    function getAiMatchVerdictCallout(opp) {
+      const aiMatch = (opp.raw_metadata && opp.raw_metadata.ai_match) ? opp.raw_metadata.ai_match : null;
+      const verdict = (aiMatch && aiMatch.verdict) || (opp.score_reasons && opp.score_reasons[0]) || '';
+      const pitch = (aiMatch && aiMatch.pitch) || '';
+      if (!verdict && !pitch) return '';
+
+      return `
+        <div class="p-3 rounded-2xl bg-gradient-to-r from-indigo-50/70 via-sky-50/40 to-white border border-indigo-100/90 text-xs flex flex-col gap-1.5 shadow-2xs">
+          <div class="flex items-center gap-2 font-bold text-indigo-950">
+            <span class="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0"></span>
+            <span class="text-[10px] font-black uppercase tracking-wider text-indigo-600 shrink-0">Avis IA Gemini :</span>
+            <span class="font-bold text-slate-800 text-[11px]">${escapeHtml(verdict)}</span>
+          </div>
+          ${pitch ? `
+            <div class="text-[11px] text-indigo-900/90 font-medium pl-3 border-l-2 border-indigo-300 leading-snug">
+              <strong class="font-bold text-indigo-950">Angle d'accroche :</strong> ${escapeHtml(pitch)}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
     // AI POST INTENT BADGE (GLASSMORPHISM WITH IRIDESCENT GRADIENT)
     function getPostAiBadge(opp) {
       if (opp.opportunity_type !== 'post') return '';
@@ -1214,6 +1361,143 @@
         toggleRegion(reg);
       });
     });
+
+    // Workplace Mode Pills Click Listeners (Multi-select)
+    document.querySelectorAll('.remote-pill').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const mode = btn.getAttribute('data-remote');
+        toggleRemoteMode(mode);
+      });
+    });
+
+    // ===================================================================
+    // "3ÈME VOIE" : LE BRIEF IA DU JOB IDÉAL
+    // ===================================================================
+    let idealBriefPanelExpanded = true;
+
+    function toggleIdealBriefPanel() {
+      const content = document.getElementById('ideal-brief-content');
+      const chevron = document.getElementById('brief-chevron');
+      if (!content || !chevron) return;
+      idealBriefPanelExpanded = !idealBriefPanelExpanded;
+      if (idealBriefPanelExpanded) {
+        content.classList.remove('hidden');
+        chevron.textContent = '▼';
+      } else {
+        content.classList.add('hidden');
+        chevron.textContent = '▲';
+      }
+    }
+
+    async function loadIdealJobBrief() {
+      try {
+        const res = await fetch('/api/profile');
+        if (!res.ok) return;
+        const p = await res.json();
+        if (p.ideal_job_brief && p.ideal_job_brief.trim()) {
+          const textarea = document.getElementById('input-ideal-brief');
+          if (textarea) textarea.value = p.ideal_job_brief;
+          const tag = document.getElementById('brief-status-tag');
+          if (tag) tag.textContent = "Brief configuré";
+        }
+      } catch (e) {
+        console.error('Error loading brief from profile:', e);
+      }
+    }
+
+    async function prefillBriefFromProfile() {
+      try {
+        const res = await fetch('/api/profile');
+        if (!res.ok) return;
+        const p = await res.json();
+        const textarea = document.getElementById('input-ideal-brief');
+        if (!textarea) return;
+
+        if (p.ideal_job_brief && p.ideal_job_brief.trim()) {
+          textarea.value = p.ideal_job_brief;
+          alert("Brief existant chargé depuis votre profil.");
+          return;
+        }
+
+        const roles = (p.target_roles || []).join(', ');
+        const skills = (p.skills || []).join(', ');
+        const remote = p.remote_preference || '100% full remote ou hybride';
+        let draft = `Je recherche un poste en tant que ${roles || 'Directeur Artistique / Product Designer'}.
+Compétences clés : ${skills || 'Figma, Design System, UI/UX, Direction Créative'}.
+Modalités souhaitées : ${remote}.
+Ambiance & Culture : Équipe humaine, dynamique et autonome, valorisant la qualité d'exécution et le craft.`;
+        textarea.value = draft;
+      } catch (e) {
+        console.error('Error prefilling brief:', e);
+      }
+    }
+
+    function clearBrief() {
+      const textarea = document.getElementById('input-ideal-brief');
+      if (textarea) textarea.value = '';
+    }
+
+    async function executeIdealBriefRanking() {
+      const textarea = document.getElementById('input-ideal-brief');
+      const brief = textarea ? textarea.value.trim() : '';
+      if (!brief) {
+        alert("Veuillez décrire votre job idéal avant de lancer l'analyse Gemini.");
+        if (textarea) textarea.focus();
+        return;
+      }
+
+      const btn = document.getElementById('btn-run-brief-ranking');
+      const spinner = document.getElementById('brief-spinner');
+      const label = document.getElementById('brief-btn-label');
+      const feedback = document.getElementById('brief-feedback');
+      const feedbackText = document.getElementById('brief-feedback-text');
+
+      if (btn) btn.disabled = true;
+      if (spinner) spinner.classList.remove('hidden');
+      if (label) label.textContent = "Gemini analyse et classe le flux...";
+
+      try {
+        const resp = await fetch('/api/ai/rank-by-brief', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brief: brief, limit: 60 })
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.detail || "Erreur lors du scoring IA.");
+        }
+
+        const data = await resp.json();
+
+        // Switch sorting to 'score' so best matches float to top
+        const sortSelect = document.getElementById('select-sort');
+        if (sortSelect) {
+          sortSelect.value = 'score';
+        }
+
+        // Refresh opportunities from server
+        await loadOpportunities();
+
+        if (feedback && feedbackText) {
+          feedback.classList.remove('hidden');
+          feedbackText.textContent = `✨ ${data.total_evaluated} opportunités analysées et scorées par Gemini selon votre vision ! Les meilleurs matchs s'affichent en tête.`;
+          setTimeout(() => {
+            feedback.classList.add('hidden');
+          }, 8000);
+        }
+        const tag = document.getElementById('brief-status-tag');
+        if (tag) tag.textContent = "Classé par Gemini";
+      } catch (e) {
+        console.error('Error running ideal brief ranking:', e);
+        alert("Erreur lors de l'analyse Gemini : " + (e.message || e));
+      } finally {
+        if (btn) btn.disabled = false;
+        if (spinner) spinner.classList.add('hidden');
+        if (label) label.textContent = "✨ Analyser & Classer le flux avec Gemini";
+      }
+    }
 
     // Sort Dropdown Listener (date, region, score)
     const selectSort = document.getElementById('select-sort');
@@ -1363,6 +1647,40 @@
       });
     }
 
+    // WORKPLACE MODE MULTI-SELECT FILTERING
+    let selectedRemoteModes = ['all'];
+
+    function toggleRemoteMode(mode) {
+      if (mode === 'all') {
+        selectedRemoteModes = ['all'];
+      } else {
+        selectedRemoteModes = selectedRemoteModes.filter(m => m !== 'all');
+        if (selectedRemoteModes.includes(mode)) {
+          selectedRemoteModes = selectedRemoteModes.filter(m => m !== mode);
+          if (selectedRemoteModes.length === 0) {
+            selectedRemoteModes = ['all'];
+          }
+        } else {
+          selectedRemoteModes.push(mode);
+        }
+      }
+      updateRemotePillsUI();
+      render();
+    }
+
+    function updateRemotePillsUI() {
+      const isAll = selectedRemoteModes.includes('all');
+      document.querySelectorAll('.remote-pill').forEach(btn => {
+        const mode = btn.getAttribute('data-remote');
+        const isActive = isAll ? (mode === 'all') : selectedRemoteModes.includes(mode);
+        if (isActive) {
+          btn.className = "remote-pill active px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-900 text-white shadow-xs shrink-0 cursor-pointer transition flex items-center gap-1.5 ring-2 ring-slate-900/20";
+        } else {
+          btn.className = "remote-pill px-3 py-1 rounded-xl text-[11px] font-semibold bg-slate-100/90 text-slate-700 hover:bg-slate-200/80 border border-slate-200/80 shrink-0 cursor-pointer transition flex items-center gap-1.5";
+        }
+      });
+    }
+
     window.setQuickLocation = function(loc) {
       const input = document.getElementById('input-location');
       if (input) {
@@ -1422,6 +1740,20 @@
       setVal('rcount-europe', `(${countEU})`);
       setVal('rcount-usa', `(${countUS})`);
 
+      // Update Workplace Mode Counts
+      let countModeFull = 0, countModeHybrid = 0, countModeOnsite = 0;
+      activeOpps.forEach(o => {
+        if (hideAlternances && isAlternanceOrStage(o)) return;
+        const p = detectClientRemotePolicy(o);
+        if (p === 'full') countModeFull++;
+        if (p === 'hybrid') countModeHybrid++;
+        if (p === 'onsite') countModeOnsite++;
+      });
+      setVal('mcount-all', `(${activeOpps.length})`);
+      setVal('mcount-full', `(${countModeFull})`);
+      setVal('mcount-hybrid', `(${countModeHybrid})`);
+      setVal('mcount-onsite', `(${countModeOnsite})`);
+
       // Filtered list
       let filtered = allOpportunities.filter(o => {
         const isArchived = o.status === 'archived';
@@ -1440,8 +1772,6 @@
           if (currentFilter === 'glassdoor' && o.source !== 'glassdoor') return false;
           if (currentFilter === 'teamtailor' && o.source !== 'teamtailor') return false;
           if (currentFilter === 'jobgether' && o.source !== 'jobgether') return false;
-          if (currentFilter === 'remote' && detectClientRemotePolicy(o) !== 'full') return false;
-          if (currentFilter === 'hybrid' && detectClientRemotePolicy(o) !== 'hybrid') return false;
           if (currentFilter === 'favorite' && o.status !== 'favorite' && o.status !== 'saved') return false;
           if (currentFilter === 'kept' && o.status !== 'kept') return false;
         }
@@ -1480,6 +1810,16 @@
           if (selectedRegions.includes('europe') && reg.isEurope) matchesRegion = true;
           if (selectedRegions.includes('usa') && reg.isUSA) matchesRegion = true;
           if (!matchesRegion) return false;
+        }
+
+        // 4. Multi-select Workplace Mode Filter (Full Remote, Hybride, Sur site)
+        if (!selectedRemoteModes.includes('all') && currentFilter !== 'archived') {
+          const pol = detectClientRemotePolicy(o);
+          let matchesMode = false;
+          if (selectedRemoteModes.includes('full') && pol === 'full') matchesMode = true;
+          if (selectedRemoteModes.includes('hybrid') && pol === 'hybrid') matchesMode = true;
+          if (selectedRemoteModes.includes('onsite') && pol === 'onsite') matchesMode = true;
+          if (!matchesMode) return false;
         }
 
         if (q) {
@@ -1593,6 +1933,7 @@
               <div class="flex items-center gap-2 flex-wrap">
                 ${getSourceBadge(opp)}
                 ${getRemoteBadge(opp)}
+                ${getMatchScoreBadge(opp)}
                 <span class="text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-slate-100/80 text-slate-600 border border-slate-200/60 flex items-center gap-1.5">
                   ${ICONS.clock("w-3 h-3 text-slate-400")}
                   <span>${formatRelativeDate(opp.discovered_at)}</span>
@@ -1666,6 +2007,9 @@
 
             <!-- AI Post Intent & Summary (Alternance, Recrutement, Candidat) -->
             ${getPostAiBadge(opp)}
+
+            <!-- AI Gemini Match Verdict & Strategy Pitch (3ème Voie) -->
+            ${getAiMatchVerdictCallout(opp)}
 
             <!-- Company / Location / Salary -->
             <div class="flex items-center gap-4 text-xs text-slate-600 flex-wrap font-medium">

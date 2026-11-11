@@ -100,10 +100,14 @@ class Storage:
                     skills TEXT,
                     min_salary INTEGER,
                     remote_preference TEXT,
+                    ideal_job_brief TEXT,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
             """)
+            profile_cols = {r["name"] for r in conn.execute("PRAGMA table_info(user_profiles)").fetchall()}
+            if "ideal_job_brief" not in profile_cols:
+                conn.execute("ALTER TABLE user_profiles ADD COLUMN ideal_job_brief TEXT")
 
             # Application Kanban Pipeline tracking table
             conn.execute("""
@@ -386,6 +390,7 @@ class Storage:
                 skills=json.loads(row["skills"]) if row["skills"] else [],
                 min_salary=row["min_salary"],
                 remote_preference=row["remote_preference"],
+                ideal_job_brief=row["ideal_job_brief"] if "ideal_job_brief" in row.keys() else None,
                 updated_at=datetime.fromisoformat(row["updated_at"]),
             )
 
@@ -396,9 +401,9 @@ class Storage:
                 INSERT INTO user_profiles (
                     user_id, cv_filename, cv_text, portfolio_url, github_url,
                     linkedin_url, bio, writing_sample, writing_tone, target_roles,
-                    skills, min_salary, remote_preference, updated_at
+                    skills, min_salary, remote_preference, ideal_job_brief, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     cv_filename = excluded.cv_filename,
                     cv_text = excluded.cv_text,
@@ -412,6 +417,7 @@ class Storage:
                     skills = excluded.skills,
                     min_salary = excluded.min_salary,
                     remote_preference = excluded.remote_preference,
+                    ideal_job_brief = excluded.ideal_job_brief,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -428,6 +434,7 @@ class Storage:
                     json.dumps(profile.skills),
                     profile.min_salary,
                     profile.remote_preference,
+                    profile.ideal_job_brief,
                     datetime.now(timezone.utc).isoformat(),
                 ),
             )

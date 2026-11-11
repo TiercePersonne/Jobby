@@ -24,6 +24,7 @@ from jobby.ai_analyzer import (
     detect_remote_policy,
     evaluate_candidate_match,
     generate_tailored_cover_letter,
+    rank_opportunities_by_ideal_brief,
 )
 from jobby.config import JobbyConfig, load_config, save_config
 from jobby.cv_parser import extract_text_from_cv
@@ -316,7 +317,7 @@ async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
     # Save to SQLite & evaluate intelligence
     new_count = 0
     for opp in deduped:
-        scoring.score_opportunity(opp)
+        scoring.score_opportunity(opp, active_keywords=params.keywords)
         is_new, _ = storage.upsert_opportunity(opp)
         if is_new:
             new_count += 1
@@ -754,6 +755,81 @@ async def generate_cover_letter_for_opportunity(opportunity_id: str, request: Re
         storage.save_match_evaluation(new_match)
 
     return {"opportunity_id": opportunity_id, "cover_letter": letter}
+
+
+class IdealBriefRankRequest(BaseModel):
+    brief: str
+    limit: Optional[int] = 60
+
+
+@app.post("/api/ai/rank-by-brief")
+async def rank_by_ideal_brief(req: IdealBriefRankRequest, request: Request) -> Dict[str, Any]:
+    """
+    '3ème Voie' : Semantic matching and ranking of all opportunities against a candidate's
+    verbose 'Ideal Job' brief using Google AI Studio Gemini.
+    """
+    config = load_config()
+    storage = Storage(config.database_path)
+    user = get_current_user_or_default(request, storage)
+
+    brief_text = req.brief.strip()
+    if not brief_text:
+        raise HTTPException(status_code=400, detail="Veuillez fournir la description de votre job idéal.")
+
+    # Fetch active opportunities from storage (excluding archived)
+    all_opps = storage.list_opportunities(limit=req.limit or 60)
+    active_opps = [o for o in all_opps if o.status != "archived"]
+
+    if not active_opps:
+        return {
+            "status": "success",
+            "total_evaluated": 0,
+            "updated_count": 0,
+            "results": [],
+            "message": "Aucune opportunité active en base à évaluer.",
+        }
+
+    profile = storage.get_profile(user.id)
+    profile_dict = profile.model_dump() if profile else {}
+
+    # Persist the ideal job brief in user profile
+    if profile:
+        profile.raw_metadata = profile.raw_metadata or {}
+        profile.raw_metadata["ideal_job_brief"] = brief_text
+        storage.save_profile(profile)
+
+    api_key = config.ai_api_key or os.environ.get("GEMINI_API_KEY")
+    model = config.ai_model
+
+    ranked_results = await rank_opportunities_by_ideal_brief(
+        brief=brief_text,
+        opportunities=active_opps,
+        profile_data=profile_dict,
+        api_key=api_key,
+        model=model,
+    )
+
+    # Update opportunities in SQLite
+    ranked_map = {r["id"]: r for r in ranked_results}
+    updated_count = 0
+    for opp in active_opps:
+        if opp.id in ranked_map:
+            res = ranked_map[opp.id]
+            opp.score = float(res.get("score", 50.0))
+            verdict = res.get("verdict")
+            if verdict:
+                opp.score_reasons = [verdict]
+            opp.raw_metadata = opp.raw_metadata or {}
+            opp.raw_metadata["ai_match"] = res
+            storage.upsert_opportunity(opp)
+            updated_count += 1
+
+    return {
+        "status": "success",
+        "total_evaluated": len(active_opps),
+        "updated_count": updated_count,
+        "results": ranked_results,
+    }
 
 
 # ===================================================================
