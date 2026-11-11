@@ -497,3 +497,312 @@ def test_user_profiles_ideal_job_brief_migration_and_rollback(tmp_path, monkeypa
     rb_cols = {r["name"] for r in verify_rb.execute("PRAGMA table_info(user_profiles)").fetchall()}
     verify_rb.close()
     assert "ideal_job_brief" not in rb_cols
+
+
+def test_match_evaluations_provenance_migration_and_rollback(tmp_path, monkeypatch):
+    import json
+    import pytest
+    from jobby.models import MatchEvaluation
+
+    db_path = tmp_path / "legacy_matches.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE match_evaluations (
+            user_id TEXT NOT NULL,
+            opportunity_id TEXT NOT NULL,
+            score REAL NOT NULL,
+            verdict TEXT NOT NULL,
+            strengths TEXT,
+            weaknesses TEXT,
+            pitch TEXT,
+            cover_letter TEXT,
+            PRIMARY KEY(user_id, opportunity_id)
+        )
+    """)
+    conn.execute(
+        """
+        INSERT INTO match_evaluations (
+            user_id, opportunity_id, score, verdict, strengths, weaknesses, pitch, cover_letter
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "u-1",
+            "opp-legacy",
+            82.5,
+            "Bon alignement legacy",
+            json.dumps(["Python"]),
+            json.dumps(["Docker"]),
+            "Pitch legacy",
+            "Lettre legacy",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    storage = Storage(db_path=db_path)
+    with storage._connection() as verify_conn:
+        cols = {r["name"] for r in verify_conn.execute("PRAGMA table_info(match_evaluations)").fetchall()}
+        assert {
+            "cover_letter",
+            "provider_used",
+            "used_fallback",
+            "fallback_reason",
+            "cover_letter_provider_used",
+            "cover_letter_used_fallback",
+            "cover_letter_fallback_reason",
+        }.issubset(cols)
+
+    legacy = storage.get_match_evaluation("u-1", "opp-legacy")
+    assert legacy is not None
+    assert legacy.score == 82.5
+    assert legacy.verdict == "Bon alignement legacy"
+    assert legacy.strengths == ["Python"]
+    assert legacy.weaknesses == ["Docker"]
+    assert legacy.pitch == "Pitch legacy"
+    assert legacy.cover_letter == "Lettre legacy"
+    assert legacy.provider_used is None
+    assert legacy.used_fallback is False
+    assert legacy.fallback_reason is None
+
+    # Save Gemini and heuristic evaluations & round-trip via get_match_evaluation and get_user_matches
+    gemini_eval = MatchEvaluation(
+        user_id="u-1",
+        opportunity_id="opp-gemini",
+        score=94.0,
+        verdict="Match idéal Gemini",
+        strengths=["FastAPI", "LLM"],
+        weaknesses=[],
+        pitch="Pitch Gemini",
+        cover_letter="Lettre Gemini",
+        provider_used="gemini",
+        used_fallback=False,
+        fallback_reason=None,
+    )
+    heuristic_eval = MatchEvaluation(
+        user_id="u-1",
+        opportunity_id="opp-heur",
+        score=64.0,
+        verdict="Match heuristique",
+        pitch="Pitch heuristique",
+        provider_used="heuristic",
+        used_fallback=True,
+        fallback_reason="Timeout Gemini",
+    )
+    storage.save_match_evaluation(gemini_eval)
+    storage.save_match_evaluation(heuristic_eval)
+
+    all_matches = storage.get_user_matches("u-1")
+    assert set(all_matches.keys()) == {"opp-legacy", "opp-gemini", "opp-heur"}
+    assert all_matches["opp-gemini"].provider_used == "gemini"
+    assert all_matches["opp-gemini"].used_fallback is False
+    assert all_matches["opp-gemini"].fallback_reason is None
+    assert all_matches["opp-heur"].provider_used == "heuristic"
+    assert all_matches["opp-heur"].used_fallback is True
+    assert all_matches["opp-heur"].fallback_reason == "Timeout Gemini"
+
+    # Re-initializing Storage on migrated DB is an idempotent no-op
+    storage_again = Storage(db_path=db_path)
+    assert storage_again.get_match_evaluation("u-1", "opp-gemini").provider_used == "gemini"
+    assert storage_again.get_match_evaluation("u-1", "opp-legacy").provider_used is None
+
+    # Rollback on DDL failure inside BEGIN IMMEDIATE
+    rollback_db = tmp_path / "legacy_matches_rollback.db"
+    rconn = sqlite3.connect(rollback_db)
+    rconn.execute("""
+        CREATE TABLE match_evaluations (
+            user_id TEXT NOT NULL,
+            opportunity_id TEXT NOT NULL,
+            score REAL NOT NULL,
+            verdict TEXT NOT NULL,
+            strengths TEXT,
+            weaknesses TEXT,
+            pitch TEXT,
+            cover_letter TEXT,
+            PRIMARY KEY(user_id, opportunity_id)
+        )
+    """)
+    rconn.commit()
+    rconn.close()
+
+    rollback_called = {"count": 0}
+    real_connect = sqlite3.connect
+
+    class MatchConnProxy:
+        def __init__(self, inner):
+            object.__setattr__(self, "_inner", inner)
+
+        def execute(self, sql, *args, **kwargs):
+            if "ALTER TABLE match_evaluations ADD COLUMN fallback_reason" in sql:
+                raise sqlite3.OperationalError("simulated match_evaluations DDL failure")
+            return self._inner.execute(sql, *args, **kwargs)
+
+        def rollback(self):
+            rollback_called["count"] += 1
+            return self._inner.rollback()
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        def __setattr__(self, name, value):
+            return setattr(self._inner, name, value)
+
+    monkeypatch.setattr("jobby.storage.sqlite3.connect", lambda *a, **kw: MatchConnProxy(real_connect(*a, **kw)))
+    with pytest.raises(sqlite3.OperationalError, match="simulated match_evaluations DDL failure"):
+        Storage(db_path=rollback_db)
+    assert rollback_called["count"] >= 1
+
+    verify_rb = real_connect(rollback_db)
+    verify_rb.row_factory = sqlite3.Row
+    rb_cols = {r["name"] for r in verify_rb.execute("PRAGMA table_info(match_evaluations)").fetchall()}
+    verify_rb.close()
+    assert not {"provider_used", "used_fallback", "fallback_reason"}.intersection(rb_cols)
+
+
+def test_pre_cover_letter_migration_and_concurrent_non_clobbering_saves(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from jobby.models import MatchEvaluation
+
+    # 1. Pre-cover_letter schema (lacks cover_letter AND all 6 provenance columns)
+    db_path = tmp_path / "pre_cover_letter.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE match_evaluations (
+            user_id TEXT NOT NULL,
+            opportunity_id TEXT NOT NULL,
+            score REAL NOT NULL,
+            verdict TEXT NOT NULL,
+            strengths TEXT,
+            weaknesses TEXT,
+            pitch TEXT,
+            PRIMARY KEY(user_id, opportunity_id)
+        )
+    """)
+    conn.execute(
+        "INSERT INTO match_evaluations (user_id, opportunity_id, score, verdict, pitch) VALUES (?, ?, ?, ?, ?)",
+        ("u-pre", "opp-pre", 76.0, "Legacy Pre", "Pitch pre"),
+    )
+    conn.commit()
+    conn.close()
+
+    storage = Storage(db_path=db_path)
+    with storage._connection() as verify_conn:
+        cols = {r["name"] for r in verify_conn.execute("PRAGMA table_info(match_evaluations)").fetchall()}
+        assert {
+            "cover_letter",
+            "provider_used",
+            "used_fallback",
+            "fallback_reason",
+            "cover_letter_provider_used",
+            "cover_letter_used_fallback",
+            "cover_letter_fallback_reason",
+        }.issubset(cols)
+
+    pre_row = storage.get_match_evaluation("u-pre", "opp-pre")
+    assert pre_row is not None
+    assert pre_row.score == 76.0
+    assert pre_row.cover_letter == ""
+    assert pre_row.provider_used is None
+    assert pre_row.cover_letter_provider_used is None
+
+    # 2. Non-clobbering sequential saves: match -> cover_letter -> match fallback
+    saved_m = storage.save_match_result(
+        MatchEvaluation(
+            user_id="u-1",
+            opportunity_id="opp-1",
+            score=91.0,
+            verdict="Gemini Match",
+            strengths=["Python"],
+            weaknesses=[],
+            pitch="Pitch Gemini",
+            provider_used="gemini",
+            used_fallback=False,
+            fallback_reason=None,
+        )
+    )
+    assert saved_m.score == 91.0
+    assert saved_m.provider_used == "gemini"
+
+    saved_cl = storage.save_cover_letter_result(
+        user_id="u-1",
+        opportunity_id="opp-1",
+        cover_letter="Lettre heuristique",
+        provider_used="heuristic",
+        used_fallback=True,
+        fallback_reason="Timeout Gemini",
+    )
+    # Match fields & match provenance MUST remain intact!
+    assert saved_cl.score == 91.0
+    assert saved_cl.verdict == "Gemini Match"
+    assert saved_cl.provider_used == "gemini"
+    assert saved_cl.used_fallback is False
+    assert saved_cl.fallback_reason is None
+    assert saved_cl.cover_letter == "Lettre heuristique"
+    assert saved_cl.cover_letter_provider_used == "heuristic"
+    assert saved_cl.cover_letter_used_fallback is True
+    assert saved_cl.cover_letter_fallback_reason == "Timeout Gemini"
+
+    # Upgrading cover_letter to Gemini does NOT touch match; updating match does NOT touch cover_letter!
+    storage.save_cover_letter_result(
+        user_id="u-1",
+        opportunity_id="opp-1",
+        cover_letter="Lettre Gemini",
+        provider_used="gemini",
+        used_fallback=False,
+        fallback_reason=None,
+    )
+    after_match_fb = storage.save_match_result(
+        MatchEvaluation(
+            user_id="u-1",
+            opportunity_id="opp-1",
+            score=62.0,
+            verdict="Fallback Match",
+            pitch="Pitch fb",
+            provider_used="heuristic",
+            used_fallback=True,
+            fallback_reason="HTTP 503",
+        )
+    )
+    assert after_match_fb.score == 62.0
+    assert after_match_fb.provider_used == "heuristic"
+    assert after_match_fb.cover_letter == "Lettre Gemini"
+    assert after_match_fb.cover_letter_provider_used == "gemini"
+    assert after_match_fb.cover_letter_used_fallback is False
+
+    # 3. Concurrent saves via ThreadPoolExecutor preserve both match and cover_letter cleanly
+    def write_match():
+        return storage.save_match_result(
+            MatchEvaluation(
+                user_id="u-conc",
+                opportunity_id="opp-conc",
+                score=88.0,
+                verdict="Concurrent Match",
+                strengths=["FastAPI"],
+                pitch="Pitch conc",
+                provider_used="gemini",
+                used_fallback=False,
+            )
+        )
+
+    def write_letter():
+        return storage.save_cover_letter_result(
+            user_id="u-conc",
+            opportunity_id="opp-conc",
+            cover_letter="Concurrent Letter",
+            provider_used="gemini",
+            used_fallback=False,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f1 = pool.submit(write_match)
+        f2 = pool.submit(write_letter)
+        f1.result()
+        f2.result()
+
+    final_conc = storage.get_match_evaluation("u-conc", "opp-conc")
+    assert final_conc is not None
+    assert final_conc.score == 88.0
+    assert final_conc.verdict == "Concurrent Match"
+    assert final_conc.provider_used == "gemini"
+    assert final_conc.cover_letter == "Concurrent Letter"
+    assert final_conc.cover_letter_provider_used == "gemini"
+    assert final_conc.cover_letter_used_fallback is False

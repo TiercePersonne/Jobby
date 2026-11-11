@@ -13,12 +13,146 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import re
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 logger = logging.getLogger("jobby.ai")
+
+DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
+GEMINI_TIMEOUT_SECONDS = 35.0
+GEMINI_RANK_BATCH_SIZE = 15
+GEMINI_MAX_CONCURRENT_BATCHES = 4
+
+
+def _strip_markdown_fences(raw_text: str) -> str:
+    cleaned = re.sub(r"^```(?:json)?\s*", "", raw_text.strip(), flags=re.IGNORECASE)
+    return re.sub(r"\s*```$", "", cleaned, flags=re.IGNORECASE).strip()
+
+
+def _resolve_gemini_api_key(api_key: Optional[str]) -> Optional[str]:
+    if api_key is not None:
+        explicit = api_key.strip()
+        if not explicit or explicit.startswith("sk-"):
+            return None
+        return explicit
+    env_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    if not env_key or env_key.startswith("sk-"):
+        return None
+    return env_key
+
+
+def _sanitize_error_reason(err: Any, *secrets_to_redact: Optional[str]) -> str:
+    """Redacts API keys, bearer tokens, and URL query strings from error messages."""
+    text = str(err or "").strip()
+    text = re.sub(r"\?[^\s\"'<>]+", "", text)
+    text = re.sub(r"(?i)(key|api_key|token)=[^\s&\"']+", r"\1=[REDACTED]", text)
+    text = re.sub(r"(?i)(Bearer\s+)[A-Za-z0-9._\-]+", r"\1[REDACTED]", text)
+    for secret in secrets_to_redact:
+        cleaned = (secret or "").strip()
+        if cleaned:
+            text = text.replace(cleaned, "[REDACTED]")
+    return text
+
+
+def _parse_valid_score(raw_score: Any) -> float:
+    if isinstance(raw_score, bool) or raw_score is None:
+        raise ValueError("Score booléen ou nul invalide")
+    val = float(raw_score)
+    if not math.isfinite(val):
+        raise ValueError("Score non fini (NaN/Inf)")
+    return float(max(0.0, min(100.0, val)))
+
+
+def _parse_valid_int_score(raw_score: Any) -> float:
+    return float(int(_parse_valid_score(raw_score)))
+
+
+def _validate_post_analysis_dict(parsed: Any, provider_name: str) -> Dict[str, Any]:
+    if not isinstance(parsed, dict):
+        raise ValueError(f"La réponse JSON {provider_name} n'est pas un objet")
+    intent = parsed.get("intent")
+    summary = parsed.get("summary")
+    if not isinstance(intent, str) or not intent.strip() or not isinstance(summary, str) or not summary.strip():
+        raise ValueError(f"Champs 'intent'/'summary' requis manquants dans la réponse {provider_name}")
+    return parsed
+
+
+async def _call_gemini_generate_content(
+    prompt: str,
+    api_key: str,
+    model: Optional[str] = None,
+    *,
+    temperature: Optional[float] = None,
+    response_mime_type: Optional[str] = None,
+    timeout: float = GEMINI_TIMEOUT_SECONDS,
+) -> Tuple[Optional[str], Optional[int], Optional[str]]:
+    """Centralized Gemini generateContent caller with thinkingBudget=0 and timeout >= 35s."""
+    gemini_model = (model or "").strip() or DEFAULT_GEMINI_MODEL
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent"
+    headers = {"x-goog-api-key": api_key}
+    generation_config: Dict[str, Any] = {
+        "thinkingConfig": {"thinkingBudget": 0},
+    }
+    if temperature is not None:
+        generation_config["temperature"] = temperature
+    if response_mime_type:
+        generation_config["responseMimeType"] = response_mime_type
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": generation_config,
+    }
+    effective_timeout = max(float(timeout), GEMINI_TIMEOUT_SECONDS)
+
+    try:
+        async with httpx.AsyncClient(timeout=effective_timeout) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+        if resp.status_code != 200:
+            return None, resp.status_code, f"Gemini HTTP {resp.status_code}"
+
+        raw_data = resp.json()
+        if not isinstance(raw_data, dict):
+            return None, resp.status_code, "Réponse Gemini malformée"
+
+        prompt_feedback = raw_data.get("promptFeedback")
+        if isinstance(prompt_feedback, dict) and prompt_feedback.get("blockReason"):
+            block_reason = prompt_feedback.get("blockReason")
+            return None, resp.status_code, f"Requête bloquée par Gemini (promptFeedback.blockReason={block_reason})"
+
+        candidates = raw_data.get("candidates")
+        if not isinstance(candidates, list) or not candidates or not isinstance(candidates[0], dict):
+            return None, resp.status_code, "Réponse Gemini sans candidats"
+
+        candidate = candidates[0]
+        finish_reason = candidate.get("finishReason")
+        content = candidate.get("content")
+        parts = content.get("parts") if isinstance(content, dict) else None
+        text_chunks: List[str] = []
+        if isinstance(parts, list):
+            for part in parts:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("thought") is True:
+                    continue
+                part_text = part.get("text")
+                if isinstance(part_text, str) and part_text:
+                    text_chunks.append(part_text)
+
+        combined_text = "".join(text_chunks).strip()
+        if not combined_text:
+            if finish_reason:
+                return None, resp.status_code, f"Réponse Gemini bloquée/vide (finishReason={finish_reason})"
+            return None, resp.status_code, "Réponse Gemini vide"
+        return combined_text, resp.status_code, None
+    except httpx.TimeoutException as e:
+        return None, None, f"Timeout Gemini ({effective_timeout:.0f}s): {_sanitize_error_reason(e, api_key)}"
+    except (ValueError, KeyError, IndexError, TypeError) as e:
+        return None, 200, f"Réponse Gemini malformée: {_sanitize_error_reason(e, api_key)}"
+    except Exception as e:
+        return None, None, f"Erreur appel Gemini: {_sanitize_error_reason(e, api_key)}"
 
 
 def detect_remote_policy(
@@ -269,98 +403,199 @@ async def analyze_post_with_llm(
     Deep semantic analysis using LLM (Gemini, OpenAI, or local Ollama),
     falling back to heuristic if not configured or in case of error.
     """
-    # Check environment keys if not passed explicitly
-    gemini_key = api_key or os.environ.get("GEMINI_API_KEY")
-    openai_key = api_key or os.environ.get("OPENAI_API_KEY")
+    normalized_provider = (provider or "auto").strip().lower() or "auto"
 
-    # Determine provider
-    chosen_provider = provider
+    if normalized_provider == "heuristic":
+        result = analyze_post_heuristic(commentary, author_name, author_title)
+        result["provider_used"] = "heuristic"
+        result["used_fallback"] = False
+        result["fallback_reason"] = None
+        return result
+
+    explicit_key = (api_key or "").strip() or None
+    env_gemini_key = (os.environ.get("GEMINI_API_KEY") or "").strip() or None
+    env_openai_key = (os.environ.get("OPENAI_API_KEY") or "").strip() or None
+    is_sk_key = bool(explicit_key and explicit_key.startswith("sk-"))
+
+    if normalized_provider in {"openai", "ollama"}:
+        gemini_key = None
+    elif explicit_key and not is_sk_key:
+        gemini_key = explicit_key
+    elif is_sk_key:
+        gemini_key = None
+    else:
+        gemini_key = env_gemini_key
+
+    if normalized_provider in {"gemini", "ollama"}:
+        openai_key = None
+    elif explicit_key and (normalized_provider == "openai" or is_sk_key):
+        openai_key = explicit_key
+    elif normalized_provider == "auto" and explicit_key and not gemini_key:
+        openai_key = explicit_key
+    else:
+        openai_key = env_openai_key
+
+    chosen_provider = normalized_provider
     if chosen_provider == "auto":
         if gemini_key:
             chosen_provider = "gemini"
         elif openai_key:
             chosen_provider = "openai"
         else:
-            # Check if Ollama is responsive
             chosen_provider = "heuristic"
+
+    fallback_reason: Optional[str] = None
 
     # Try Ollama if explicitly asked
     if chosen_provider == "ollama":
         try:
+            base_ollama_url = (ollama_url or "").strip() or "http://localhost:11434"
             async with httpx.AsyncClient(timeout=8.0) as client:
                 prompt = _build_llm_prompt(commentary, author_name, author_title)
-                ollama_model = model or "llama3" or "mistral"
+                ollama_model = (model or "").strip() or "llama3"
                 resp = await client.post(
-                    f"{ollama_url.rstrip('/')}/api/generate",
+                    f"{base_ollama_url.rstrip('/')}/api/generate",
                     json={"model": ollama_model, "prompt": prompt, "format": "json", "stream": False},
                 )
                 if resp.status_code == 200:
                     raw_text = resp.json().get("response", "{}")
-                    parsed = json.loads(raw_text)
+                    parsed = _validate_post_analysis_dict(json.loads(raw_text), "Ollama")
                     parsed["provider"] = "ollama"
+                    parsed["provider_used"] = "ollama"
+                    parsed["used_fallback"] = False
+                    parsed["fallback_reason"] = None
                     return parsed
+                fallback_reason = f"Ollama HTTP {resp.status_code}"
         except Exception as e:
-            logger.debug(f"Ollama call failed, falling back to heuristic: {e}")
+            sanitized = _sanitize_error_reason(e)
+            logger.debug(f"Ollama call failed, falling back to heuristic: {sanitized}")
+            fallback_reason = f"Erreur Ollama: {sanitized}"
 
     # Try Gemini
-    if chosen_provider == "gemini" and gemini_key:
-        try:
-            gemini_model = model or "gemini-flash-latest"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
+    if chosen_provider == "gemini":
+        if not gemini_key:
+            logger.warning("GEMINI_API_KEY absente — repli sur l'analyse heuristique locale.")
+            fallback_reason = "Clé API Gemini absente"
+        else:
             prompt = _build_llm_prompt(commentary, author_name, author_title)
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"response_mime_type": "application/json"},
-            }
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    text_out = data["candidates"][0]["content"]["parts"][0]["text"]
-                    parsed = json.loads(text_out)
+            text_out, status_code, gemini_err = await _call_gemini_generate_content(
+                prompt,
+                gemini_key,
+                model=model,
+                response_mime_type="application/json",
+            )
+            if text_out is not None:
+                try:
+                    parsed = _validate_post_analysis_dict(
+                        json.loads(_strip_markdown_fences(text_out)),
+                        "Gemini",
+                    )
                     parsed["provider"] = "gemini"
+                    parsed["provider_used"] = "gemini"
+                    parsed["used_fallback"] = False
+                    parsed["fallback_reason"] = None
                     return parsed
-                else:
-                    # Fallback to gemma model if model is not available
-                    fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent?key={gemini_key}"
-                    resp2 = await client.post(fallback_url, json={"contents": [{"parts": [{"text": prompt}]}]})
+                except Exception as e:
+                    sanitized = _sanitize_error_reason(e, gemini_key)
+                    logger.warning(f"Gemini post analysis JSON parse failed: {sanitized}")
+                    fallback_reason = f"Réponse JSON Gemini invalide: {sanitized}"
+            elif status_code is not None and status_code != 200:
+                logger.warning(f"Gemini API returned HTTP {status_code}; trying Gemma fallback.")
+                try:
+                    fallback_url = "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent"
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        resp2 = await client.post(
+                            fallback_url,
+                            headers={"x-goog-api-key": gemini_key},
+                            json={"contents": [{"parts": [{"text": prompt}]}]},
+                        )
                     if resp2.status_code == 200:
-                        text_out = resp2.json()["candidates"][0]["content"]["parts"][0]["text"]
-                        cleaned = re.sub(r"^```json\s*|\s*```$", "", text_out.strip())
-                        parsed = json.loads(cleaned)
+                        text_out2 = resp2.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        parsed = _validate_post_analysis_dict(
+                            json.loads(_strip_markdown_fences(text_out2)),
+                            "Gemma",
+                        )
                         parsed["provider"] = "gemini-gemma"
+                        parsed["provider_used"] = "gemini-gemma"
+                        parsed["used_fallback"] = True
+                        parsed["fallback_reason"] = f"{gemini_err} -> repli gemma-4-26b-a4b-it"
                         return parsed
-        except Exception as e:
-            logger.warning(f"Gemini API call failed: {e}")
+                    fallback_reason = f"{gemini_err} ; Gemma HTTP {resp2.status_code}"
+                except Exception as e:
+                    sanitized = _sanitize_error_reason(e, gemini_key)
+                    logger.warning(f"Gemma fallback failed: {sanitized}")
+                    fallback_reason = f"{gemini_err} ; erreur Gemma: {sanitized}"
+            else:
+                logger.warning(f"Gemini API call failed: {gemini_err}")
+                fallback_reason = gemini_err
 
     # Try OpenAI
-    if chosen_provider == "openai" and openai_key:
-        try:
-            openai_model = model or "gpt-4o-mini"
-            url = "https://api.openai.com/v1/chat/completions"
-            prompt = _build_llm_prompt(commentary, author_name, author_title)
-            headers = {"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"}
-            payload = {
-                "model": openai_model,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": "You are an expert HR and recruitment intelligence classifier."},
-                    {"role": "user", "content": prompt},
-                ],
-            }
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    raw_text = data["choices"][0]["message"]["content"]
-                    parsed = json.loads(raw_text)
-                    parsed["provider"] = "openai"
-                    return parsed
-        except Exception as e:
-            logger.warning(f"OpenAI API call failed: {e}")
+    if chosen_provider == "openai":
+        if not openai_key:
+            logger.warning("OPENAI_API_KEY absente — repli sur l'analyse heuristique locale.")
+            fallback_reason = "Clé API OpenAI absente"
+        else:
+            try:
+                openai_model = (model or "").strip() or "gpt-4o-mini"
+                url = "https://api.openai.com/v1/chat/completions"
+                prompt = _build_llm_prompt(commentary, author_name, author_title)
+                headers = {"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": openai_model,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {"role": "system", "content": "You are an expert HR and recruitment intelligence classifier."},
+                        {"role": "user", "content": prompt},
+                    ],
+                }
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.post(url, headers=headers, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        raw_text = data["choices"][0]["message"]["content"]
+                        parsed = _validate_post_analysis_dict(json.loads(raw_text), "OpenAI")
+                        parsed["provider"] = "openai"
+                        parsed["provider_used"] = "openai"
+                        parsed["used_fallback"] = False
+                        parsed["fallback_reason"] = None
+                        return parsed
+                    fallback_reason = f"OpenAI HTTP {resp.status_code}"
+            except Exception as e:
+                sanitized = _sanitize_error_reason(e, openai_key)
+                logger.warning(f"OpenAI API call failed: {sanitized}")
+                fallback_reason = f"Erreur OpenAI: {sanitized}"
+
+    if chosen_provider == "heuristic" and not fallback_reason:
+        logger.warning("Aucune clé API LLM configurée — repli sur l'analyse heuristique locale.")
+        fallback_reason = "Clé API Gemini absente"
 
     # Fallback to local heuristic
-    return analyze_post_heuristic(commentary, author_name, author_title)
+    result = analyze_post_heuristic(commentary, author_name, author_title)
+    result["provider_used"] = "heuristic"
+    result["used_fallback"] = True
+    result["fallback_reason"] = fallback_reason or "Repli heuristique local"
+    return result
+
+
+async def analyze_post_with_llm_with_meta(
+    commentary: str,
+    author_name: str = "",
+    author_title: str = "",
+    provider: str = "auto",
+    api_key: Optional[str] = None,
+    ollama_url: Optional[str] = "http://localhost:11434",
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Wrapper returning post analysis enriched with provider provenance metadata."""
+    return await analyze_post_with_llm(
+        commentary=commentary,
+        author_name=author_name,
+        author_title=author_title,
+        provider=provider,
+        api_key=api_key,
+        ollama_url=ollama_url,
+        model=model,
+    )
 
 
 def _build_llm_prompt(commentary: str, author_name: str, author_title: str) -> str:
@@ -398,21 +633,20 @@ async def evaluate_candidate_match(
 ) -> Dict[str, Any]:
     """
     Evaluates how well a candidate's CV, portfolio and skills match a specific job opportunity.
-    Returns: score (0-100), verdict, strengths, weaknesses, approach pitch.
+    Returns: score (0-100), verdict, strengths, weaknesses, approach pitch, and provenance metadata.
     """
-    gemini_key = api_key or os.environ.get("GEMINI_API_KEY")
+    gemini_key = _resolve_gemini_api_key(api_key)
+    fallback_reason: Optional[str] = None
 
     if gemini_key:
-        try:
-            gemini_model = model or "gemini-flash-latest"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
-            
-            prompt = f"""Tu es un expert du recrutement tech et du matching de talents.
+        target_roles = [str(r) for r in (profile_data.get("target_roles") or []) if r]
+        skills_list = [str(s) for s in (profile_data.get("skills") or []) if s]
+        prompt = f"""Tu es un expert du recrutement tech et du matching de talents.
 Évalue la compatibilité entre ce candidat (CV, portfolio, compétences) et cette offre d'emploi.
 
 --- PROFIL CANDIDAT ---
-Rôles ciblés : {', '.join(profile_data.get('target_roles', []))}
-Compétences déclarées : {', '.join(profile_data.get('skills', []))}
+Rôles ciblés : {', '.join(target_roles)}
+Compétences déclarées : {', '.join(skills_list)}
 Portfolio / Projets : {profile_data.get('portfolio_url') or 'Non renseigné'}
 GitHub : {profile_data.get('github_url') or 'Non renseigné'}
 Bio / Parcours : {profile_data.get('bio') or 'Non renseigné'}
@@ -422,9 +656,9 @@ Extrait du CV :
 \"\"\"
 
 --- OFFRE D'EMPLOI / POST ---
-Titre : {opportunity_data.get('title')}
+Titre : {opportunity_data.get('title') or ''}
 Entreprise : {opportunity_data.get('company') or 'Non précisée'}
-Localisation / Remote : {opportunity_data.get('location')} ({opportunity_data.get('remote_policy')})
+Localisation / Remote : {opportunity_data.get('location') or ''} ({opportunity_data.get('remote_policy') or ''})
 Auteur / Recruteur : {opportunity_data.get('author_name') or ''}
 Description de l'offre :
 \"\"\"
@@ -438,34 +672,70 @@ Renvoie STRICTEMENT un objet JSON valide (sans backticks markdown si possible) a
 - "weaknesses": liste de 1 à 3 points d'attention ou technos secondaires manquantes.
 - "pitch": un message d'accroche personnalisé de 3 phrases maximum, direct, percutant et poli, prêt à être envoyé au recruteur sur LinkedIn ou par email pour attirer son attention.
 """
-
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "responseMimeType": "application/json",
-                },
-            }
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-                    cleaned = re.sub(r"^```json\s*|\s*```$", "", raw_text.strip())
-                    parsed = json.loads(cleaned)
-                    parsed["score"] = float(parsed.get("score", 75))
-                    return parsed
-        except Exception as e:
-            logger.warning(f"Gemini CV match evaluation failed: {e}")
+        text_out, _, gemini_err = await _call_gemini_generate_content(
+            prompt,
+            gemini_key,
+            model=model,
+            temperature=0.2,
+            response_mime_type="application/json",
+        )
+        if text_out is not None:
+            try:
+                parsed = json.loads(_strip_markdown_fences(text_out))
+                if not isinstance(parsed, dict) or "score" not in parsed:
+                    raise ValueError("Champ 'score' manquant dans la réponse Gemini")
+                verdict_raw = parsed.get("verdict")
+                if not isinstance(verdict_raw, str) or not verdict_raw.strip():
+                    raise ValueError("Champ 'verdict' manquant ou invalide dans la réponse Gemini")
+                parsed["score"] = _parse_valid_score(parsed["score"])
+                parsed["verdict"] = verdict_raw.strip()
+                parsed["strengths"] = [str(s) for s in (parsed.get("strengths") or [])] if isinstance(parsed.get("strengths"), list) else []
+                parsed["weaknesses"] = [str(w) for w in (parsed.get("weaknesses") or [])] if isinstance(parsed.get("weaknesses"), list) else []
+                parsed["pitch"] = str(parsed.get("pitch") or "")
+                parsed["provider_used"] = "gemini"
+                parsed["used_fallback"] = False
+                parsed["fallback_reason"] = None
+                return parsed
+            except Exception as e:
+                sanitized = _sanitize_error_reason(e, gemini_key)
+                logger.warning(f"Gemini CV match JSON parse failed: {sanitized}")
+                fallback_reason = f"Réponse JSON Gemini invalide: {sanitized}"
+        else:
+            logger.warning(f"Gemini CV match evaluation failed: {gemini_err}")
+            fallback_reason = gemini_err
+    else:
+        logger.warning("GEMINI_API_KEY absente — repli heuristique pour evaluate_candidate_match.")
+        fallback_reason = "Clé API Gemini absente"
 
     # Fallback heuristic calculation
-    return _heuristic_cv_match(profile_data, opportunity_data)
+    fallback = _heuristic_cv_match(profile_data, opportunity_data)
+    fallback["provider_used"] = "heuristic"
+    fallback["used_fallback"] = True
+    fallback["fallback_reason"] = fallback_reason or "Repli heuristique local"
+    return fallback
+
+
+async def evaluate_candidate_match_with_meta(
+    profile_data: Dict[str, Any],
+    opportunity_data: Dict[str, Any],
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Wrapper returning candidate match evaluation with provider provenance metadata."""
+    return await evaluate_candidate_match(
+        profile_data=profile_data,
+        opportunity_data=opportunity_data,
+        api_key=api_key,
+        model=model,
+    )
 
 
 def _heuristic_cv_match(profile_data: Dict[str, Any], opportunity_data: Dict[str, Any]) -> Dict[str, Any]:
     """Fast local heuristic matching when no LLM key is available."""
-    skills = [s.lower() for s in profile_data.get("skills", [])]
-    roles = [r.lower() for r in profile_data.get("target_roles", [])]
+    raw_skills = [str(s) for s in (profile_data.get("skills") or []) if s]
+    raw_roles = [str(r) for r in (profile_data.get("target_roles") or []) if r]
+    skills = [s.lower() for s in raw_skills]
+    roles = [r.lower() for r in raw_roles]
     cv_text = (profile_data.get("cv_text") or "").lower()
 
     title = (opportunity_data.get("title") or "").lower()
@@ -482,14 +752,14 @@ def _heuristic_cv_match(profile_data: Dict[str, Any], opportunity_data: Dict[str
         score += min(25.0, (len(matched_skills) / max(len(skills), 1)) * 25.0)
 
     score = round(min(98.0, max(40.0, score)), 1)
-    
+
     verdict = "Profil très aligné" if score >= 80 else ("Bonne opportunité" if score >= 65 else "À explorer avec nuances")
     strengths = [f"Compétence identifiée : {s.capitalize()}" for s in matched_skills[:3]] or ["Expérience générale en tech"]
     weaknesses = ["Vérifier le niveau d'autonomie et les prérequis secondaires"]
 
     contact = opportunity_data.get("author_name") or "Bonjour"
-    role_hint = profile_data.get("target_roles", ["développeur"])[0]
-    pitch = f"Bonjour {contact}, je viens de voir votre publication concernant le poste de {opportunity_data.get('title')}. En tant que {role_hint} passionné, vos problématiques font écho à mes projets récents. Seriez-vous ouvert à un rapide échange cette semaine ?"
+    role_hint = raw_roles[0] if raw_roles else "développeur"
+    pitch = f"Bonjour {contact}, je viens de voir votre publication concernant le poste de {opportunity_data.get('title') or 'ce poste'}. En tant que {role_hint} passionné, vos problématiques font écho à mes projets récents. Seriez-vous ouvert à un rapide échange cette semaine ?"
 
     return {
         "score": score,
@@ -504,39 +774,36 @@ def _heuristic_cv_match(profile_data: Dict[str, Any], opportunity_data: Dict[str
 # Customized Cover Letter Generation (Style & Tone Cloning)
 # ===================================================================
 
-async def generate_tailored_cover_letter(
+async def generate_tailored_cover_letter_with_meta(
     profile_data: Dict[str, Any],
     opportunity_data: Dict[str, Any],
     api_key: Optional[str] = None,
     model: Optional[str] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
-    Generates a personalized cover letter matching the candidate's exact tone of voice and writing style.
-    Uses Google AI Studio Gemini if available, or a smart template fallback.
+    Generates a personalized cover letter with explicit provider provenance metadata.
     """
-    gemini_key = api_key or os.environ.get("GEMINI_API_KEY")
+    gemini_key = _resolve_gemini_api_key(api_key)
     writing_sample = profile_data.get("writing_sample") or ""
     writing_tone = profile_data.get("writing_tone") or "naturel, direct, enthousiaste et percutant"
+    fallback_reason: Optional[str] = None
 
     if gemini_key:
-        try:
-            gemini_model = model or "gemini-flash-latest"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
-
-            sample_instruction = ""
-            if writing_sample.strip():
-                sample_instruction = f"""
+        if writing_sample.strip():
+            sample_instruction = f"""
 Voici un exemple de texte écrit par le candidat. Analyse son style (vocabulaire, rythme, absence de clichés corporate, authenticité, clarté) et ÉCRIS EN IMITANT EXACTEMENT SA VOIX :
 \"\"\"
 {writing_sample[:2500]}
 \"\"\"
 """
-            else:
-                sample_instruction = f"Adopte un ton : {writing_tone}. Pas de formules pompeuses, sois humain, direct et orienté valeur."
+        else:
+            sample_instruction = f"Adopte un ton : {writing_tone}. Pas de formules pompeuses, sois humain, direct et orienté valeur."
 
-            company_str = opportunity_data.get("company") or "L'équipe"
-            author_str = opportunity_data.get("author_name") or ""
-            prompt = f"""Tu es le candidat lui-même. Rédige une lettre de motivation sur-mesure pour postuler à cette opportunité.
+        company_str = opportunity_data.get("company") or "L'équipe"
+        author_str = opportunity_data.get("author_name") or ""
+        target_roles = [str(r) for r in (profile_data.get("target_roles") or []) if r]
+        skills_list = [str(s) for s in (profile_data.get("skills") or []) if s]
+        prompt = f"""Tu es le candidat lui-même. Rédige une lettre de motivation sur-mesure pour postuler à cette opportunité.
 
 --- CONSIGNES DE STYLE ---
 {sample_instruction}
@@ -549,8 +816,8 @@ Consignes strictes :
 
 --- TON PROFIL (CANDIDAT) ---
 Nom : {profile_data.get('full_name') or 'Le Candidat'}
-Poste visé : {', '.join(profile_data.get('target_roles', []))}
-Compétences : {', '.join(profile_data.get('skills', []))}
+Poste visé : {', '.join(target_roles)}
+Compétences : {', '.join(skills_list)}
 Portfolio / Projets : {profile_data.get('portfolio_url') or 'Portfolio en ligne'}
 GitHub : {profile_data.get('github_url') or ''}
 CV :
@@ -559,7 +826,7 @@ CV :
 \"\"\"
 
 --- L'OFFRE / LE POST ---
-Titre : {opportunity_data.get('title')}
+Titre : {opportunity_data.get('title') or ''}
 Entreprise : {company_str}
 Contact / Recruteur : {author_str}
 Contenu :
@@ -569,28 +836,31 @@ Contenu :
 
 Rédige directement la lettre en texte brut (avec sauts de ligne clairs), sans fioritures méta ni introduction.
 """
-
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.4,
-                },
+        text_out, _, gemini_err = await _call_gemini_generate_content(
+            prompt,
+            gemini_key,
+            model=model,
+            temperature=0.4,
+        )
+        if text_out is not None:
+            return {
+                "cover_letter": text_out,
+                "provider_used": "gemini",
+                "used_fallback": False,
+                "fallback_reason": None,
             }
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    letter = data["candidates"][0]["content"]["parts"][0]["text"]
-                    return letter.strip()
-        except Exception as e:
-            logger.warning(f"Gemini cover letter generation failed: {e}")
+        logger.warning(f"Gemini cover letter generation failed: {gemini_err}")
+        fallback_reason = gemini_err
+    else:
+        logger.warning("GEMINI_API_KEY absente — repli modèle local pour generate_tailored_cover_letter.")
+        fallback_reason = "Clé API Gemini absente"
 
     # Fallback template
     company = opportunity_data.get("company") or "votre équipe"
     title = opportunity_data.get("title") or "ce poste"
     portfolio_mention = f"\nVous pouvez retrouver mes projets et réalisations sur mon portfolio : {profile_data.get('portfolio_url')}" if profile_data.get("portfolio_url") else ""
-    
-    return f"""Bonjour,
+
+    letter = f"""Bonjour,
 
 J'ai découvert avec beaucoup d'intérêt votre recherche pour le rôle de {title} chez {company}. 
 
@@ -604,10 +874,76 @@ Disponible pour un premier échange quand cela vous conviendra.
 
 Bien cordialement,"""
 
+    return {
+        "cover_letter": letter,
+        "provider_used": "heuristic",
+        "used_fallback": True,
+        "fallback_reason": fallback_reason or "Repli modèle local",
+    }
+
+
+async def generate_tailored_cover_letter(
+    profile_data: Dict[str, Any],
+    opportunity_data: Dict[str, Any],
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> str:
+    """
+    Generates a personalized cover letter matching the candidate's exact tone of voice and writing style.
+    Uses Google AI Studio Gemini if available, or a smart template fallback.
+    """
+    result = await generate_tailored_cover_letter_with_meta(
+        profile_data=profile_data,
+        opportunity_data=opportunity_data,
+        api_key=api_key,
+        model=model,
+    )
+    return result["cover_letter"]
+
 
 # ===================================================================
 # "3ème Voie" : Ranking & Semantic Matching by Ideal Job Brief
 # ===================================================================
+
+def summarize_ranking_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Aggregates per-item ranking results into global provider observability metadata."""
+    if not results:
+        return {
+            "results": [],
+            "provider_used": "heuristic",
+            "used_fallback": False,
+            "fallback_reason": None,
+        }
+
+    gemini_count = sum(
+        1 for r in results
+        if r.get("provider_used") == "gemini" and not r.get("used_fallback")
+    )
+    fallback_items = [
+        r for r in results
+        if r.get("used_fallback") or r.get("provider_used") != "gemini"
+    ]
+    used_fallback = len(fallback_items) > 0
+    provider_used = "gemini" if gemini_count > 0 else "heuristic"
+
+    fallback_reason: Optional[str] = None
+    if used_fallback:
+        unique_reasons = list(
+            dict.fromkeys(
+                str(r["fallback_reason"]).strip()
+                for r in fallback_items
+                if r.get("fallback_reason")
+            )
+        )
+        fallback_reason = " ; ".join(unique_reasons) if unique_reasons else "Repli heuristique local"
+
+    return {
+        "results": results,
+        "provider_used": provider_used,
+        "used_fallback": used_fallback,
+        "fallback_reason": fallback_reason,
+    }
+
 
 async def rank_opportunities_by_ideal_brief(
     brief: str,
@@ -619,33 +955,33 @@ async def rank_opportunities_by_ideal_brief(
     """
     Ranks a list of job opportunities / social posts against the user's verbose 'Ideal Job Brief'.
     Uses Google AI Studio Gemini Flash for semantic multi-factor scoring and advice,
-    with a robust keyword & semantic heuristic fallback.
+    with a robust keyword & semantic heuristic fallback and per-item provenance.
     """
-    if not brief or not opportunities:
+    if not brief or not str(brief).strip() or not opportunities:
         return []
 
-    gemini_key = api_key or os.environ.get("GEMINI_API_KEY")
-    gemini_model = model or "gemini-flash-latest"
+    gemini_key = _resolve_gemini_api_key(api_key)
+    gemini_model = (model or "").strip() or DEFAULT_GEMINI_MODEL
 
     # Normalize opportunity inputs to dict
     items_to_score = []
     for opp in opportunities:
         if isinstance(opp, dict):
-            opp_id = opp.get("id") or ""
-            title = opp.get("title") or ""
-            company = opp.get("company") or ""
-            loc = opp.get("location") or ""
-            remote = opp.get("remote_policy") or ""
-            desc = opp.get("description") or ""
+            opp_id = str(opp.get("id") or "")
+            title = str(opp.get("title") or "")
+            company = str(opp.get("company") or "")
+            loc = str(opp.get("location") or "")
+            remote = str(opp.get("remote_policy") or "")
+            desc = str(opp.get("description") or "")
             opp_type = opp.get("opportunity_type") or "offer"
         else:
-            opp_id = getattr(opp, "id", "")
-            title = getattr(opp, "title", "")
-            company = getattr(opp, "company", "")
-            loc = getattr(opp, "location", "")
-            remote = getattr(opp, "remote_policy", "")
-            desc = getattr(opp, "description", "")
-            opp_type = getattr(opp, "opportunity_type", "offer")
+            opp_id = str(getattr(opp, "id", None) or "")
+            title = str(getattr(opp, "title", None) or "")
+            company = str(getattr(opp, "company", None) or "")
+            loc = str(getattr(opp, "location", None) or "")
+            remote = str(getattr(opp, "remote_policy", None) or "")
+            desc = str(getattr(opp, "description", None) or "")
+            opp_type = getattr(opp, "opportunity_type", None) or "offer"
             if hasattr(opp_type, "value"):
                 opp_type = opp_type.value
 
@@ -660,20 +996,24 @@ async def rank_opportunities_by_ideal_brief(
         })
 
     results_by_id: Dict[str, Dict[str, Any]] = {}
+    fallback_reason_by_id: Dict[str, str] = {}
 
-    # Attempt Gemini batch scoring
+    # Attempt Gemini batch scoring (batches <= 15, max 4 concurrent)
     if gemini_key:
         profile_context = ""
         if profile_data:
-            roles = ", ".join(profile_data.get("target_roles", []))
-            skills = ", ".join(profile_data.get("skills", []))
+            roles = ", ".join(str(r) for r in (profile_data.get("target_roles") or []) if r)
+            skills = ", ".join(str(s) for s in (profile_data.get("skills") or []) if s)
             profile_context = f"\nContexte candidat : Rôles visés: [{roles}], Compétences: [{skills}]"
 
-        # Split into batches of 25 to respect prompt token limits and optimize latency
-        batch_size = 25
-        batches = [items_to_score[i:i + batch_size] for i in range(0, len(items_to_score), batch_size)]
+        batches = [
+            items_to_score[i:i + GEMINI_RANK_BATCH_SIZE]
+            for i in range(0, len(items_to_score), GEMINI_RANK_BATCH_SIZE)
+        ]
+        semaphore = asyncio.Semaphore(GEMINI_MAX_CONCURRENT_BATCHES)
 
-        async def process_batch(batch_items: List[Dict[str, Any]]) -> None:
+        async def process_batch(batch_index: int, batch_items: List[Dict[str, Any]]) -> None:
+            batch_ids = {item["id"] for item in batch_items}
             prompt = f"""Tu es l'agent IA de matching de carrière Jobby.
 Le candidat a rédigé le brief verbeux de son 'Job Idéal' :
 \"\"\"
@@ -701,43 +1041,70 @@ Réponds UNIQUEMENT avec un tableau JSON strict, sans backticks markdown, sans t
   {{ "id": "...", "score": 92, "verdict": "...", "pitch": "..." }}
 ]
 """
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "responseMimeType": "application/json",
-                },
-            }
-            try:
-                async with httpx.AsyncClient(timeout=12.0) as client:
-                    resp = await client.post(url, json=payload)
-                    if resp.status_code == 200:
-                        raw_data = resp.json()
-                        text_resp = raw_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                        # Clean backticks if any
-                        text_resp = re.sub(r"^```(?:json)?\s*", "", text_resp)
-                        text_resp = re.sub(r"\s*```$", "", text_resp)
-                        parsed = json.loads(text_resp)
-                        if isinstance(parsed, list):
-                            for entry in parsed:
-                                if isinstance(entry, dict) and "id" in entry:
-                                    results_by_id[entry["id"]] = {
-                                        "id": entry["id"],
-                                        "score": float(max(0, min(100, int(entry.get("score", 50))))),
-                                        "verdict": str(entry.get("verdict", "")),
-                                        "pitch": str(entry.get("pitch", "")),
-                                    }
-            except Exception as e:
-                logger.warning(f"Batch Gemini scoring failed: {e}")
+            async with semaphore:
+                text_resp, _, gemini_err = await _call_gemini_generate_content(
+                    prompt,
+                    gemini_key,
+                    model=gemini_model,
+                    temperature=0.2,
+                    response_mime_type="application/json",
+                )
+            if text_resp is None:
+                reason = f"Lot {batch_index + 1} : {gemini_err}"
+                logger.warning(f"Batch Gemini scoring failed: {reason}")
+                for opp_id in batch_ids:
+                    fallback_reason_by_id[opp_id] = reason
+                return
 
-        # Run batches concurrently
-        await asyncio.gather(*[process_batch(b) for b in batches])
+            try:
+                parsed = json.loads(_strip_markdown_fences(text_resp))
+                if not isinstance(parsed, list):
+                    raise ValueError("La réponse JSON Gemini n'est pas une liste")
+                scored_in_batch = set()
+                for entry in parsed:
+                    if not isinstance(entry, dict):
+                        continue
+                    entry_id = entry.get("id")
+                    if not isinstance(entry_id, str) or entry_id not in batch_ids:
+                        continue
+                    try:
+                        score_val = _parse_valid_int_score(entry["score"])
+                    except (KeyError, ValueError, TypeError, OverflowError):
+                        fallback_reason_by_id[entry_id] = f"Lot {batch_index + 1} : score invalide dans la réponse Gemini"
+                        continue
+                    results_by_id[entry_id] = {
+                        "id": entry_id,
+                        "score": score_val,
+                        "verdict": str(entry.get("verdict") or ""),
+                        "pitch": str(entry.get("pitch") or ""),
+                        "provider_used": "gemini",
+                        "used_fallback": False,
+                        "fallback_reason": None,
+                    }
+                    scored_in_batch.add(entry_id)
+
+                for opp_id in batch_ids - scored_in_batch:
+                    fallback_reason_by_id.setdefault(
+                        opp_id,
+                        f"Lot {batch_index + 1} : opportunité absente de la réponse Gemini",
+                    )
+                if not scored_in_batch:
+                    logger.warning(f"Batch {batch_index + 1} Gemini scoring returned 0 valid items")
+            except Exception as e:
+                sanitized = _sanitize_error_reason(e, gemini_key)
+                reason = f"Lot {batch_index + 1} : Réponse JSON Gemini invalide ({sanitized})"
+                logger.warning(f"Batch Gemini scoring failed: {reason}")
+                for opp_id in batch_ids:
+                    fallback_reason_by_id[opp_id] = reason
+
+        # Run batches concurrently (bounded by semaphore)
+        await asyncio.gather(*[process_batch(idx, b) for idx, b in enumerate(batches)])
+    else:
+        logger.warning("GEMINI_API_KEY absente — repli sur le ranking heuristique local.")
 
     # Fallback heuristic for any unscored items
     brief_lower = brief.lower()
     brief_words = set(re.findall(r"\b[a-zA-Zà-üÀ-Ü]{4,}\b", brief_lower))
-    # Exclude common stopwords
     stopwords = {"dans", "pour", "avec", "sans", "plus", "tout", "tous", "cette", "comme", "mais", "faire", "cherche", "poste", "job", "souhaite"}
     key_words = brief_words - stopwords
 
@@ -765,11 +1132,15 @@ Réponds UNIQUEMENT avec un tableau JSON strict, sans backticks markdown, sans t
         verdict = f"Match sémantique ({len(matched)} mots-clés alignés : {', '.join(matched[:3])})" if matched else "Pertinence moyenne basée sur le profil"
         pitch = "Mettez en avant vos compétences alignées avec l'offre et votre autonomie."
 
+        item_reason = fallback_reason_by_id.get(opp_id) if gemini_key else "Clé API Gemini absente"
         fallback_entry = {
             "id": opp_id,
             "score": score,
             "verdict": verdict,
             "pitch": pitch,
+            "provider_used": "heuristic",
+            "used_fallback": True,
+            "fallback_reason": item_reason or "Repli heuristique local",
         }
         results_by_id[opp_id] = fallback_entry
         final_results.append(fallback_entry)
@@ -777,5 +1148,23 @@ Réponds UNIQUEMENT avec un tableau JSON strict, sans backticks markdown, sans t
     # Sort descending by score
     final_results.sort(key=lambda x: x["score"], reverse=True)
     return final_results
+
+
+async def rank_opportunities_by_ideal_brief_with_meta(
+    brief: str,
+    opportunities: List[Any],
+    profile_data: Optional[Dict[str, Any]] = None,
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Wrapper returning ranked results alongside global provider observability metadata."""
+    results = await rank_opportunities_by_ideal_brief(
+        brief=brief,
+        opportunities=opportunities,
+        profile_data=profile_data,
+        api_key=api_key,
+        model=model,
+    )
+    return summarize_ranking_results(results)
 
 

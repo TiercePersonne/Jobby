@@ -62,15 +62,21 @@ def load_config(config_path: str | Path | None = None) -> JobbyConfig:
     if li_at_env:
         data["linkedin_li_at"] = li_at_env
 
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if gemini_key and not data.get("ai_api_key"):
-        data["ai_api_key"] = gemini_key
-        data["ai_provider"] = "gemini"
+    configured_provider = (data.get("ai_provider") or "").strip().lower()
+    has_explicit_key = bool((data.get("ai_api_key") or "").strip())
 
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    if openai_key and not data.get("ai_api_key"):
+    gemini_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    if gemini_key and not has_explicit_key and configured_provider in ("", "auto", "gemini"):
+        data["ai_api_key"] = gemini_key
+        if not configured_provider:
+            data["ai_provider"] = "gemini"
+        has_explicit_key = True
+
+    openai_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if openai_key and not has_explicit_key and configured_provider in ("", "auto", "openai"):
         data["ai_api_key"] = openai_key
-        data["ai_provider"] = "openai"
+        if not configured_provider:
+            data["ai_provider"] = "openai"
 
     return JobbyConfig(**data)
 

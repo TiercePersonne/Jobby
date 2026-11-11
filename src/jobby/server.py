@@ -21,10 +21,14 @@ from starlette.responses import Response
 from jobby.ai_analyzer import (
     analyze_post_heuristic,
     analyze_post_with_llm,
+    analyze_post_with_llm_with_meta,
     detect_remote_policy,
     evaluate_candidate_match,
+    evaluate_candidate_match_with_meta,
     generate_tailored_cover_letter,
+    generate_tailored_cover_letter_with_meta,
     rank_opportunities_by_ideal_brief,
+    rank_opportunities_by_ideal_brief_with_meta,
 )
 from jobby.config import JobbyConfig, load_config, save_config
 from jobby.cv_parser import extract_text_from_cv
@@ -106,10 +110,18 @@ class SeenUpdateRequest(BaseModel):
 
 
 class AITestRequest(BaseModel):
-    provider: Optional[str] = "auto"
+    provider: Optional[str] = None
     api_key: Optional[str] = None
-    ollama_url: Optional[str] = "http://localhost:11434"
+    ollama_url: Optional[str] = None
     sample_text: Optional[str] = None
+    model: Optional[str] = None
+
+
+def _clean_optional_str(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 @app.get("/health")
@@ -186,24 +198,33 @@ def trigger_linkedin_login() -> Dict[str, Any]:
 
 
 @app.post("/api/ai/test")
-async def test_ai_connection(req: AITestRequest) -> Dict[str, Any]:
+async def test_ai_connection(req: Optional[AITestRequest] = Body(default=None)) -> Dict[str, Any]:
     config = load_config()
-    provider = req.provider or config.ai_provider or "auto"
-    api_key = req.api_key or config.ai_api_key
-    ollama_url = req.ollama_url or config.ai_ollama_url
-    sample = req.sample_text or "Je recherche une alternance de 12 mois en Data / Python dès septembre. Mon CV est en PJ."
+    req = req or AITestRequest()
+    provider = _clean_optional_str(req.provider) or _clean_optional_str(config.ai_provider) or "auto"
+    api_key = _clean_optional_str(req.api_key) or _clean_optional_str(config.ai_api_key)
+    ollama_url = _clean_optional_str(req.ollama_url) or _clean_optional_str(config.ai_ollama_url) or "http://localhost:11434"
+    model = _clean_optional_str(req.model) or _clean_optional_str(config.ai_model)
+    sample = _clean_optional_str(req.sample_text) or "Je recherche une alternance de 12 mois en Data / Python dès septembre. Mon CV est en PJ."
 
-    result = await analyze_post_with_llm(
+    result = await analyze_post_with_llm_with_meta(
         commentary=sample,
         author_name="Candidat Test",
         author_title="Étudiant Master",
         provider=provider,
         api_key=api_key,
         ollama_url=ollama_url,
+        model=model,
     )
+    provider_used = result.get("provider_used") or result.get("provider") or "heuristic"
+    used_fallback = bool(result.get("used_fallback", False))
+    fallback_reason = result.get("fallback_reason")
     return {
         "status": "success",
-        "provider": result.get("provider", provider),
+        "provider": result.get("provider", provider_used),
+        "provider_used": provider_used,
+        "used_fallback": used_fallback,
+        "fallback_reason": fallback_reason,
         "analysis": result,
     }
 
@@ -748,6 +769,42 @@ def delete_app(app_id: str, request: Request) -> Dict[str, Any]:
 # AI Matching, Pitch & Tailored Cover Letter (Google AI Studio)
 # ===================================================================
 
+_MATCH_RESPONSE_EXCLUDE = {
+    "cover_letter_provider_used",
+    "cover_letter_used_fallback",
+    "cover_letter_fallback_reason",
+}
+
+
+def _resolve_server_gemini_key(config: JobbyConfig) -> Optional[str]:
+    provider = (config.ai_provider or "").strip().lower()
+    if provider in {"openai", "ollama", "heuristic"}:
+        return None
+    cfg_key = (config.ai_api_key or "").strip()
+    if provider == "auto" and cfg_key.startswith("sk-"):
+        return None
+    if cfg_key:
+        return None if cfg_key.startswith("sk-") else cfg_key
+    env_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    return None if not env_key or env_key.startswith("sk-") else env_key
+
+
+def _is_gemini_artifact(provider_used: Optional[str], used_fallback: bool) -> bool:
+    return provider_used == "gemini" and not used_fallback
+
+
+def _honest_cached_provenance(
+    raw_provider: Optional[str],
+    used_fallback: bool,
+    fallback_reason: Optional[str],
+) -> tuple[str, bool, Optional[str]]:
+    if _is_gemini_artifact(raw_provider, used_fallback):
+        return "gemini", False, None
+    provider_used = raw_provider if raw_provider and raw_provider != "gemini" else "heuristic"
+    reason = fallback_reason or "Clé API Gemini absente (cache local)"
+    return provider_used, True, reason
+
+
 @app.post("/api/ai/match/{opportunity_id}")
 async def match_cv_with_opportunity(opportunity_id: str, request: Request) -> Dict[str, Any]:
     config = load_config()
@@ -762,18 +819,39 @@ async def match_cv_with_opportunity(opportunity_id: str, request: Request) -> Di
     if not profile:
         profile = UserProfile(user_id=user.id, target_roles=config.target_roles, skills=config.skills_keywords)
 
-    # Check cached evaluation
+    api_key = _resolve_server_gemini_key(config)
     cached = storage.get_match_evaluation(user.id, opportunity_id)
-    if cached and cached.score > 0:
-        return cached.model_dump()
+    is_placeholder_match = bool(
+        cached is not None
+        and cached.provider_used is None
+        and cached.verdict == "Généré"
+        and not cached.pitch
+        and not cached.strengths
+    )
+    if cached is not None and not is_placeholder_match:
+        if _is_gemini_artifact(cached.provider_used, cached.used_fallback) or not api_key:
+            provider_used, used_fallback, fallback_reason = _honest_cached_provenance(
+                cached.provider_used,
+                cached.used_fallback,
+                cached.fallback_reason,
+            )
+            payload = cached.model_dump(exclude=_MATCH_RESPONSE_EXCLUDE)
+            payload["provider_used"] = provider_used
+            payload["used_fallback"] = used_fallback
+            payload["fallback_reason"] = fallback_reason
+            return payload
 
     # Call AI Evaluator (Gemini with candidate CV & skills vs Offer)
-    eval_result = await evaluate_candidate_match(
+    eval_result = await evaluate_candidate_match_with_meta(
         profile.model_dump(),
         opp.model_dump(),
-        api_key=config.ai_api_key or os.environ.get("GEMINI_API_KEY"),
+        api_key=api_key if api_key is not None else "",
         model=config.ai_model,
     )
+
+    provider_used = eval_result.get("provider_used") or "heuristic"
+    used_fallback = bool(eval_result.get("used_fallback", provider_used != "gemini"))
+    fallback_reason = eval_result.get("fallback_reason")
 
     match = MatchEvaluation(
         user_id=user.id,
@@ -783,9 +861,12 @@ async def match_cv_with_opportunity(opportunity_id: str, request: Request) -> Di
         strengths=eval_result.get("strengths", []),
         weaknesses=eval_result.get("weaknesses", []),
         pitch=eval_result.get("pitch", ""),
+        provider_used=provider_used,
+        used_fallback=used_fallback,
+        fallback_reason=fallback_reason,
     )
-    storage.save_match_evaluation(match)
-    return match.model_dump()
+    saved_match = storage.save_match_result(match)
+    return saved_match.model_dump(exclude=_MATCH_RESPONSE_EXCLUDE)
 
 
 @app.post("/api/ai/cover-letter/{opportunity_id}")
@@ -802,32 +883,54 @@ async def generate_cover_letter_for_opportunity(opportunity_id: str, request: Re
     if not profile:
         profile = UserProfile(user_id=user.id, target_roles=config.target_roles, skills=config.skills_keywords)
 
-    # Check existing cover letter in cached match
+    api_key = _resolve_server_gemini_key(config)
     cached = storage.get_match_evaluation(user.id, opportunity_id)
-    if cached and cached.cover_letter:
-        return {"opportunity_id": opportunity_id, "cover_letter": cached.cover_letter}
+    if cached is not None and cached.cover_letter:
+        is_gemini_cl = _is_gemini_artifact(
+            cached.cover_letter_provider_used,
+            cached.cover_letter_used_fallback,
+        )
+        if is_gemini_cl or not api_key:
+            provider_used, used_fallback, fallback_reason = _honest_cached_provenance(
+                cached.cover_letter_provider_used,
+                cached.cover_letter_used_fallback,
+                cached.cover_letter_fallback_reason,
+            )
+            return {
+                "opportunity_id": opportunity_id,
+                "cover_letter": cached.cover_letter,
+                "provider_used": provider_used,
+                "used_fallback": used_fallback,
+                "fallback_reason": fallback_reason,
+            }
 
-    letter = await generate_tailored_cover_letter(
+    letter_result = await generate_tailored_cover_letter_with_meta(
         profile.model_dump(),
         opp.model_dump(),
-        api_key=config.ai_api_key or os.environ.get("GEMINI_API_KEY"),
+        api_key=api_key if api_key is not None else "",
         model=config.ai_model,
     )
+    letter = letter_result["cover_letter"]
+    provider_used = letter_result.get("provider_used") or "heuristic"
+    used_fallback = bool(letter_result.get("used_fallback", provider_used != "gemini"))
+    fallback_reason = letter_result.get("fallback_reason")
 
-    if cached:
-        cached.cover_letter = letter
-        storage.save_match_evaluation(cached)
-    else:
-        new_match = MatchEvaluation(
-            user_id=user.id,
-            opportunity_id=opportunity_id,
-            score=75.0,
-            verdict="Généré",
-            cover_letter=letter,
-        )
-        storage.save_match_evaluation(new_match)
+    storage.save_cover_letter_result(
+        user_id=user.id,
+        opportunity_id=opportunity_id,
+        cover_letter=letter,
+        provider_used=provider_used,
+        used_fallback=used_fallback,
+        fallback_reason=fallback_reason,
+    )
 
-    return {"opportunity_id": opportunity_id, "cover_letter": letter}
+    return {
+        "opportunity_id": opportunity_id,
+        "cover_letter": letter,
+        "provider_used": provider_used,
+        "used_fallback": used_fallback,
+        "fallback_reason": fallback_reason,
+    }
 
 
 class IdealBriefRankRequest(BaseModel):
@@ -865,19 +968,23 @@ async def rank_by_ideal_brief(req: IdealBriefRankRequest, request: Request) -> D
             "total_evaluated": 0,
             "updated_count": 0,
             "results": [],
+            "provider_used": "heuristic",
+            "used_fallback": False,
+            "fallback_reason": None,
             "message": "Aucune opportunité active en base à évaluer.",
         }
 
-    api_key = config.ai_api_key or os.environ.get("GEMINI_API_KEY")
+    api_key = _resolve_server_gemini_key(config)
     model = config.ai_model
 
-    ranked_results = await rank_opportunities_by_ideal_brief(
+    ranking_output = await rank_opportunities_by_ideal_brief_with_meta(
         brief=brief_text,
         opportunities=active_opps,
         profile_data=profile_dict,
-        api_key=api_key,
+        api_key=api_key if api_key is not None else "",
         model=model,
     )
+    ranked_results = ranking_output["results"]
 
     # Update opportunities in SQLite
     ranked_map = {r["id"]: r for r in ranked_results}
@@ -899,6 +1006,9 @@ async def rank_by_ideal_brief(req: IdealBriefRankRequest, request: Request) -> D
         "total_evaluated": len(active_opps),
         "updated_count": updated_count,
         "results": ranked_results,
+        "provider_used": ranking_output["provider_used"],
+        "used_fallback": ranking_output["used_fallback"],
+        "fallback_reason": ranking_output["fallback_reason"],
     }
 
 

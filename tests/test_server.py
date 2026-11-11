@@ -540,4 +540,252 @@ def test_webhook_trigger_search_persists_score_and_stats_merges_kept(client, mon
     assert "saved" not in stats["by_status"]
 
 
+def test_api_ai_test_observability_gemini_gemma_and_heuristic(client, monkeypatch, tmp_path):
+    import json
+    from jobby.config import JobbyConfig, save_config
+
+    db_path = tmp_path / "ai_test.db"
+    cfg_path = tmp_path / "ai_test_config.yaml"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    save_config(
+        JobbyConfig(
+            ai_provider="gemini",
+            ai_api_key="cfg-gemini-key",
+            ai_model="gemini-2.5-flash",
+            database_path=str(db_path),
+            digest_output_path=str(tmp_path / "digest.md"),
+        ),
+        config_path=cfg_path,
+    )
+
+    class FakeResp:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    def install_httpx(handler):
+        recorded = []
+
+        class FakeClient:
+            def __init__(self, *args, timeout=None, **kwargs):
+                self.timeout = timeout
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def post(self, url, json=None, headers=None, **kwargs):
+                call = {"url": url, "json": json, "headers": headers, "timeout": self.timeout}
+                recorded.append(call)
+                return await handler(call)
+
+        monkeypatch.setattr("jobby.ai_analyzer.httpx.AsyncClient", FakeClient)
+        return recorded
+
+    # 1. Gemini OK -> passes config.ai_model, thinkingBudget: 0, timeout >= 35.0
+    async def gemini_ok(call):
+        return FakeResp(
+            200,
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": json.dumps({
+                                        "intent": "candidate_seeking_alternance",
+                                        "is_candidate": True,
+                                        "is_alternance": True,
+                                        "summary": "Candidat Data Python",
+                                        "remote_policy": "unknown",
+                                    })
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+
+    ok_calls = install_httpx(gemini_ok)
+    ok_resp = client.post("/api/ai/test", json={})
+    assert ok_resp.status_code == 200
+    ok_data = ok_resp.json()
+    assert ok_data["provider"] == "gemini"
+    assert ok_data["provider_used"] == "gemini"
+    assert ok_data["used_fallback"] is False
+    assert ok_data["fallback_reason"] is None
+    assert len(ok_calls) == 1
+    assert "gemini-2.5-flash:generateContent" in ok_calls[0]["url"]
+    assert "?key=" not in ok_calls[0]["url"]
+    assert ok_calls[0]["headers"] == {"x-goog-api-key": "cfg-gemini-key"}
+    assert ok_calls[0]["timeout"] >= 35.0
+    assert ok_calls[0]["json"]["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0}
+
+    # 2. Gemini HTTP 404 -> Gemma fallback (untouched payload, used_fallback=True, not labeled "gemini")
+    async def gemma_fallback(call):
+        if "gemini-2.5-flash" in call["url"]:
+            return FakeResp(404, {"error": "model not found"})
+        return FakeResp(
+            200,
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": json.dumps({
+                                        "intent": "candidate_seeking_alternance",
+                                        "is_candidate": True,
+                                        "is_alternance": True,
+                                        "summary": "Gemma fallback",
+                                        "remote_policy": "unknown",
+                                    })
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+
+    gemma_calls = install_httpx(gemma_fallback)
+    gemma_resp = client.post("/api/ai/test", json={})
+    assert gemma_resp.status_code == 200
+    gemma_data = gemma_resp.json()
+    assert gemma_data["provider"] == "gemini-gemma"
+    assert gemma_data["provider_used"] == "gemini-gemma"
+    assert gemma_data["used_fallback"] is True
+    assert "404" in gemma_data["fallback_reason"]
+    assert len(gemma_calls) == 2
+    assert "gemma-4-26b-a4b-it:generateContent" in gemma_calls[1]["url"]
+    assert gemma_calls[1]["headers"] == {"x-goog-api-key": "cfg-gemini-key"}
+    assert "?key=" not in gemma_calls[1]["url"]
+    assert "thinkingConfig" not in json.dumps(gemma_calls[1]["json"])
+
+    # 3. Missing key -> heuristic fallback with honest provenance
+    save_config(
+        JobbyConfig(
+            ai_provider="gemini",
+            ai_api_key=None,
+            ai_model="gemini-2.5-flash",
+            database_path=str(db_path),
+            digest_output_path=str(tmp_path / "digest.md"),
+        ),
+        config_path=cfg_path,
+    )
+    heur_resp = client.post("/api/ai/test", json={})
+    assert heur_resp.status_code == 200
+    heur_data = heur_resp.json()
+    assert heur_data["provider"] == "heuristic"
+    assert heur_data["provider_used"] == "heuristic"
+    assert heur_data["used_fallback"] is True
+    assert heur_data["fallback_reason"]
+
+    # 4. Config ai_provider="ollama" + custom ai_ollama_url respected on {} and whitespace body
+    monkeypatch.setenv("GEMINI_API_KEY", "env-gemini-should-be-ignored")
+    save_config(
+        JobbyConfig(
+            ai_provider="ollama",
+            ai_ollama_url="http://ollama.internal:11434",
+            ai_model="llama3",
+            database_path=str(db_path),
+            digest_output_path=str(tmp_path / "digest.md"),
+        ),
+        config_path=cfg_path,
+    )
+
+    async def ollama_ok(call):
+        return FakeResp(
+            200,
+            {"response": json.dumps({"intent": "hiring_job", "is_candidate": False, "is_alternance": False, "summary": "Ollama OK", "remote_policy": "full"})},
+        )
+
+    ollama_calls = install_httpx(ollama_ok)
+    for body in ({}, {"provider": "   ", "ollama_url": "  "}):
+        ol_resp = client.post("/api/ai/test", json=body)
+        assert ol_resp.status_code == 200
+        ol_data = ol_resp.json()
+        assert ol_data["provider"] == "ollama"
+        assert ol_data["provider_used"] == "ollama"
+        assert ol_data["used_fallback"] is False
+        assert ol_data["fallback_reason"] is None
+    assert len(ollama_calls) == 2
+    assert all(c["url"] == "http://ollama.internal:11434/api/generate" for c in ollama_calls)
+
+    # 5. Config ai_provider="openai" + sk- key respected on {} (does NOT call Gemini)
+    save_config(
+        JobbyConfig(
+            ai_provider="openai",
+            ai_api_key="sk-config-openai",
+            ai_model="gpt-4o-mini",
+            database_path=str(db_path),
+            digest_output_path=str(tmp_path / "digest.md"),
+        ),
+        config_path=cfg_path,
+    )
+
+    async def openai_ok(call):
+        return FakeResp(
+            200,
+            {"choices": [{"message": {"content": json.dumps({"intent": "hiring_job", "is_candidate": False, "is_alternance": False, "summary": "OpenAI OK", "remote_policy": "full"})}}]},
+        )
+
+    oa_calls = install_httpx(openai_ok)
+    oa_resp = client.post("/api/ai/test", json={})
+    assert oa_resp.status_code == 200
+    oa_data = oa_resp.json()
+    assert oa_data["provider"] == "openai"
+    assert oa_data["provider_used"] == "openai"
+    assert oa_data["used_fallback"] is False
+    assert oa_calls[0]["url"] == "https://api.openai.com/v1/chat/completions"
+    assert oa_calls[0]["headers"]["Authorization"] == "Bearer sk-config-openai"
+
+    # 6. Config ai_provider="heuristic" runs local heuristic with used_fallback=False even if GEMINI_API_KEY exists
+    save_config(
+        JobbyConfig(
+            ai_provider="heuristic",
+            ai_api_key="some-key",
+            database_path=str(db_path),
+            digest_output_path=str(tmp_path / "digest.md"),
+        ),
+        config_path=cfg_path,
+    )
+    no_calls = install_httpx(gemini_ok)
+    h_cfg_resp = client.post("/api/ai/test", json={})
+    assert h_cfg_resp.status_code == 200
+    h_cfg_data = h_cfg_resp.json()
+    assert h_cfg_data["provider"] == "heuristic"
+    assert h_cfg_data["provider_used"] == "heuristic"
+    assert h_cfg_data["used_fallback"] is False
+    assert h_cfg_data["fallback_reason"] is None
+    assert len(no_calls) == 0
+
+    # 7. Whitespace ai_api_key="   " with ai_provider="gemini" falls back cleanly to GEMINI_API_KEY env var
+    save_config(
+        JobbyConfig(
+            ai_provider="gemini",
+            ai_api_key="   ",
+            ai_model="gemini-2.5-flash",
+            database_path=str(db_path),
+            digest_output_path=str(tmp_path / "digest.md"),
+        ),
+        config_path=cfg_path,
+    )
+    ws_calls = install_httpx(gemini_ok)
+    ws_resp = client.post("/api/ai/test", json={})
+    assert ws_resp.status_code == 200
+    assert ws_resp.json()["provider_used"] == "gemini"
+    assert ws_calls[0]["headers"] == {"x-goog-api-key": "env-gemini-should-be-ignored"}
+
+
 

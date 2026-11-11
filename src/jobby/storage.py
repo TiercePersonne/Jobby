@@ -128,19 +128,7 @@ class Storage:
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
             """)
-            profile_cols = {r["name"] for r in conn.execute("PRAGMA table_info(user_profiles)").fetchall()}
-            if "ideal_job_brief" not in profile_cols:
-                if conn.in_transaction:
-                    conn.commit()
-                conn.execute("BEGIN IMMEDIATE")
-                try:
-                    profile_cols = {r["name"] for r in conn.execute("PRAGMA table_info(user_profiles)").fetchall()}
-                    if "ideal_job_brief" not in profile_cols:
-                        conn.execute("ALTER TABLE user_profiles ADD COLUMN ideal_job_brief TEXT")
-                    conn.commit()
-                except Exception:
-                    conn.rollback()
-                    raise
+            self._ensure_columns(conn, "user_profiles", {"ideal_job_brief": "TEXT"})
 
             # Application Kanban Pipeline tracking table
             conn.execute("""
@@ -173,10 +161,48 @@ class Storage:
                     weaknesses TEXT,
                     pitch TEXT,
                     cover_letter TEXT,
+                    provider_used TEXT,
+                    used_fallback INTEGER NOT NULL DEFAULT 0,
+                    fallback_reason TEXT,
+                    cover_letter_provider_used TEXT,
+                    cover_letter_used_fallback INTEGER NOT NULL DEFAULT 0,
+                    cover_letter_fallback_reason TEXT,
                     PRIMARY KEY(user_id, opportunity_id)
                 )
             """)
+            self._ensure_columns(
+                conn,
+                "match_evaluations",
+                {
+                    "cover_letter": "TEXT",
+                    "provider_used": "TEXT",
+                    "used_fallback": "INTEGER NOT NULL DEFAULT 0",
+                    "fallback_reason": "TEXT",
+                    "cover_letter_provider_used": "TEXT",
+                    "cover_letter_used_fallback": "INTEGER NOT NULL DEFAULT 0",
+                    "cover_letter_fallback_reason": "TEXT",
+                },
+            )
             conn.commit()
+
+    @staticmethod
+    def _ensure_columns(conn: sqlite3.Connection, table_name: str, column_defs: Dict[str, str]) -> None:
+        """Atomically adds any missing columns to an existing SQLite table."""
+        existing_cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+        if all(col in existing_cols for col in column_defs):
+            return
+        if conn.in_transaction:
+            conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            existing_cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+            for col_name, col_type in column_defs.items():
+                if col_name not in existing_cols:
+                    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     def upsert_opportunity(self, opp: JobOpportunity) -> Tuple[bool, JobOpportunity]:
         """
@@ -930,22 +956,50 @@ class Storage:
     # -------------------------------------------------------------
     # Match & Pitch Evaluations
     # -------------------------------------------------------------
+    @staticmethod
+    def _row_to_match_evaluation(row: sqlite3.Row) -> MatchEvaluation:
+        keys = set(row.keys())
+        return MatchEvaluation(
+            user_id=row["user_id"],
+            opportunity_id=row["opportunity_id"],
+            score=row["score"],
+            verdict=row["verdict"],
+            strengths=json.loads(row["strengths"]) if row["strengths"] else [],
+            weaknesses=json.loads(row["weaknesses"]) if row["weaknesses"] else [],
+            pitch=row["pitch"] or "",
+            cover_letter=row["cover_letter"] if "cover_letter" in keys and row["cover_letter"] else "",
+            provider_used=row["provider_used"] if "provider_used" in keys else None,
+            used_fallback=bool(row["used_fallback"]) if "used_fallback" in keys and row["used_fallback"] is not None else False,
+            fallback_reason=row["fallback_reason"] if "fallback_reason" in keys else None,
+            cover_letter_provider_used=row["cover_letter_provider_used"] if "cover_letter_provider_used" in keys else None,
+            cover_letter_used_fallback=bool(row["cover_letter_used_fallback"]) if "cover_letter_used_fallback" in keys and row["cover_letter_used_fallback"] is not None else False,
+            cover_letter_fallback_reason=row["cover_letter_fallback_reason"] if "cover_letter_fallback_reason" in keys else None,
+        )
+
     def save_match_evaluation(self, match: MatchEvaluation) -> None:
         with self._connection() as conn:
             conn.execute(
                 """
                 INSERT INTO match_evaluations (
                     user_id, opportunity_id, score, verdict,
-                    strengths, weaknesses, pitch, cover_letter
+                    strengths, weaknesses, pitch, cover_letter,
+                    provider_used, used_fallback, fallback_reason,
+                    cover_letter_provider_used, cover_letter_used_fallback, cover_letter_fallback_reason
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id, opportunity_id) DO UPDATE SET
                     score = excluded.score,
                     verdict = excluded.verdict,
                     strengths = excluded.strengths,
                     weaknesses = excluded.weaknesses,
                     pitch = excluded.pitch,
-                    cover_letter = excluded.cover_letter
+                    cover_letter = excluded.cover_letter,
+                    provider_used = excluded.provider_used,
+                    used_fallback = excluded.used_fallback,
+                    fallback_reason = excluded.fallback_reason,
+                    cover_letter_provider_used = excluded.cover_letter_provider_used,
+                    cover_letter_used_fallback = excluded.cover_letter_used_fallback,
+                    cover_letter_fallback_reason = excluded.cover_letter_fallback_reason
                 """,
                 (
                     match.user_id,
@@ -956,9 +1010,109 @@ class Storage:
                     json.dumps(match.weaknesses),
                     match.pitch,
                     match.cover_letter,
+                    match.provider_used,
+                    int(bool(match.used_fallback)),
+                    match.fallback_reason,
+                    match.cover_letter_provider_used,
+                    int(bool(match.cover_letter_used_fallback)),
+                    match.cover_letter_fallback_reason,
                 ),
             )
             conn.commit()
+
+    def save_match_result(self, match: MatchEvaluation) -> MatchEvaluation:
+        """Atomically upserts match evaluation fields without touching sibling cover_letter columns."""
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO match_evaluations (
+                        user_id, opportunity_id, score, verdict,
+                        strengths, weaknesses, pitch, cover_letter,
+                        provider_used, used_fallback, fallback_reason,
+                        cover_letter_provider_used, cover_letter_used_fallback, cover_letter_fallback_reason
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, NULL, 0, NULL)
+                    ON CONFLICT(user_id, opportunity_id) DO UPDATE SET
+                        score = excluded.score,
+                        verdict = excluded.verdict,
+                        strengths = excluded.strengths,
+                        weaknesses = excluded.weaknesses,
+                        pitch = excluded.pitch,
+                        provider_used = excluded.provider_used,
+                        used_fallback = excluded.used_fallback,
+                        fallback_reason = excluded.fallback_reason
+                    """,
+                    (
+                        match.user_id,
+                        match.opportunity_id,
+                        match.score,
+                        match.verdict,
+                        json.dumps(match.strengths),
+                        json.dumps(match.weaknesses),
+                        match.pitch,
+                        match.provider_used,
+                        int(bool(match.used_fallback)),
+                        match.fallback_reason,
+                    ),
+                )
+                row = conn.execute(
+                    "SELECT * FROM match_evaluations WHERE user_id = ? AND opportunity_id = ?",
+                    (match.user_id, match.opportunity_id),
+                ).fetchone()
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            return self._row_to_match_evaluation(row)
+
+    def save_cover_letter_result(
+        self,
+        user_id: str,
+        opportunity_id: str,
+        cover_letter: str,
+        provider_used: Optional[str] = None,
+        used_fallback: bool = False,
+        fallback_reason: Optional[str] = None,
+    ) -> MatchEvaluation:
+        """Atomically upserts cover_letter fields without touching sibling match evaluation columns."""
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO match_evaluations (
+                        user_id, opportunity_id, score, verdict,
+                        strengths, weaknesses, pitch, cover_letter,
+                        provider_used, used_fallback, fallback_reason,
+                        cover_letter_provider_used, cover_letter_used_fallback, cover_letter_fallback_reason
+                    )
+                    VALUES (?, ?, 0.0, 'Généré', '[]', '[]', '', ?, NULL, 0, NULL, ?, ?, ?)
+                    ON CONFLICT(user_id, opportunity_id) DO UPDATE SET
+                        cover_letter = excluded.cover_letter,
+                        cover_letter_provider_used = excluded.cover_letter_provider_used,
+                        cover_letter_used_fallback = excluded.cover_letter_used_fallback,
+                        cover_letter_fallback_reason = excluded.cover_letter_fallback_reason
+                    """,
+                    (
+                        user_id,
+                        opportunity_id,
+                        cover_letter,
+                        provider_used,
+                        int(bool(used_fallback)),
+                        fallback_reason,
+                    ),
+                )
+                row = conn.execute(
+                    "SELECT * FROM match_evaluations WHERE user_id = ? AND opportunity_id = ?",
+                    (user_id, opportunity_id),
+                ).fetchone()
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            return self._row_to_match_evaluation(row)
 
     def get_match_evaluation(self, user_id: str, opportunity_id: str) -> Optional[MatchEvaluation]:
         with self._connection() as conn:
@@ -968,16 +1122,7 @@ class Storage:
             ).fetchone()
             if not row:
                 return None
-            return MatchEvaluation(
-                user_id=row["user_id"],
-                opportunity_id=row["opportunity_id"],
-                score=row["score"],
-                verdict=row["verdict"],
-                strengths=json.loads(row["strengths"]) if row["strengths"] else [],
-                weaknesses=json.loads(row["weaknesses"]) if row["weaknesses"] else [],
-                pitch=row["pitch"] or "",
-                cover_letter=row["cover_letter"] if "cover_letter" in row.keys() and row["cover_letter"] else "",
-            )
+            return self._row_to_match_evaluation(row)
 
     def get_user_matches(self, user_id: str) -> Dict[str, MatchEvaluation]:
         with self._connection() as conn:
@@ -985,16 +1130,4 @@ class Storage:
                 "SELECT * FROM match_evaluations WHERE user_id = ?",
                 (user_id,),
             ).fetchall()
-            result = {}
-            for r in rows:
-                result[r["opportunity_id"]] = MatchEvaluation(
-                    user_id=r["user_id"],
-                    opportunity_id=r["opportunity_id"],
-                    score=r["score"],
-                    verdict=r["verdict"],
-                    strengths=json.loads(r["strengths"]) if r["strengths"] else [],
-                    weaknesses=json.loads(r["weaknesses"]) if r["weaknesses"] else [],
-                    pitch=r["pitch"] or "",
-                    cover_letter=r["cover_letter"] if "cover_letter" in r.keys() and r["cover_letter"] else "",
-                )
-            return result
+            return {r["opportunity_id"]: self._row_to_match_evaluation(r) for r in rows}

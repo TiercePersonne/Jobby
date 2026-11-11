@@ -140,6 +140,12 @@ class MatchEvaluation(BaseModel):
     weaknesses: List[str] = Field(default_factory=list)
     pitch: str = ""
     cover_letter: str = ""
+    provider_used: Optional[str] = None
+    used_fallback: bool = False
+    fallback_reason: Optional[str] = None
+    cover_letter_provider_used: Optional[str] = None
+    cover_letter_used_fallback: bool = False
+    cover_letter_fallback_reason: Optional[str] = None
 
 
 class SearchParams(BaseModel):
