@@ -1,0 +1,52 @@
+"""Configuration loader for Jobby."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import List, Optional
+import yaml
+from pydantic import BaseModel, Field
+
+
+class JobbyConfig(BaseModel):
+    # Candidate profile for scoring and relevance
+    target_roles: List[str] = Field(default_factory=lambda: ["Python", "AI Engineer", "Backend Developer"])
+    preferred_locations: List[str] = Field(default_factory=lambda: ["France", "Paris", "Remote"])
+    remote_only: bool = Field(default=False)
+    min_salary: Optional[int] = Field(default=None)
+    skills_keywords: List[str] = Field(default_factory=lambda: ["Python", "FastAPI", "PostgreSQL", "Docker", "LLM", "Agent"])
+    negative_keywords: List[str] = Field(default_factory=lambda: ["Stage", "Alternance", "Junior", "PHP", "COBOL"])
+
+    # LinkedIn authentication & options
+    linkedin_li_at: Optional[str] = Field(default=None, description="LinkedIn session cookie (li_at) for authenticated post search")
+    linkedin_include_posts: bool = Field(default=True)
+    linkedin_include_offers: bool = Field(default=True)
+
+    # Storage & paths
+    database_path: str = Field(default="_bmad-output/jobby.db")
+    digest_output_path: str = Field(default="_bmad-output/latest_digest.md")
+
+
+def load_config(config_path: str | Path = "_bmad-output/jobby_config.yaml") -> JobbyConfig:
+    path = Path(config_path)
+    data = {}
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as f:
+            loaded = yaml.safe_load(f)
+            if isinstance(loaded, dict):
+                data = loaded
+
+    # Environment variables overrides
+    li_at_env = os.environ.get("LINKEDIN_LI_AT")
+    if li_at_env:
+        data["linkedin_li_at"] = li_at_env
+
+    return JobbyConfig(**data)
+
+
+def save_config(config: JobbyConfig, config_path: str | Path = "_bmad-output/jobby_config.yaml") -> None:
+    path = Path(config_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(config.model_dump(), f, allow_unicode=True, sort_keys=False)
