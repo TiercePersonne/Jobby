@@ -51,3 +51,13 @@
   invoke_dev_with: >-
     Use Typer/Click and Rich for beautiful terminal output, and export structured
     Markdown digests.
+
+- id: "6"
+  title: "Progressive Web App (PWA) Dashboard"
+  description: >-
+    Build an interactive PWA web dashboard with search criteria forms, real-time
+    hunting trigger, results filtering, opportunity status tracker, and offline caching.
+  spec_checkpoint: false
+  done_checkpoint: true
+  invoke_dev_with: >-
+    FastAPI backend, service worker (sw.js), web app manifest, and responsive Tailwind UI.
