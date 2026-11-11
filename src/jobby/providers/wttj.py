@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import random
 from typing import Any, Dict, List, Optional
 
 import httpx
+from dateutil import parser as date_parser
 
 from jobby.models import JobOpportunity, OpportunityType, SearchParams
 from jobby.providers.base import JobSourceProvider
 
 logger = logging.getLogger(__name__)
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+]
 
 
 class WTTJProvider(JobSourceProvider):
@@ -19,98 +27,156 @@ class WTTJProvider(JobSourceProvider):
     supports_posts: bool = False
     enabled: bool = True
 
-    # Algolia public endpoint used by WTTJ frontend
-    ALGOLIA_APP_ID = "WBWNEACJ5A"
-    ALGOLIA_API_KEY = "c8969f6ef21f64f43c3a72664d4b1a4a"
-    INDEX_NAME = "wttj_jobs_production"
+    API_BASE = "https://api.welcometothejungle.com/api/v3/public/jobs"
+
+    def __init__(self, session_cookie: Optional[str] = None, auth_token: Optional[str] = None):
+        self.session_cookie = session_cookie
+        self.auth_token = auth_token
 
     async def search(self, params: SearchParams) -> List[JobOpportunity]:
         if not params.include_offers:
             return []
 
-        keywords_str = " ".join(params.keywords) if params.keywords else "developer"
-        url = f"https://{self.ALGOLIA_APP_ID.lower()}-dsn.algolia.net/1/indexes/{self.INDEX_NAME}/query"
-        
+        search_query = " ".join(params.keywords) if params.keywords else "developer"
+
         headers = {
-            "x-algolia-application-id": self.ALGOLIA_APP_ID,
-            "x-algolia-api-key": self.ALGOLIA_API_KEY,
-            "Content-Type": "application/json",
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept": "application/json",
+            "Referer": "https://www.welcometothejungle.com/",
+            "Origin": "https://www.welcometothejungle.com",
         }
 
-        # Build Algolia search query
-        query_body: Dict[str, Any] = {
-            "query": keywords_str,
-            "hitsPerPage": min(params.max_results, 50),
-        }
-
-        filters = []
-        if params.remote_only:
-            filters.append("remote:fulltime")
-        if filters:
-            query_body["filters"] = " AND ".join(filters)
+        # If user connected their WTTJ account
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+        if self.session_cookie:
+            headers["Cookie"] = self.session_cookie
 
         results: List[JobOpportunity] = []
-        try:
-            async with httpx.AsyncClient(headers=headers, timeout=12.0) as client:
-                resp = await client.post(url, json=query_body)
-                if resp.status_code == 200:
+        max_to_fetch = min(params.max_results, 60)
+        page = 1
+
+        async with httpx.AsyncClient(headers=headers, timeout=12.0) as client:
+            while len(results) < max_to_fetch:
+                query_params: Dict[str, Any] = {
+                    "job_title": search_query,
+                    "page": page,
+                }
+
+                try:
+                    resp = await client.get(self.API_BASE, params=query_params)
+                    if resp.status_code != 200:
+                        logger.warning(f"WTTJ API responded with status {resp.status_code} at page {page}")
+                        break
+
                     data = resp.json()
-                    hits = data.get("hits", [])
-                    results = self._parse_hits(hits)
-                else:
-                    logger.warning(f"WTTJ Algolia search failed with status {resp.status_code}")
-        except Exception as e:
-            logger.error(f"Error querying WTTJ Algolia API: {e}")
+                    jobs_data = data.get("data", [])
+                    if not jobs_data:
+                        break
+
+                    parsed_page = self._parse_jobs(jobs_data)
+                    for opp in parsed_page:
+                        # Optional client-side remote filter if needed
+                        if params.remote_only and opp.remote_policy != "full":
+                            continue
+                        results.append(opp)
+                        if len(results) >= max_to_fetch:
+                            break
+
+                    metadata = data.get("metadata", {})
+                    page_count = metadata.get("page_count", 1)
+                    if page >= page_count:
+                        break
+
+                    page += 1
+                    await asyncio.sleep(random.uniform(0.3, 0.7))
+
+                except Exception as e:
+                    logger.error(f"Error querying WTTJ API page {page}: {e}")
+                    break
 
         return results
 
-    def _parse_hits(self, hits: List[Dict[str, Any]]) -> List[JobOpportunity]:
-        results: List[JobOpportunity] = []
-        for hit in hits:
-            name = hit.get("name") or hit.get("title") or "Poste"
-            organization = hit.get("organization", {})
-            company = organization.get("name") if isinstance(organization, dict) else None
+    def _parse_jobs(self, raw_jobs: List[Dict[str, Any]]) -> List[JobOpportunity]:
+        opportunities: List[JobOpportunity] = []
+
+        for job in raw_jobs:
+            title = job.get("name") or "Poste"
             
-            slug = hit.get("slug", "")
-            org_slug = organization.get("slug", "") if isinstance(organization, dict) else ""
-            job_url = f"https://www.welcometothejungle.com/fr/companies/{org_slug}/jobs/{slug}" if org_slug and slug else "https://www.welcometothejungle.com"
+            organization = job.get("organization") or {}
+            company = organization.get("name") if isinstance(organization, dict) else None
+            org_slug = organization.get("slug") if isinstance(organization, dict) else ""
+            job_slug = job.get("slug", "")
 
-            offices = hit.get("offices", [])
-            location = None
-            if offices and isinstance(offices, list):
-                first_office = offices[0]
-                if isinstance(first_office, dict):
-                    location = f"{first_office.get('city', '')}, {first_office.get('country', '')}".strip(", ")
+            # Construct canonical job page link
+            if org_slug and job_slug:
+                job_url = f"https://www.welcometothejungle.com/fr/companies/{org_slug}/jobs/{job_slug}"
+            else:
+                job_url = "https://www.welcometothejungle.com/fr/jobs"
 
-            salary_min = hit.get("salary_minimum")
-            salary_max = hit.get("salary_maximum")
-            salary_currency = hit.get("salary_currency", "€")
+            # Location extraction
+            office = job.get("office") or {}
+            location = office.get("city") if isinstance(office, dict) else None
+
+            # Remote extraction
+            remote_val = job.get("remote")
+            remote_policy = "full" if remote_val == "fulltime" else ("hybrid" if remote_val in ["partial", "punctual"] else None)
+
+            # Salary extraction
+            salary_min = job.get("salary_min")
+            salary_max = job.get("salary_max")
+            salary_curr = job.get("salary_currency", "€")
+            salary_period = job.get("salary_period", "an")
             salary_raw = None
-            if salary_min and salary_max:
-                salary_raw = f"{salary_min}k - {salary_max}k {salary_currency}"
+            if salary_min or salary_max:
+                if salary_min and salary_max:
+                    salary_raw = f"{int(salary_min)} - {int(salary_max)} {salary_curr}/{salary_period}"
+                elif salary_min:
+                    salary_raw = f"Dès {int(salary_min)} {salary_curr}/{salary_period}"
+                elif salary_max:
+                    salary_raw = f"Jusqu'à {int(salary_max)} {salary_curr}/{salary_period}"
 
-            remote = hit.get("remote")
-            remote_policy = "full" if remote == "fulltime" else ("hybrid" if remote == "partial" else None)
+            # Publication time
+            published_at = None
+            pub_str = job.get("published_at")
+            if pub_str:
+                try:
+                    published_at = date_parser.parse(pub_str)
+                except Exception:
+                    published_at = None
 
+            # Tags & Sectors
             tags: List[str] = []
-            contract_type = hit.get("contract_type")
+            contract_type = job.get("contract_type")
             if contract_type:
                 tags.append(str(contract_type).upper())
-            skills = hit.get("skills", [])
-            if isinstance(skills, list):
-                tags.extend([s.get("name") for s in skills if isinstance(s, dict) and "name" in s][:5])
+            if remote_policy == "full":
+                tags.append("Full Remote")
+
+            sectors = organization.get("sectors", []) if isinstance(organization, dict) else []
+            for s in sectors:
+                if isinstance(s, dict) and "name" in s:
+                    tags.append(s["name"])
+
+            description = job.get("company_summary") or organization.get("industry") or ""
 
             opp = JobOpportunity(
                 source=self.name,
                 opportunity_type=OpportunityType.OFFER,
-                title=name,
+                title=title,
                 company=company,
                 location=location,
                 remote_policy=remote_policy,
                 salary_raw=salary_raw,
                 url=job_url,
-                tags=tags,
-                description=hit.get("summary") or hit.get("profile") or "",
+                published_at=published_at,
+                tags=tags[:5],
+                description=description,
+                raw_metadata={
+                    "wttj_reference": job.get("reference"),
+                    "is_bookmarked": job.get("is_bookmarked", False),
+                }
             )
-            results.append(opp)
-        return results
+            opportunities.append(opp)
+
+        return opportunities

@@ -19,17 +19,19 @@ SAMPLE_HELLOWORK_HTML = """
 </div>
 """
 
-SAMPLE_WTTJ_HITS = [
+SAMPLE_WTTJ_DATA = [
     {
         "name": "Senior Backend Engineer Python",
         "organization": {"name": "Doctolib", "slug": "doctolib"},
         "slug": "senior-backend-engineer-python",
-        "offices": [{"city": "Nantes", "country": "France"}],
+        "office": {"city": "Nantes"},
         "remote": "fulltime",
         "contract_type": "full_time",
-        "salary_minimum": 60,
-        "salary_maximum": 75,
-        "summary": "Join our platform team to scale our healthcare services.",
+        "salary_min": 60000,
+        "salary_max": 75000,
+        "salary_currency": "€",
+        "salary_period": "an",
+        "company_summary": "Join our platform team to scale our healthcare services.",
     }
 ]
 
@@ -49,14 +51,14 @@ def test_hellowork_parser():
 
 def test_wttj_parser():
     provider = WTTJProvider()
-    jobs = provider._parse_hits(SAMPLE_WTTJ_HITS)
+    jobs = provider._parse_jobs(SAMPLE_WTTJ_DATA)
     assert len(jobs) == 1
     job = jobs[0]
     assert job.source == "wttj"
     assert job.title == "Senior Backend Engineer Python"
     assert job.company == "Doctolib"
     assert job.remote_policy == "full"
-    assert job.salary_raw == "60k - 75k €"
+    assert "60000 - 75000" in job.salary_raw
     assert "https://www.welcometothejungle.com/fr/companies/doctolib/jobs/senior-backend-engineer-python" == job.url
 
 
