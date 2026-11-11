@@ -10,6 +10,15 @@ from typing import Any, List, Optional
 from pydantic import BaseModel, Field
 
 
+def normalize_job_title(title: str) -> str:
+    """Strip gender markers (H/F, F/H), brackets and extra punctuation."""
+    if not title:
+        return ""
+    cleaned = re.sub(r"\(?[hf]/[hf]\)?", "", title, flags=re.I)
+    cleaned = re.sub(r"[^\w\s]", "", cleaned)
+    return "".join(cleaned.lower().split())
+
+
 class OpportunityType(str, Enum):
     OFFER = "offer"          # Official job posting on a board/site
     POST = "post"            # Social post (recruiter, employee, founder)
@@ -58,7 +67,7 @@ class JobOpportunity(BaseModel):
         
         # Fallback to normalized company + title
         norm_company = re.sub(r"\W+", "", (self.company or "").lower())
-        norm_title = re.sub(r"\W+", "", (self.title or "").lower())
+        norm_title = normalize_job_title(self.title)
         raw_seed = f"{self.source}:{norm_company}:{norm_title}"
         return hashlib.sha256(raw_seed.encode("utf-8")).hexdigest()[:16]
 
@@ -66,7 +75,7 @@ class JobOpportunity(BaseModel):
     def dedup_key(self) -> str:
         """Key used for cross-source deduplication (company + normalized title)."""
         norm_company = re.sub(r"\W+", "", (self.company or "unknown").lower())
-        norm_title = re.sub(r"\W+", "", (self.title or "").lower())
+        norm_title = normalize_job_title(self.title)
         return f"{norm_company}:{norm_title}"
 
 
