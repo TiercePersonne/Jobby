@@ -403,6 +403,16 @@ function bindModalAndKeyboardEvents() {
     });
   });
 
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-modal-open]');
+    if (trigger) {
+      const modalId = trigger.getAttribute('data-modal-open');
+      if (modalId) {
+        openModal(modalId);
+      }
+    }
+  });
+
   document.querySelectorAll('.jp-modal-backdrop').forEach((backdrop) => {
     backdrop.addEventListener('click', (event) => {
       if (event.target === backdrop) {

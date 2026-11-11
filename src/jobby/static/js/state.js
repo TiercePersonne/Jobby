@@ -276,7 +276,11 @@ export function syncOpportunityStatus(
           opportunity: matchedOpp || undefined,
         });
       }
-    } else if (canonicalStatus === 'applied' || canonicalStatus === 'interview') {
+    } else if (
+      canonicalStatus === 'applied' ||
+      canonicalStatus === 'interview' ||
+      canonicalStatus === 'offer'
+    ) {
       if (existingIdx >= 0) {
         updateExistingApp(canonicalStatus);
       } else {
@@ -310,25 +314,33 @@ export function updateApplicationStage(appId, newStage) {
     return null;
   }
 
+  let oppStatus = null;
+  if (normalizedStage === 'saved') oppStatus = 'kept';
+  else if (normalizedStage === 'rejected') oppStatus = 'archived';
+  else if (
+    normalizedStage === 'applied' ||
+    normalizedStage === 'interview' ||
+    normalizedStage === 'offer'
+  ) {
+    oppStatus = normalizedStage;
+  }
+
   let targetOppId = null;
   const nextApplications = state.applications.map((app) => {
-    if (app.id !== appId) return app;
+    if (app.id !== appId && app.opportunity_id !== appId) return app;
     targetOppId = app.opportunity_id;
-    return { ...app, status: normalizedStage };
+    const updatedOpp =
+      app.opportunity && oppStatus
+        ? { ...app.opportunity, status: oppStatus }
+        : app.opportunity;
+    return { ...app, status: normalizedStage, opportunity: updatedOpp };
   });
 
   let nextOpportunities = state.opportunities;
-  if (targetOppId) {
-    let oppStatus = null;
-    if (normalizedStage === 'saved') oppStatus = 'kept';
-    else if (normalizedStage === 'rejected') oppStatus = 'archived';
-    else if (normalizedStage === 'applied' || normalizedStage === 'interview') oppStatus = normalizedStage;
-
-    if (oppStatus) {
-      nextOpportunities = state.opportunities.map((opp) =>
-        opp.id === targetOppId ? { ...opp, status: oppStatus } : opp
-      );
-    }
+  if (targetOppId && oppStatus) {
+    nextOpportunities = state.opportunities.map((opp) =>
+      opp.id === targetOppId ? { ...opp, status: oppStatus } : opp
+    );
   }
 
   state = {
@@ -338,6 +350,53 @@ export function updateApplicationStage(appId, newStage) {
   };
   emit();
   return normalizedStage;
+}
+
+/**
+ * Updates notes on a Kanban application in reactive state.
+ */
+export function updateApplicationNotes(appId, notes) {
+  const safeNotes = typeof notes === 'string' ? notes : (notes == null ? '' : String(notes));
+  let updated = false;
+  const nextApplications = state.applications.map((app) => {
+    if (app.id !== appId && app.opportunity_id !== appId) return app;
+    updated = true;
+    return { ...app, notes: safeNotes };
+  });
+
+  if (updated) {
+    state = { ...state, applications: nextApplications };
+    emit();
+  }
+  return updated;
+}
+
+/**
+ * Removes an application from state and sets opportunity status back to 'new'.
+ */
+export function deleteApplicationFromState(appId) {
+  let targetOppId = null;
+  const nextApplications = state.applications.filter((app) => {
+    if (app.id === appId || app.opportunity_id === appId) {
+      targetOppId = app.opportunity_id;
+      return false;
+    }
+    return true;
+  });
+
+  let nextOpportunities = state.opportunities;
+  if (targetOppId) {
+    nextOpportunities = state.opportunities.map((opp) =>
+      opp.id === targetOppId ? { ...opp, status: 'new' } : opp
+    );
+  }
+
+  state = {
+    ...state,
+    applications: nextApplications,
+    opportunities: nextOpportunities,
+  };
+  emit();
 }
 
 function updateFeedFilters(nextPartial) {

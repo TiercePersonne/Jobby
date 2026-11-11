@@ -288,7 +288,7 @@ def list_opportunities(
 def set_status(opp_id: str, body: StatusUpdateRequest, request: Request) -> Dict[str, Any]:
     config = load_config()
     storage = Storage(config.database_path)
-    valid_statuses = ["new", "saved", "favorite", "kept", "applied", "interview", "archived", "rejected"]
+    valid_statuses = ["new", "saved", "favorite", "kept", "applied", "interview", "offer", "archived", "rejected"]
     raw_status = body.status.strip().lower()
     if raw_status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Status must be one of {valid_statuses}")
@@ -308,6 +308,8 @@ def set_status(opp_id: str, body: StatusUpdateRequest, request: Request) -> Dict
         storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.APPLIED)
     elif canonical_status == "interview":
         storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.INTERVIEW)
+    elif canonical_status == "offer":
+        storage.sync_opportunity_to_application(opp_id, user.id, ApplicationStatus.OFFER)
     elif canonical_status == "new":
         storage.delete_application_for_opportunity(opp_id, user.id)
 
@@ -747,21 +749,47 @@ def update_app_status(app_id: str, body: ApplicationStatusRequest, request: Requ
     if body.status not in ApplicationStatus._value2member_map_:
         raise HTTPException(status_code=400, detail=f"Statut invalide. Choix : {list(ApplicationStatus._value2member_map_.keys())}")
 
-    success = storage.update_application_status(app_id, body.status, user.id)
+    resolved_app_id = app_id
+    app = storage.get_application(resolved_app_id, user.id)
+    if not app and resolved_app_id.startswith("app_optimistic_"):
+        opp_id = resolved_app_id.removeprefix("app_optimistic_")
+        with storage._connection() as conn:
+            row = conn.execute(
+                "SELECT id FROM applications WHERE opportunity_id = ? AND user_id = ?",
+                (opp_id, user.id),
+            ).fetchone()
+            if row:
+                resolved_app_id = row["id"]
+                app = storage.get_application(resolved_app_id, user.id)
+
+    success = storage.update_application_status(resolved_app_id, body.status, user.id)
+    if not success and app_id.startswith("app_optimistic_"):
+        opp_id = app_id.removeprefix("app_optimistic_")
+        new_app = storage.sync_opportunity_to_application(opp_id, user.id, body.status)
+        if new_app:
+            success = True
+            resolved_app_id = new_app.id
+            app = new_app
+
     if not success:
         raise HTTPException(status_code=404, detail="Candidature introuvable.")
 
     # Two-way sync: update opportunity status to reflect change in kanban
-    app = storage.get_application(app_id, user.id)
+    if not app:
+        app = storage.get_application(resolved_app_id, user.id)
     if app and app.opportunity_id:
         if body.status == ApplicationStatus.SAVED.value:
             storage.update_status(app.opportunity_id, "kept")
         elif body.status == ApplicationStatus.REJECTED.value:
             storage.update_status(app.opportunity_id, "archived")
-        elif body.status in [ApplicationStatus.APPLIED.value, ApplicationStatus.INTERVIEW.value]:
+        elif body.status in [
+            ApplicationStatus.APPLIED.value,
+            ApplicationStatus.INTERVIEW.value,
+            ApplicationStatus.OFFER.value,
+        ]:
             storage.update_status(app.opportunity_id, body.status)
 
-    return {"status": "updated", "id": app_id, "new_status": body.status}
+    return {"status": "updated", "id": resolved_app_id, "new_status": body.status}
 
 
 @app.patch("/api/applications/{app_id}/notes")
@@ -770,10 +798,37 @@ def update_app_notes(app_id: str, body: ApplicationNotesRequest, request: Reques
     storage = Storage(config.database_path)
     user = get_current_user_or_default(request, storage)
 
-    success = storage.update_application_notes(app_id, body.notes, user.id)
+    resolved_app_id = app_id
+    app = storage.get_application(resolved_app_id, user.id)
+    if not app and resolved_app_id.startswith("app_optimistic_"):
+        opp_id = resolved_app_id.removeprefix("app_optimistic_")
+        with storage._connection() as conn:
+            row = conn.execute(
+                "SELECT id FROM applications WHERE opportunity_id = ? AND user_id = ?",
+                (opp_id, user.id),
+            ).fetchone()
+            if row:
+                resolved_app_id = row["id"]
+
+    success = storage.update_application_notes(resolved_app_id, body.notes, user.id)
+    if not success and app_id.startswith("app_optimistic_"):
+        opp_id = app_id.removeprefix("app_optimistic_")
+        opp = storage.get_opportunity(opp_id)
+        status = (
+            ApplicationStatus(opp.status)
+            if opp and opp.status in ApplicationStatus._value2member_map_
+            else ApplicationStatus.SAVED
+        )
+        new_app = storage.sync_opportunity_to_application(
+            opp_id, user.id, status, notes=body.notes
+        )
+        if new_app:
+            success = True
+            resolved_app_id = new_app.id
+
     if not success:
         raise HTTPException(status_code=404, detail="Candidature introuvable.")
-    return {"status": "updated", "id": app_id}
+    return {"status": "updated", "id": resolved_app_id}
 
 
 @app.delete("/api/applications/{app_id}")
@@ -782,16 +837,36 @@ def delete_app(app_id: str, request: Request) -> Dict[str, Any]:
     storage = Storage(config.database_path)
     user = get_current_user_or_default(request, storage)
 
-    app = storage.get_application(app_id, user.id)
-    opp_id = app.opportunity_id if app else None
+    resolved_app_id = app_id
+    opp_id = None
+    if resolved_app_id.startswith("app_optimistic_"):
+        opp_id = resolved_app_id.removeprefix("app_optimistic_")
 
-    success = storage.delete_application(app_id, user.id)
+    app = storage.get_application(resolved_app_id, user.id)
+    if not app and opp_id:
+        with storage._connection() as conn:
+            row = conn.execute(
+                "SELECT id FROM applications WHERE opportunity_id = ? AND user_id = ?",
+                (opp_id, user.id),
+            ).fetchone()
+            if row:
+                resolved_app_id = row["id"]
+                app = storage.get_application(resolved_app_id, user.id)
+
+    if app and app.opportunity_id:
+        opp_id = app.opportunity_id
+
+    success = storage.delete_application(resolved_app_id, user.id)
     if not success:
+        if opp_id:
+            storage.update_status(opp_id, "new")
+            return {"status": "deleted", "id": resolved_app_id}
         raise HTTPException(status_code=404, detail="Candidature introuvable.")
+
     if opp_id:
         storage.update_status(opp_id, "new")
 
-    return {"status": "deleted", "id": app_id}
+    return {"status": "deleted", "id": resolved_app_id}
 
 
 # ===================================================================

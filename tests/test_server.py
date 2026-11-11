@@ -995,4 +995,181 @@ def test_api_ai_test_observability_gemini_gemma_and_heuristic(client, monkeypatc
     assert ws_calls[0]["headers"] == {"x-goog-api-key": "env-gemini-should-be-ignored"}
 
 
+def test_kanban_view_warm_porcelain_markup(client):
+    """Verifies that SSR template renders the 4-column Warm Porcelain Kanban board and archived drawer."""
+    response = client.get("/")
+    assert response.status_code == 200
+    html = response.text
+
+    assert 'id="view-kanban"' in html
+    assert 'jp-container-kanban' in html
+    assert 'id="view-kanban-heading"' in html
+    assert 'id="kanban-shell-summary"' in html
+
+    # 4 active columns and counts
+    for stage in ["saved", "applied", "interview", "offer"]:
+        assert f'data-kanban-column="{stage}"' in html
+        assert f'data-kanban-col-count="{stage}"' in html
+        assert f'data-kanban-dropzone="{stage}"' in html
+        assert f'data-kanban-cards="{stage}"' in html
+        assert f'data-kanban-empty="{stage}"' in html
+
+    # Dashed empty dropzone placeholder
+    assert "Glissez une carte ici" in html
+
+    # Archived / Rejected collapsible drawer
+    assert 'id="kanban-archived-section"' in html
+    assert 'id="kanban-archived-toggle"' in html
+    assert 'id="kanban-archived-drawer"' in html
+    assert 'data-kanban-col-count="rejected"' in html
+    assert 'data-kanban-dropzone="rejected"' in html
+    assert 'data-kanban-cards="rejected"' in html
+
+
+def test_kanban_application_endpoints_and_two_way_sync(tmp_path, monkeypatch):
+    """Validates /api/applications status and notes endpoints including two-way sync with opportunities."""
+    from jobby.config import JobbyConfig, save_config
+    from jobby.models import JobOpportunity
+
+    db_path = tmp_path / "kanban_test.db"
+    cfg_path = tmp_path / "jobby.json"
+    save_config(JobbyConfig(database_path=str(db_path)), config_path=cfg_path)
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+
+    storage = Storage(db_path)
+    opp = JobOpportunity(
+        id="opp-kanban-1",
+        title="Lead UX Engineer",
+        company="Warm Studio",
+        location="Paris (Full Remote)",
+        source="wttj",
+        url="https://example.com/job/1",
+        status="kept",
+        is_seen=True,
+    )
+    storage.upsert_opportunity(opp)
+
+    with TestClient(app) as test_client:
+        # 1. Listing applications auto-syncs kept opportunity into a saved application
+        apps_res = test_client.get("/api/applications")
+        assert apps_res.status_code == 200
+        apps_data = apps_res.json()
+        assert len(apps_data) == 1
+        app_entry = apps_data[0]
+        app_id = app_entry["id"]
+        assert app_entry["status"] == "saved"
+        assert app_entry["opportunity_id"] == "opp-kanban-1"
+
+        # 2. Update status to 'applied' -> syncs opportunity to 'applied'
+        status_res = test_client.patch(f"/api/applications/{app_id}/status", json={"status": "applied"})
+        assert status_res.status_code == 200
+        assert status_res.json()["new_status"] == "applied"
+        assert storage.get_opportunity("opp-kanban-1").status == "applied"
+
+        # 3. Update status to 'interview' -> syncs opportunity to 'interview'
+        status_res = test_client.patch(f"/api/applications/{app_id}/status", json={"status": "interview"})
+        assert status_res.status_code == 200
+        assert status_res.json()["new_status"] == "interview"
+        assert storage.get_opportunity("opp-kanban-1").status == "interview"
+
+        # 4. Update status to 'offer' -> syncs opportunity to 'offer'
+        status_res = test_client.patch(f"/api/applications/{app_id}/status", json={"status": "offer"})
+        assert status_res.status_code == 200
+        assert status_res.json()["new_status"] == "offer"
+        assert storage.get_opportunity("opp-kanban-1").status == "offer"
+
+        # 5. Update status to 'rejected' -> syncs opportunity to 'archived'
+        status_res = test_client.patch(f"/api/applications/{app_id}/status", json={"status": "rejected"})
+        assert status_res.status_code == 200
+        assert status_res.json()["new_status"] == "rejected"
+        assert storage.get_opportunity("opp-kanban-1").status == "archived"
+
+        # 6. Update status back to 'saved' -> syncs opportunity to 'kept'
+        status_res = test_client.patch(f"/api/applications/{app_id}/status", json={"status": "saved"})
+        assert status_res.status_code == 200
+        assert status_res.json()["new_status"] == "saved"
+        assert storage.get_opportunity("opp-kanban-1").status == "kept"
+
+        # 7. Update notes -> persists in DB
+        notes_res = test_client.patch(f"/api/applications/{app_id}/notes", json={"notes": "Relance effectuée auprès de Julie RH."})
+        assert notes_res.status_code == 200
+        saved_app = storage.get_application(app_id, "usr_user_jobby_local") or storage.get_applications("usr_user_jobby_local") or storage.get_applications(storage.get_user_by_email("user@jobby.local").id)
+        current_apps = test_client.get("/api/applications").json()
+        assert current_apps[0]["notes"] == "Relance effectuée auprès de Julie RH."
+
+        # 8. Invalid status returns 400
+        bad_status = test_client.patch(f"/api/applications/{app_id}/status", json={"status": "non_existent"})
+        assert bad_status.status_code == 400
+
+        # 9. Non-existent app returns 404
+        not_found = test_client.patch("/api/applications/non-existent-id/status", json={"status": "applied"})
+        assert not_found.status_code == 404
+
+        # 10. Optimistic application ID (app_optimistic_{opp_id}) for PATCH status & notes
+        opp2 = JobOpportunity(
+            id="opp-kanban-2",
+            title="Design System Lead",
+            company="Figma",
+            location="Remote",
+            source="wttj",
+            url="https://example.com/job/2",
+            status="kept",
+            is_seen=True,
+        )
+        storage.upsert_opportunity(opp2)
+
+        opt_status = test_client.patch("/api/applications/app_optimistic_opp-kanban-2/status", json={"status": "interview"})
+        assert opt_status.status_code == 200
+        assert storage.get_opportunity("opp-kanban-2").status == "interview"
+
+        opt_notes = test_client.patch("/api/applications/app_optimistic_opp-kanban-2/notes", json={"notes": "Note optimiste enregistrée"})
+        assert opt_notes.status_code == 200
+        current_apps = test_client.get("/api/applications").json()
+        app2_entry = next(a for a in current_apps if a["opportunity_id"] == "opp-kanban-2")
+        assert app2_entry["notes"] == "Note optimiste enregistrée"
+
+        # 11. DELETE on optimistic app ID resets opportunity status to 'new'
+        opt_del = test_client.delete("/api/applications/app_optimistic_opp-kanban-2")
+        assert opt_del.status_code == 200
+        assert storage.get_opportunity("opp-kanban-2").status == "new"
+
+        # 12. DELETE on optimistic app ID when no DB row existed resets opportunity to 'new'
+        opp3 = JobOpportunity(
+            id="opp-kanban-3",
+            title="Staff Product Designer",
+            company="Notion",
+            location="Remote",
+            source="wttj",
+            url="https://example.com/job/3",
+            status="kept",
+            is_seen=True,
+        )
+        storage.upsert_opportunity(opp3)
+        opt_del_norow = test_client.delete("/api/applications/app_optimistic_opp-kanban-3")
+        assert opt_del_norow.status_code == 200
+        assert storage.get_opportunity("opp-kanban-3").status == "new"
+
+        # 13. PATCH /api/opportunities/{id}/status with 'offer' syncs to applications
+        opp4 = JobOpportunity(
+            id="opp-kanban-4",
+            title="VP of Product",
+            company="Datadog",
+            location="Paris",
+            source="wttj",
+            url="https://example.com/job/4",
+            status="new",
+            is_seen=True,
+        )
+        storage.upsert_opportunity(opp4)
+        opp_offer_res = test_client.patch("/api/opportunities/opp-kanban-4/status", json={"status": "offer"})
+        assert opp_offer_res.status_code == 200
+        assert opp_offer_res.json()["new_status"] == "offer"
+        assert storage.get_opportunity("opp-kanban-4").status == "offer"
+        current_apps = test_client.get("/api/applications").json()
+        app4_entry = next(a for a in current_apps if a["opportunity_id"] == "opp-kanban-4")
+        assert app4_entry["status"] == "offer"
+
+
+
 

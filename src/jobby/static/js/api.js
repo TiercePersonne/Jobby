@@ -248,6 +248,19 @@ export function updateApplicationStatus(appId, status) {
   });
 }
 
+export function updateApplicationNotes(appId, notes) {
+  return request(`/api/applications/${encodeURIComponent(appId)}/notes`, {
+    method: 'PATCH',
+    body: { notes: String(notes ?? '') },
+  });
+}
+
+export function deleteApplication(appId) {
+  return request(`/api/applications/${encodeURIComponent(appId)}`, {
+    method: 'DELETE',
+  });
+}
+
 export function triggerSearch({
   keywords = [],
   location = null,

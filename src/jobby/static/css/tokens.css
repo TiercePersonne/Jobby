@@ -338,10 +338,73 @@ body {
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
+.kanban-dropzone {
+  border: 2px dashed transparent;
+  border-radius: var(--radius-lg);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
 .jp-dropzone:hover,
-.jp-dropzone.is-dragover {
+.jp-dropzone.is-dragover,
+.kanban-dropzone.is-dragover {
+  border-color: var(--ink-primary) !important;
+  background-color: var(--surface-hover) !important;
+}
+
+.is-dragging {
+  opacity: 0.45 !important;
+  cursor: grabbing !important;
+}
+
+.jp-kanban-card {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  cursor: grab;
+  user-select: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.jp-kanban-card:hover {
+  border-color: var(--border-strong);
+}
+
+.jp-kanban-card:active {
+  cursor: grabbing;
+}
+
+.jp-kanban-select {
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-hairline);
+  background-color: var(--surface-canvas);
+  color: var(--ink-primary);
+  font-family: inherit;
+}
+
+.jp-kanban-select:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+.jp-kanban-notes {
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-hairline);
+  background-color: var(--surface-subtle);
+  color: var(--ink-primary);
+  font-family: inherit;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.jp-kanban-notes:focus {
+  background-color: var(--surface-card);
   border-color: var(--ink-primary);
-  background-color: var(--surface-hover);
+  outline: none;
 }
 
 .jp-dropzone:focus-visible {

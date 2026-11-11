@@ -3820,3 +3820,232 @@ def test_profile_isolation_from_feed_and_ideal_brief_e2e(browser, live_server_ur
         assert errors == []
     finally:
         context.close()
+
+
+def test_kanban_full_lifecycle_and_interactions_e2e(browser, live_server_url):
+    """Playwright E2E: Validates Warm Porcelain 4-column Kanban board, DnD, mobile select, notes, and rollback."""
+    context, page = _new_isolated_page(browser)
+
+    opps = [
+        {
+            "id": "opp-k1",
+            "title": "Frontend Architect",
+            "company": "Stripe",
+            "location": "Paris (Full Remote)",
+            "source": "wttj",
+            "url": "https://stripe.com/jobs/1",
+            "score": 92,
+            "status": "kept",
+        },
+        {
+            "id": "opp-k2",
+            "title": "Fullstack Developer",
+            "company": "Linear",
+            "location": "Remote",
+            "source": "linkedin",
+            "url": "https://linear.app/careers/2",
+            "score": 78,
+            "status": "applied",
+        },
+        {
+            "id": "opp-k3",
+            "title": "Backend Lead",
+            "company": "Doctolib",
+            "location": "Nantes",
+            "source": "hellowork",
+            "url": "https://doctolib.fr/jobs/3",
+            "score": 65,
+            "status": "interview",
+        },
+        {
+            "id": "opp-k4",
+            "title": "Principal Engineer",
+            "company": "Qonto",
+            "location": "Paris",
+            "source": "wttj",
+            "url": "https://qonto.com/jobs/4",
+            "score": 88,
+            "status": "offer",
+        },
+        {
+            "id": "opp-k5",
+            "title": "Legacy Coder",
+            "company": "OldCorp",
+            "location": "Lyon",
+            "source": "direct",
+            "url": None,
+            "score": 40,
+            "status": "archived",
+        },
+    ]
+
+    apps = [
+        {"id": "app-1", "opportunity_id": "opp-k1", "status": "saved", "notes": "Premier repérage"},
+        {"id": "app-2", "opportunity_id": "opp-k2", "status": "applied", "notes": "Candidature envoyée le 10"},
+        {"id": "app-3", "opportunity_id": "opp-k3", "status": "interview", "notes": "Entretien RH calé"},
+        {"id": "app-4", "opportunity_id": "opp-k4", "status": "offer", "notes": "Offre reçue à 95k"},
+        {"id": "app-5", "opportunity_id": "opp-k5", "status": "rejected", "notes": "Refusé après triage"},
+    ]
+
+    patch_status_calls = []
+    patch_notes_calls = []
+    fail_status = {"fail": False}
+    fail_notes = {"fail": False}
+
+    _mock_base_apis(page, opps=opps, apps=apps)
+
+    page.route(
+        "**/api/applications/*/status",
+        lambda r: (
+            r.fulfill(status=500, body=json.dumps({"detail": "Server error status"}))
+            if fail_status["fail"]
+            else (
+                patch_status_calls.append({"url": r.request.url, "body": r.request.post_data_json}),
+                r.fulfill(status=200, content_type="application/json", body=json.dumps({"status": "updated", "id": "test", "new_status": r.request.post_data_json.get("status")})),
+            )
+        ),
+    )
+
+    page.route(
+        "**/api/applications/*/notes",
+        lambda r: (
+            r.fulfill(status=500, body=json.dumps({"detail": "Server error notes"}))
+            if fail_notes["fail"]
+            else (
+                patch_notes_calls.append({"url": r.request.url, "body": r.request.post_data_json}),
+                r.fulfill(status=200, content_type="application/json", body=json.dumps({"status": "updated", "id": "test"})),
+            )
+        ),
+    )
+
+    try:
+        page.goto(f"{live_server_url}/#kanban", wait_until="networkidle")
+        assert page.locator("#view-kanban").is_visible()
+
+        # 1. Verification of 4 columns, counters, nav badge, and shell summary
+        assert page.locator("#kanban-badge").inner_text() == "4"
+        assert page.locator("#kanban-shell-summary").inner_text() == "4 candidatures actives"
+        assert page.locator('[data-kanban-col-count="saved"]').inner_text() == "1"
+        assert page.locator('[data-kanban-col-count="applied"]').inner_text() == "1"
+        assert page.locator('[data-kanban-col-count="interview"]').inner_text() == "1"
+        assert page.locator('[data-kanban-col-count="offer"]').inner_text() == "1"
+        assert page.locator('[data-kanban-col-count="rejected"]').inner_text() == "1"
+
+        # Cards are in their initial columns
+        assert page.locator('[data-kanban-cards="saved"] > article[data-app-id="app-1"]').is_visible()
+        assert page.locator('[data-kanban-cards="applied"] > article[data-app-id="app-2"]').is_visible()
+        assert page.locator('[data-kanban-cards="interview"] > article[data-app-id="app-3"]').is_visible()
+        assert page.locator('[data-kanban-cards="offer"] > article[data-app-id="app-4"]').is_visible()
+
+        # Empty state dashed placeholder is hidden because all columns have cards
+        assert not page.locator('[data-kanban-empty="saved"]').is_visible()
+
+        # 2. Drag & Drop Desktop: Drag app-1 from 'saved' to 'applied'
+        with page.expect_response("**/api/applications/app-1/status"):
+            page.evaluate(
+                """() => {
+                    const card = document.querySelector('article[data-app-id="app-1"]');
+                    const dropzone = document.querySelector('[data-kanban-dropzone="applied"]');
+                    const dt = new DataTransfer();
+                    card.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
+                    dropzone.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true }));
+                    dropzone.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true }));
+                    card.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
+                }"""
+            )
+
+        # Immediate optimistic update
+        assert page.locator('[data-kanban-cards="applied"] > article[data-app-id="app-1"]').is_visible()
+        assert page.locator('[data-kanban-col-count="saved"]').inner_text() == "0"
+        assert page.locator('[data-kanban-col-count="applied"]').inner_text() == "2"
+        # 'saved' is now empty, so dashed empty placeholder is visible
+        assert page.locator('[data-kanban-empty="saved"]').is_visible()
+        assert "Glissez une carte ici" in page.locator('[data-kanban-empty="saved"]').inner_text()
+        assert patch_status_calls[-1]["body"] == {"status": "applied"}
+
+        # 3. Drag & Drop Network Failure & Rollback
+        fail_status["fail"] = True
+        with page.expect_response("**/api/applications/app-1/status"):
+            page.evaluate(
+                """() => {
+                    const card = document.querySelector('article[data-app-id="app-1"]');
+                    const dropzone = document.querySelector('[data-kanban-dropzone="interview"]');
+                    const dt = new DataTransfer();
+                    card.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
+                    dropzone.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true }));
+                    dropzone.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true }));
+                    card.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
+                }"""
+            )
+
+        # Rollback check: app-1 is back in 'applied', counts restored
+        err_toast = page.locator("#toast-container .jp-toast-error").last
+        assert err_toast.is_visible()
+        assert page.locator('[data-kanban-cards="applied"] > article[data-app-id="app-1"]').is_visible()
+        assert page.locator('[data-kanban-col-count="applied"]').inner_text() == "2"
+        assert page.locator('[data-kanban-col-count="interview"]').inner_text() == "1"
+
+        fail_status["fail"] = False
+
+        # 4. Mobile Select (<select data-action="change-stage">)
+        with page.expect_response("**/api/applications/app-2/status"):
+            page.select_option('select[data-action="change-stage"][data-app-id="app-2"]', "offer")
+
+        assert page.locator('[data-kanban-cards="offer"] > article[data-app-id="app-2"]').is_visible()
+        assert page.locator('[data-kanban-col-count="applied"]').inner_text() == "1"
+        assert page.locator('[data-kanban-col-count="offer"]').inner_text() == "2"
+        assert patch_status_calls[-1]["body"] == {"status": "offer"}
+
+        # 5. Notes editing and persistence on blur
+        with page.expect_response("**/api/applications/app-4/notes"):
+            page.fill('textarea[data-action="edit-notes"][data-app-id="app-4"]', "Contre-proposition transmise hier.")
+            page.locator('textarea[data-action="edit-notes"][data-app-id="app-4"]').dispatch_event("blur")
+
+        assert patch_notes_calls[-1]["body"] == {"notes": "Contre-proposition transmise hier."}
+        status_indicator = page.locator('article[data-app-id="app-4"] .notes-status')
+        assert "Enregistr" in status_indicator.inner_text()
+
+        # 6. Notes error and rollback
+        fail_notes["fail"] = True
+        with page.expect_response("**/api/applications/app-3/notes"):
+            page.fill('textarea[data-action="edit-notes"][data-app-id="app-3"]', "Texte qui va echouer")
+            page.locator('textarea[data-action="edit-notes"][data-app-id="app-3"]').dispatch_event("blur")
+
+        # Rollback check: previous notes restored
+        assert page.locator('textarea[data-action="edit-notes"][data-app-id="app-3"]').input_value() == "Entretien RH calé"
+        fail_notes["fail"] = False
+
+        # 7. Archiving from card & Accordion drawer
+        with page.expect_response("**/api/applications/app-4/status"):
+            page.click('button[data-action="archive-card"][data-app-id="app-4"]')
+
+        # Nav badge decrements from 4 to 3
+        assert page.locator("#kanban-badge").inner_text() == "3"
+        assert page.locator("#kanban-shell-summary").inner_text() == "3 candidatures actives"
+        assert page.locator('[data-kanban-col-count="rejected"]').inner_text() == "2"
+        assert not page.locator('[data-kanban-cards="offer"] > article[data-app-id="app-4"]').is_visible()
+
+        # Open archived accordion drawer
+        assert not page.locator("#kanban-archived-drawer").is_visible()
+        page.click("#kanban-archived-toggle")
+        assert page.locator("#kanban-archived-drawer").is_visible()
+        assert page.locator('[data-kanban-cards="rejected"] > article[data-app-id="app-4"]').is_visible()
+
+        # Restore card from drawer
+        with page.expect_response("**/api/applications/app-4/status"):
+            page.click('button[data-action="restore-card"][data-app-id="app-4"]')
+
+        assert page.locator("#kanban-badge").inner_text() == "4"
+        assert page.locator("#kanban-shell-summary").inner_text() == "4 candidatures actives"
+        assert page.locator('[data-kanban-cards="saved"] > article[data-app-id="app-4"]').is_visible()
+
+        # 8. Lettre IA button opens #modal-letter, Esc closes it
+        assert not page.locator("#modal-letter").is_visible()
+        page.click('button[data-action="generate-letter"][data-app-id="app-1"]')
+        assert page.locator("#modal-letter").is_visible()
+        page.keyboard.press("Escape")
+        assert not page.locator("#modal-letter").is_visible()
+
+    finally:
+        context.close()
+

@@ -7,43 +7,87 @@
     <span id="kanban-shell-summary" class="jp-pill">0 candidature active</span>
   </div>
 
-  <div class="jp-card flex flex-col gap-2">
-    <p class="jp-body">
-      Le tableau Kanban interactif (glisser-déposer, notes de relance et rédaction de lettres) sera activé dans l'Epic 3.
-    </p>
+  <!-- Zone d'annonce pour l'accessibilité vocale des déplacements -->
+  <div id="kanban-live-region" class="sr-only" aria-live="polite"></div>
+
+  <!-- Grille 4 colonnes actives -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start" id="kanban-columns-grid">
+    <!-- Colonne 1 : Repérés -->
+    <div class="jp-card flex flex-col gap-3 min-h-[320px] jp-kanban-column" data-kanban-column="saved">
+      <div class="flex items-center justify-between pb-2 border-b border-[#E7E5E4]">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-[#78716C]" aria-hidden="true"></span>
+          <h2 class="jp-label uppercase tracking-wider font-semibold text-[#1C1917]">Repérés</h2>
+        </div>
+        <span class="jp-kanban-badge" data-kanban-col-count="saved">0</span>
+      </div>
+      <div class="kanban-dropzone flex flex-col gap-3 flex-1 min-h-[220px]" data-kanban-dropzone="saved">
+        <div class="jp-empty-dashed text-center py-8 px-3" data-kanban-empty="saved">Glissez une carte ici</div>
+        <div class="kanban-cards flex flex-col gap-3" data-kanban-cards="saved"></div>
+      </div>
+    </div>
+
+    <!-- Colonne 2 : Candidaté -->
+    <div class="jp-card flex flex-col gap-3 min-h-[320px] jp-kanban-column" data-kanban-column="applied">
+      <div class="flex items-center justify-between pb-2 border-b border-[#E7E5E4]">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-[#2563EB]" aria-hidden="true"></span>
+          <h2 class="jp-label uppercase tracking-wider font-semibold text-[#1C1917]">Candidaté</h2>
+        </div>
+        <span class="jp-kanban-badge" data-kanban-col-count="applied">0</span>
+      </div>
+      <div class="kanban-dropzone flex flex-col gap-3 flex-1 min-h-[220px]" data-kanban-dropzone="applied">
+        <div class="jp-empty-dashed text-center py-8 px-3" data-kanban-empty="applied">Glissez une carte ici</div>
+        <div class="kanban-cards flex flex-col gap-3" data-kanban-cards="applied"></div>
+      </div>
+    </div>
+
+    <!-- Colonne 3 : Entretiens -->
+    <div class="jp-card flex flex-col gap-3 min-h-[320px] jp-kanban-column" data-kanban-column="interview">
+      <div class="flex items-center justify-between pb-2 border-b border-[#E7E5E4]">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-[#D97706]" aria-hidden="true"></span>
+          <h2 class="jp-label uppercase tracking-wider font-semibold text-[#1C1917]">Entretiens</h2>
+        </div>
+        <span class="jp-kanban-badge" data-kanban-col-count="interview">0</span>
+      </div>
+      <div class="kanban-dropzone flex flex-col gap-3 flex-1 min-h-[220px]" data-kanban-dropzone="interview">
+        <div class="jp-empty-dashed text-center py-8 px-3" data-kanban-empty="interview">Glissez une carte ici</div>
+        <div class="kanban-cards flex flex-col gap-3" data-kanban-cards="interview"></div>
+      </div>
+    </div>
+
+    <!-- Colonne 4 : Offres reçues -->
+    <div class="jp-card flex flex-col gap-3 min-h-[320px] jp-kanban-column" data-kanban-column="offer">
+      <div class="flex items-center justify-between pb-2 border-b border-[#E7E5E4]">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-[#15803D]" aria-hidden="true"></span>
+          <h2 class="jp-label uppercase tracking-wider font-semibold text-[#1C1917]">Offres reçues</h2>
+        </div>
+        <span class="jp-kanban-badge" data-kanban-col-count="offer">0</span>
+      </div>
+      <div class="kanban-dropzone flex flex-col gap-3 flex-1 min-h-[220px]" data-kanban-dropzone="offer">
+        <div class="jp-empty-dashed text-center py-8 px-3" data-kanban-empty="offer">Glissez une carte ici</div>
+        <div class="kanban-cards flex flex-col gap-3" data-kanban-cards="offer"></div>
+      </div>
+    </div>
   </div>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-    <div class="jp-card flex flex-col gap-3 min-h-[220px]">
-      <div class="flex items-center justify-between jp-label uppercase tracking-wider">
-        <span>Repérés</span>
-        <span data-kanban-col-count="saved">0</span>
-      </div>
-      <div class="jp-empty-dashed text-center py-8 px-3">Colonne en attente</div>
+  <!-- Tiroir accordéon discret : Candidatures archivées / refusées -->
+  <div class="jp-card flex flex-col gap-3 mt-1" id="kanban-archived-section">
+    <div class="flex items-center justify-between">
+      <button type="button" id="kanban-archived-toggle" class="flex items-center gap-2 text-left w-full py-1 text-[#78716C] hover:text-[#1C1917] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-[#1C1917]" aria-expanded="false" aria-controls="kanban-archived-drawer">
+        <svg class="w-4 h-4 transform transition-transform duration-200" id="kanban-archived-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+        <span class="jp-label uppercase tracking-wider font-semibold">Archivées / Refusées (<span data-kanban-col-count="rejected">0</span>)</span>
+      </button>
     </div>
-
-    <div class="jp-card flex flex-col gap-3 min-h-[220px]">
-      <div class="flex items-center justify-between jp-label uppercase tracking-wider">
-        <span>Candidaté</span>
-        <span data-kanban-col-count="applied">0</span>
+    <div id="kanban-archived-drawer" class="hidden flex flex-col gap-3 pt-3 border-t border-[#E7E5E4]">
+      <div class="kanban-dropzone flex flex-col gap-3 min-h-[100px] p-2" data-kanban-dropzone="rejected">
+        <div class="jp-empty-dashed text-center py-5 px-3" data-kanban-empty="rejected">Glissez une carte ici pour l'archiver</div>
+        <div class="kanban-cards grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3" data-kanban-cards="rejected"></div>
       </div>
-      <div class="jp-empty-dashed text-center py-8 px-3">Colonne en attente</div>
-    </div>
-
-    <div class="jp-card flex flex-col gap-3 min-h-[220px]">
-      <div class="flex items-center justify-between jp-label uppercase tracking-wider">
-        <span>Entretiens</span>
-        <span data-kanban-col-count="interview">0</span>
-      </div>
-      <div class="jp-empty-dashed text-center py-8 px-3">Colonne en attente</div>
-    </div>
-
-    <div class="jp-card flex flex-col gap-3 min-h-[220px]">
-      <div class="flex items-center justify-between jp-label uppercase tracking-wider">
-        <span>Offres reçues</span>
-        <span data-kanban-col-count="offer">0</span>
-      </div>
-      <div class="jp-empty-dashed text-center py-8 px-3">Colonne en attente</div>
     </div>
   </div>
 </section>
