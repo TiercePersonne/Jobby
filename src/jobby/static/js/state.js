@@ -68,6 +68,8 @@ function createInitialState() {
     applications: [],
     config: null,
     configError: null,
+    profile: null,
+    profileError: null,
     isLoadingFeed: false,
     feedError: null,
     activeModal: null,
@@ -149,6 +151,49 @@ export function setConfig(config, error = null) {
     configError: error || null,
   };
   emit();
+}
+
+function extractProfileObject(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  if (Object.hasOwn(input, 'profile')) {
+    return input.profile && typeof input.profile === 'object' && !Array.isArray(input.profile)
+      ? { ...input.profile }
+      : null;
+  }
+  return { ...input };
+}
+
+export function setProfile(profile, error = null) {
+  state = {
+    ...state,
+    profile: extractProfileObject(profile),
+    profileError: error || null,
+  };
+  emit();
+}
+
+export function setIdealJobBrief(brief) {
+  if (brief !== null && brief !== undefined && typeof brief !== 'string') {
+    return state.profile;
+  }
+  const nextBrief = typeof brief === 'string' ? brief.trim() || null : null;
+  if (
+    state.profile &&
+    state.profile.ideal_job_brief === nextBrief &&
+    !state.profileError
+  ) {
+    return state.profile;
+  }
+  state = {
+    ...state,
+    profile: {
+      ...(state.profile || {}),
+      ideal_job_brief: nextBrief,
+    },
+    profileError: null,
+  };
+  emit();
+  return state.profile;
 }
 
 export function setActiveModal(modalId) {

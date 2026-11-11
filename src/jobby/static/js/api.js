@@ -184,6 +184,17 @@ export function fetchConfig() {
   return request('/api/config');
 }
 
+export function fetchProfile() {
+  return request('/api/profile');
+}
+
+export function saveProfileBrief(brief) {
+  return request('/api/profile/brief', {
+    method: 'PUT',
+    body: { brief },
+  });
+}
+
 export function updateOpportunityStatus(oppId, status) {
   return request(`/api/opportunities/${encodeURIComponent(oppId)}/status`, {
     method: 'PATCH',

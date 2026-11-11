@@ -408,13 +408,14 @@ def get_current_user_or_default(request: Request, storage: Storage) -> User:
     # Default user for single-tenant / frictionless mode
     u = storage.get_user_by_email("user@jobby.local")
     if not u:
-        u = User(
-            id="usr_" + uuid.uuid4().hex[:12],
-            email="user@jobby.local",
-            full_name="Mon Profil Candidat",
-            password_hash=hash_password("default123"),
+        u = storage.ensure_user(
+            User(
+                id="usr_" + uuid.uuid4().hex[:12],
+                email="user@jobby.local",
+                full_name="Mon Profil Candidat",
+                password_hash=hash_password("default123"),
+            )
         )
-        storage.create_user(u)
     return u
 
 
@@ -506,27 +507,57 @@ class ProfileUpdateRequest(BaseModel):
     remote_preference: Optional[str] = None
 
 
+class BriefUpdateRequest(BaseModel):
+    brief: Optional[str]
+
+
+def _get_or_init_profile(storage: Storage, user_id: str, config: JobbyConfig) -> UserProfile:
+    """Loads existing UserProfile or atomically initializes one from config defaults."""
+    profile = storage.get_profile(user_id)
+    if not profile:
+        profile = storage.ensure_profile(
+            UserProfile(
+                user_id=user_id,
+                target_roles=list(config.target_roles or []),
+                skills=list(config.skills_keywords or []),
+                min_salary=config.min_salary,
+                remote_preference="full" if config.remote_only else None,
+            )
+        )
+    return profile
+
+
 @app.get("/api/profile")
 def get_user_profile(request: Request) -> Dict[str, Any]:
     config = load_config()
     storage = Storage(config.database_path)
     user = get_current_user_or_default(request, storage)
 
-    profile = storage.get_profile(user.id)
-    if not profile:
-        profile = UserProfile(
-            user_id=user.id,
-            target_roles=config.target_roles,
-            skills=config.skills_keywords,
-            min_salary=config.min_salary,
-            remote_preference="full" if config.remote_only else None,
-        )
-        storage.save_profile(profile)
+    profile = _get_or_init_profile(storage, user.id, config)
 
     return {
         "user": {"id": user.id, "email": user.email, "full_name": user.full_name},
         "profile": profile.model_dump(),
         "has_cv": bool(profile.cv_text),
+    }
+
+
+@app.put("/api/profile/brief")
+def update_user_profile_brief(body: BriefUpdateRequest, request: Request) -> Dict[str, Any]:
+    """Saves or clears user_profiles.ideal_job_brief without invoking Gemini or re-scoring."""
+    config = load_config()
+    storage = Storage(config.database_path)
+    user = get_current_user_or_default(request, storage)
+
+    profile = _get_or_init_profile(storage, user.id, config)
+    cleaned_brief = body.brief.strip() if body.brief is not None else ""
+    profile.ideal_job_brief = cleaned_brief if cleaned_brief else None
+    storage.save_profile(profile)
+
+    return {
+        "status": "saved",
+        "ideal_job_brief": profile.ideal_job_brief,
+        "profile": profile.model_dump(),
     }
 
 
@@ -539,6 +570,7 @@ def update_user_profile(body: ProfileUpdateRequest, request: Request) -> Dict[st
     existing = storage.get_profile(user.id)
     cv_filename = existing.cv_filename if existing else None
     cv_text = existing.cv_text if existing else None
+    ideal_job_brief = existing.ideal_job_brief if existing else None
 
     profile = UserProfile(
         user_id=user.id,
@@ -554,6 +586,7 @@ def update_user_profile(body: ProfileUpdateRequest, request: Request) -> Dict[st
         skills=body.skills if body.skills else (config.skills_keywords or []),
         min_salary=body.min_salary,
         remote_preference=body.remote_preference,
+        ideal_job_brief=ideal_job_brief,
     )
     storage.save_profile(profile)
     return {"status": "saved", "profile": profile.model_dump()}
@@ -577,10 +610,7 @@ async def upload_cv(file: UploadFile = File(...), request: Request = None) -> Di
             detail="Impossible d'extraire le texte de ce fichier. Assurez-vous d'envoyer un PDF avec du texte sélectionnable ou un fichier .txt.",
         )
 
-    profile = storage.get_profile(user.id)
-    if not profile:
-        profile = UserProfile(user_id=user.id)
-
+    profile = _get_or_init_profile(storage, user.id, config)
     profile.cv_filename = file.filename
     profile.cv_text = extracted_text
     storage.save_profile(profile)
@@ -819,6 +849,12 @@ async def rank_by_ideal_brief(req: IdealBriefRankRequest, request: Request) -> D
     if not brief_text:
         raise HTTPException(status_code=400, detail="Veuillez fournir la description de votre job idéal.")
 
+    # Persist the ideal job brief directly on user_profiles before evaluating active offers
+    profile = _get_or_init_profile(storage, user.id, config)
+    profile.ideal_job_brief = brief_text
+    storage.save_profile(profile)
+    profile_dict = profile.model_dump()
+
     # Fetch active opportunities from storage (excluding archived)
     all_opps = storage.list_opportunities(limit=req.limit or 60)
     active_opps = [o for o in all_opps if o.status != "archived"]
@@ -831,15 +867,6 @@ async def rank_by_ideal_brief(req: IdealBriefRankRequest, request: Request) -> D
             "results": [],
             "message": "Aucune opportunité active en base à évaluer.",
         }
-
-    profile = storage.get_profile(user.id)
-    profile_dict = profile.model_dump() if profile else {}
-
-    # Persist the ideal job brief in user profile
-    if profile:
-        profile.raw_metadata = profile.raw_metadata or {}
-        profile.raw_metadata["ideal_job_brief"] = brief_text
-        storage.save_profile(profile)
 
     api_key = config.ai_api_key or os.environ.get("GEMINI_API_KEY")
     model = config.ai_model

@@ -69,7 +69,7 @@ def _new_isolated_page(browser, *, width: int = 1440, height: int = 900):
     return context, page
 
 
-def _mock_base_apis(page, *, opps=None, apps=None, config=None):
+def _mock_base_apis(page, *, opps=None, apps=None, config=None, profile=None):
     page.route(
         "**/api/opportunities*",
         lambda route: route.fulfill(
@@ -95,6 +95,27 @@ def _mock_base_apis(page, *, opps=None, apps=None, config=None):
                 config
                 if config is not None
                 else {"target_roles": ["Product Designer"], "ai_provider": "auto"}
+            ),
+        ),
+    )
+    page.route(
+        "**/api/profile",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                profile
+                if profile is not None
+                else {
+                    "user": {"id": "usr_test", "email": "user@jobby.local", "full_name": "Mon Profil Candidat"},
+                    "profile": {
+                        "user_id": "usr_test",
+                        "target_roles": ["Product Designer"],
+                        "skills": ["Figma"],
+                        "ideal_job_brief": None,
+                    },
+                    "has_cv": False,
+                }
             ),
         ),
     )
@@ -193,6 +214,10 @@ def test_kanban_badge_live_count_and_api_failure_fallback(browser, live_server_u
     page_err.route(
         "**/api/config",
         lambda route: route.fulfill(status=500, content_type="application/json", body='{"detail":"config down"}'),
+    )
+    page_err.route(
+        "**/api/profile",
+        lambda route: route.fulfill(status=200, content_type="application/json", body='{"profile":{"ideal_job_brief":null}}'),
     )
     try:
         page_err.goto(live_server_url, wait_until="networkidle")
@@ -324,6 +349,10 @@ def test_api_401_rejects_typed_error_and_displays_toast(browser, live_server_url
     page.route(
         "**/api/config",
         lambda route: route.fulfill(status=200, content_type="application/json", body="{}"),
+    )
+    page.route(
+        "**/api/profile",
+        lambda route: route.fulfill(status=200, content_type="application/json", body='{"profile":{"ideal_job_brief":null}}'),
     )
 
     try:
@@ -504,6 +533,7 @@ def test_feed_error_state_and_retry_recovery(browser, live_server_url):
     page.route("**/api/opportunities*", handle_opps)
     page.route("**/api/applications*", lambda route: route.fulfill(status=200, content_type="application/json", body="[]"))
     page.route("**/api/config", lambda route: route.fulfill(status=200, content_type="application/json", body="{}"))
+    page.route("**/api/profile", lambda route: route.fulfill(status=200, content_type="application/json", body='{"profile":{"ideal_job_brief":null}}'))
 
     try:
         page.goto(live_server_url, wait_until="networkidle")
@@ -2016,6 +2046,7 @@ def test_modal_hunt_prefill_submit_refetch_and_errors(browser, live_server_url):
             ),
         ),
     )
+    page.route("**/api/profile", lambda r: r.fulfill(status=200, content_type="application/json", body='{"profile":{"ideal_job_brief":null}}'))
     page.route("**/api/search", handle_search)
 
     try:
@@ -2109,6 +2140,7 @@ def test_modal_hunt_prefill_submit_refetch_and_errors(browser, live_server_url):
     page_pending.route("**/api/opportunities*", handle_pending_opps)
     page_pending.route("**/api/applications*", lambda r: r.fulfill(status=200, content_type="application/json", body="[]"))
     page_pending.route("**/api/config", lambda r: r.fulfill(status=200, content_type="application/json", body='{"target_roles":["Designer"]}'))
+    page_pending.route("**/api/profile", lambda r: r.fulfill(status=200, content_type="application/json", body='{"profile":{"ideal_job_brief":null}}'))
     page_pending.route("**/api/search", handle_pending_search)
 
     try:
@@ -2146,6 +2178,7 @@ def test_modal_hunt_prefill_submit_refetch_and_errors(browser, live_server_url):
     page_err.route("**/api/opportunities*", lambda r: r.fulfill(status=200, content_type="application/json", body="[]"))
     page_err.route("**/api/applications*", lambda r: r.fulfill(status=200, content_type="application/json", body="[]"))
     page_err.route("**/api/config", lambda r: r.fulfill(status=500, content_type="application/json", body='{"detail":"config down"}'))
+    page_err.route("**/api/profile", lambda r: r.fulfill(status=200, content_type="application/json", body='{"profile":{"ideal_job_brief":null}}'))
     page_err.route(
         "**/api/search",
         lambda r: (
@@ -2172,3 +2205,312 @@ def test_modal_hunt_prefill_submit_refetch_and_errors(browser, live_server_url):
         assert not page_err.locator("#modal-hunt").is_visible()
     finally:
         ctx_err.close()
+
+
+def test_profile_hydration_on_boot_reload_and_error_handling(browser, live_server_url):
+    context, page = _new_isolated_page(browser)
+    errors = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+    brief_state = {"value": "Lead Product Designer Figma full remote"}
+    put_calls = []
+
+    def handle_profile(route):
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "user": {"id": "usr_1", "email": "user@jobby.local", "full_name": "Mon Profil Candidat"},
+                    "profile": {
+                        "user_id": "usr_1",
+                        "target_roles": ["Product Designer"],
+                        "skills": ["Figma"],
+                        "ideal_job_brief": brief_state["value"],
+                    },
+                    "has_cv": False,
+                }
+            ),
+        )
+
+    def handle_profile_brief(route):
+        payload = route.request.post_data_json
+        put_calls.append({"method": route.request.method, "body": payload})
+        raw = payload.get("brief") if isinstance(payload, dict) else None
+        cleaned = raw.strip() if isinstance(raw, str) else ""
+        brief_state["value"] = cleaned or None
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "status": "saved",
+                    "ideal_job_brief": brief_state["value"],
+                    "profile": {
+                        "user_id": "usr_1",
+                        "target_roles": ["Product Designer"],
+                        "skills": ["Figma"],
+                        "ideal_job_brief": brief_state["value"],
+                    },
+                }
+            ),
+        )
+
+    _mock_base_apis(page)
+    page.unroute("**/api/profile")
+    page.route("**/api/profile", handle_profile)
+    page.route("**/api/profile/brief", handle_profile_brief)
+
+    try:
+        # 1. Boot hydrates state.profile via GET /api/profile
+        page.goto(live_server_url, wait_until="networkidle")
+        boot_state = page.evaluate(
+            """async () => {
+                const { getState } = await import('/static/js/state.js');
+                return { profile: getState().profile, profileError: getState().profileError };
+            }"""
+        )
+        assert boot_state["profileError"] is None
+        assert boot_state["profile"]["ideal_job_brief"] == "Lead Product Designer Figma full remote"
+
+        # 2. saveProfileBrief() + setIdealJobBrief() + extractProfileObject() edge cases (BH-3, BH-5, EH-5)
+        save_res = page.evaluate(
+            """async () => {
+                const { saveProfileBrief } = await import('/static/js/api.js');
+                const { getState, setProfile, setIdealJobBrief, subscribe } = await import('/static/js/state.js');
+                const events = [];
+                const unsub = subscribe((snap) => events.push(snap.profile?.ideal_job_brief ?? null));
+                const apiResp = await saveProfileBrief('  Design Ops Staff Remote  ');
+                setIdealJobBrief(apiResp.ideal_job_brief);
+                const blankRes = await saveProfileBrief('   ');
+                setIdealJobBrief(blankRes.ideal_job_brief);
+                const finalState = getState().profile;
+
+                // Trimming + non-emission on duplicate + ignoring non-string/non-nullish values (BH-3)
+                const beforeCount = events.length;
+                setIdealJobBrief('  Design Ops Reloaded  ');
+                const afterTrimCount = events.length;
+                setIdealJobBrief('Design Ops Reloaded'); // duplicate -> no-op
+                setIdealJobBrief(123); // non-string ignored
+                setIdealJobBrief({ invalid: true }); // non-string ignored
+                const afterIgnoredCount = events.length;
+                const afterIgnoredBrief = getState().profile?.ideal_job_brief;
+
+                // extractProfileObject rejects arrays (EH-5)
+                const savedProfile = getState().profile;
+                setProfile(['not-a-profile']);
+                const arrayRejected = getState().profile;
+                setProfile({ profile: ['nested-array'] });
+                const nestedArrayRejected = getState().profile;
+                setProfile(savedProfile);
+
+                unsub();
+                return {
+                    apiResp,
+                    blankRes,
+                    finalState,
+                    events,
+                    beforeCount,
+                    afterTrimCount,
+                    afterIgnoredCount,
+                    afterIgnoredBrief,
+                    arrayRejected,
+                    nestedArrayRejected,
+                };
+            }"""
+        )
+        assert len(put_calls) == 2
+        assert put_calls[0] == {"method": "PUT", "body": {"brief": "  Design Ops Staff Remote  "}}
+        assert put_calls[1] == {"method": "PUT", "body": {"brief": "   "}}
+        assert save_res["apiResp"]["ideal_job_brief"] == "Design Ops Staff Remote"
+        assert save_res["blankRes"]["ideal_job_brief"] is None
+        assert save_res["finalState"]["user_id"] == "usr_1"
+        assert save_res["finalState"]["target_roles"] == ["Product Designer"]
+        assert save_res["finalState"]["skills"] == ["Figma"]
+        assert save_res["finalState"]["ideal_job_brief"] is None
+        assert save_res["afterTrimCount"] == save_res["beforeCount"] + 1
+        assert save_res["afterIgnoredCount"] == save_res["afterTrimCount"]
+        assert save_res["afterIgnoredBrief"] == "Design Ops Reloaded"
+        assert save_res["arrayRejected"] is None
+        assert save_res["nestedArrayRejected"] is None
+        assert save_res["events"][:3] == ["Design Ops Staff Remote", None, "Design Ops Reloaded"]
+
+        # 3. Page reload re-hydrates state.profile from GET /api/profile
+        brief_state["value"] = "Principal Designer Reloaded"
+        page.reload(wait_until="networkidle")
+        reloaded_state = page.evaluate(
+            """async () => {
+                const { getState } = await import('/static/js/state.js');
+                return getState().profile;
+            }"""
+        )
+        assert reloaded_state["ideal_job_brief"] == "Principal Designer Reloaded"
+        assert errors == []
+    finally:
+        context.close()
+
+    # 4. API failure on GET /api/profile sets state.profileError and recovers via setIdealJobBrief
+    ctx_err, page_err = _new_isolated_page(browser)
+    err_page_errors = []
+    page_err.on("pageerror", lambda err: err_page_errors.append(str(err)))
+    _mock_base_apis(page_err)
+    page_err.unroute("**/api/profile")
+    page_err.route(
+        "**/api/profile",
+        lambda r: r.fulfill(status=500, content_type="application/json", body='{"detail":"profile down"}'),
+    )
+    try:
+        page_err.goto(live_server_url, wait_until="networkidle")
+        err_state = page_err.evaluate(
+            """async () => {
+                const { getState, setIdealJobBrief } = await import('/static/js/state.js');
+                const before = { profile: getState().profile, profileError: getState().profileError };
+                setIdealJobBrief('  Recovered Brief  ');
+                const after = { profile: getState().profile, profileError: getState().profileError };
+                return { before, after };
+            }"""
+        )
+        assert err_state["before"]["profile"] is None
+        assert err_state["before"]["profileError"] == "profile down"
+        assert err_state["after"]["profile"]["ideal_job_brief"] == "Recovered Brief"
+        assert err_state["after"]["profileError"] is None
+        assert err_page_errors == []
+    finally:
+        ctx_err.close()
+
+    # 5. Late GET /api/profile resolution does not overwrite concurrent setIdealJobBrief() (EH-7)
+    ctx_race, page_race = _new_isolated_page(browser)
+    held_profile_routes = []
+    _mock_base_apis(page_race)
+    page_race.unroute("**/api/profile")
+    page_race.route("**/api/profile", lambda r: held_profile_routes.append(r))
+    try:
+        page_race.goto(live_server_url, wait_until="domcontentloaded")
+        page_race.wait_for_function("() => document.readyState === 'complete'")
+        page_race.wait_for_timeout(100)
+        assert len(held_profile_routes) == 1
+
+        page_race.evaluate(
+            """async () => {
+                const { setIdealJobBrief } = await import('/static/js/state.js');
+                setIdealJobBrief('InFlight User Edit');
+            }"""
+        )
+        held_profile_routes[0].fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"profile": {"user_id": "usr_1", "ideal_job_brief": "Stale Server Brief"}}),
+        )
+        page_race.wait_for_timeout(100)
+        race_brief = page_race.evaluate(
+            """async () => {
+                const { getState } = await import('/static/js/state.js');
+                return getState().profile?.ideal_job_brief ?? null;
+            }"""
+        )
+        assert race_brief == "InFlight User Edit"
+    finally:
+        ctx_race.close()
+
+
+def test_profile_brief_e2e_unmocked_sqlite_persistence(browser, live_server_url, monkeypatch, tmp_path):
+    from jobby.config import JobbyConfig, save_config
+
+    db_path = tmp_path / "e2e_brief.db"
+    cfg_path = tmp_path / "e2e_config.yaml"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    save_config(
+        JobbyConfig(
+            target_roles=["Lead Designer", "Design Ops"],
+            skills_keywords=["Figma", "Design System"],
+            min_salary=70000,
+            remote_only=True,
+            database_path=str(db_path),
+        ),
+        config_path=cfg_path,
+    )
+
+    context, page = _new_isolated_page(browser)
+    errors = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+
+    try:
+        # 1. Cold boot against empty SQLite DB -> GET /api/profile auto-creates profile with config defaults
+        page.goto(live_server_url, wait_until="networkidle")
+        boot_profile = page.evaluate(
+            """async () => {
+                const { getState } = await import('/static/js/state.js');
+                return { profile: getState().profile, profileError: getState().profileError };
+            }"""
+        )
+        assert boot_profile["profileError"] is None
+        assert boot_profile["profile"]["ideal_job_brief"] is None
+        assert boot_profile["profile"]["target_roles"] == ["Lead Designer", "Design Ops"]
+        assert boot_profile["profile"]["skills"] == ["Figma", "Design System"]
+
+        # 2. Save brief via unmocked saveProfileBrief() -> persists to SQLite & survives page reload
+        saved = page.evaluate(
+            """async () => {
+                const { saveProfileBrief } = await import('/static/js/api.js');
+                return await saveProfileBrief('  E2E Lead Designer Remote  ');
+            }"""
+        )
+        assert saved["status"] == "saved"
+        assert saved["ideal_job_brief"] == "E2E Lead Designer Remote"
+
+        page.reload(wait_until="networkidle")
+        reloaded = page.evaluate(
+            """async () => {
+                const { getState } = await import('/static/js/state.js');
+                return getState().profile;
+            }"""
+        )
+        assert reloaded["ideal_job_brief"] == "E2E Lead Designer Remote"
+
+        # 3. Calling saveProfileBrief() without argument (undefined) -> HTTP 422 + error toast, DB brief untouched (BH-5)
+        missing_res = page.evaluate(
+            """async () => {
+                const { saveProfileBrief, ApiError } = await import('/static/js/api.js');
+                try {
+                    await saveProfileBrief();
+                    return { ok: true };
+                } catch (err) {
+                    return { ok: false, isApiError: err instanceof ApiError, status: err.status };
+                }
+            }"""
+        )
+        assert missing_res == {"ok": False, "isApiError": True, "status": 422}
+        assert page.locator("#toast-container .jp-toast-error").count() >= 1
+
+        storage = Storage(db_path=db_path)
+        default_user = storage.get_user_by_email("user@jobby.local")
+        assert storage.get_profile(default_user.id).ideal_job_brief == "E2E Lead Designer Remote"
+
+        # 4. Clearing with whitespace '   ' and with explicit null both clear SQLite to None
+        cleared_ws = page.evaluate(
+            """async () => {
+                const { saveProfileBrief } = await import('/static/js/api.js');
+                return await saveProfileBrief('   ');
+            }"""
+        )
+        assert cleared_ws["ideal_job_brief"] is None
+        page.reload(wait_until="networkidle")
+        after_ws_reload = page.evaluate(
+            """async () => {
+                const { getState } = await import('/static/js/state.js');
+                return getState().profile.ideal_job_brief;
+            }"""
+        )
+        assert after_ws_reload is None
+
+        page.evaluate(
+            """async () => {
+                const { saveProfileBrief } = await import('/static/js/api.js');
+                await saveProfileBrief('Temporary Brief');
+                await saveProfileBrief(null);
+            }"""
+        )
+        assert storage.get_profile(default_user.id).ideal_job_brief is None
+        assert errors == []
+    finally:
+        context.close()

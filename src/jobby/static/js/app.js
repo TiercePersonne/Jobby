@@ -2,6 +2,7 @@ import {
   fetchApplications,
   fetchConfig,
   fetchOpportunities,
+  fetchProfile,
   setApiToastNotifier,
   triggerSearch,
 } from './api.js';
@@ -16,6 +17,7 @@ import {
   setConfig,
   setLoadingFeed,
   setOpportunities,
+  setProfile,
   subscribe,
 } from './state.js';
 import { showToast } from './utils.js';
@@ -451,11 +453,13 @@ function bindModalAndKeyboardEvents() {
 
 async function hydrateInitialData() {
   setLoadingFeed(true, null);
+  const initialProfileRef = getState().profile;
 
-  const [oppsRes, appsRes, configRes] = await Promise.allSettled([
+  const [oppsRes, appsRes, configRes, profileRes] = await Promise.allSettled([
     fetchOpportunities({ limit: 100 }),
     fetchApplications(),
     fetchConfig(),
+    fetchProfile(),
   ]);
 
   if (oppsRes.status === 'fulfilled') {
@@ -477,6 +481,14 @@ async function hydrateInitialData() {
     setConfig(configRes.value, null);
   } else {
     setConfig(null, configRes.reason?.message || 'Configuration indisponible.');
+  }
+
+  if (getState().profile === initialProfileRef) {
+    if (profileRes.status === 'fulfilled') {
+      setProfile(profileRes.value, null);
+    } else {
+      setProfile(null, profileRes.reason?.message || 'Profil indisponible.');
+    }
   }
 }
 

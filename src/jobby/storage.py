@@ -130,7 +130,17 @@ class Storage:
             """)
             profile_cols = {r["name"] for r in conn.execute("PRAGMA table_info(user_profiles)").fetchall()}
             if "ideal_job_brief" not in profile_cols:
-                conn.execute("ALTER TABLE user_profiles ADD COLUMN ideal_job_brief TEXT")
+                if conn.in_transaction:
+                    conn.commit()
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    profile_cols = {r["name"] for r in conn.execute("PRAGMA table_info(user_profiles)").fetchall()}
+                    if "ideal_job_brief" not in profile_cols:
+                        conn.execute("ALTER TABLE user_profiles ADD COLUMN ideal_job_brief TEXT")
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
 
             # Application Kanban Pipeline tracking table
             conn.execute("""
@@ -177,19 +187,39 @@ class Storage:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 existing = conn.execute(
-                    "SELECT id, status, score, is_seen FROM opportunities WHERE id = ?", (opp.id,)
+                    "SELECT id, status, score, is_seen, raw_metadata, score_reasons FROM opportunities WHERE id = ?",
+                    (opp.id,),
                 ).fetchone()
                 
                 is_new = existing is None
                 status = normalize_opportunity_status(existing["status"] if existing else opp.status)
-                score = opp.score if opp.score is not None else (existing["score"] if existing else None)
                 is_seen = bool(existing["is_seen"]) if existing else bool(opp.is_seen)
+
+                existing_meta = self._parse_raw_metadata(existing["raw_metadata"]) if existing else {}
+                incoming_meta = opp.raw_metadata if isinstance(opp.raw_metadata, dict) else {}
+                merged_meta = {**existing_meta, **incoming_meta}
+
+                preserve_ai_match = (
+                    existing is not None
+                    and "ai_match" in existing_meta
+                    and "ai_match" not in incoming_meta
+                )
+                if preserve_ai_match:
+                    score = existing["score"] if existing["score"] is not None else opp.score
+                    try:
+                        parsed_reasons = json.loads(existing["score_reasons"]) if existing["score_reasons"] else []
+                        score_reasons = parsed_reasons if isinstance(parsed_reasons, list) else []
+                    except (ValueError, TypeError):
+                        score_reasons = []
+                else:
+                    score = opp.score if opp.score is not None else (existing["score"] if existing else None)
+                    score_reasons = list(opp.score_reasons)
 
                 published_str = opp.published_at.isoformat() if opp.published_at else None
                 discovered_str = opp.discovered_at.isoformat()
-                reasons_json = json.dumps(opp.score_reasons, ensure_ascii=False)
+                reasons_json = json.dumps(score_reasons, ensure_ascii=False)
                 tags_json = json.dumps(opp.tags, ensure_ascii=False)
-                raw_meta_json = json.dumps(opp.raw_metadata, ensure_ascii=False)
+                raw_meta_json = json.dumps(merged_meta, ensure_ascii=False)
 
                 conn.execute("""
                     INSERT INTO opportunities (
@@ -208,6 +238,7 @@ class Storage:
                         score = COALESCE(excluded.score, opportunities.score),
                         score_reasons = excluded.score_reasons,
                         tags = excluded.tags,
+                        raw_metadata = excluded.raw_metadata,
                         post_intent = COALESCE(excluded.post_intent, opportunities.post_intent),
                         ai_summary = COALESCE(excluded.ai_summary, opportunities.ai_summary)
                 """, (
@@ -243,7 +274,9 @@ class Storage:
 
         opp.status = status
         opp.score = score
+        opp.score_reasons = score_reasons
         opp.is_seen = is_seen
+        opp.raw_metadata = merged_meta
         return is_new, opp
 
     def get_opportunity(self, opp_id: str) -> Optional[JobOpportunity]:
@@ -342,12 +375,25 @@ class Storage:
             }
 
     @staticmethod
+    def _parse_raw_metadata(raw_value: Any) -> Dict[str, Any]:
+        """Parses raw_metadata JSON safely, ignoring corrupted or non-dict values."""
+        if not raw_value:
+            return {}
+        if isinstance(raw_value, dict):
+            return dict(raw_value)
+        try:
+            parsed = json.loads(raw_value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+
+    @staticmethod
     def _row_to_opportunity(row: sqlite3.Row) -> JobOpportunity:
         published_at = datetime.fromisoformat(row["published_at"]) if row["published_at"] else None
         discovered_at = datetime.fromisoformat(row["discovered_at"])
         reasons = json.loads(row["score_reasons"]) if row["score_reasons"] else []
         tags = json.loads(row["tags"]) if row["tags"] else []
-        raw_meta = json.loads(row["raw_metadata"]) if row["raw_metadata"] else {}
+        raw_meta = Storage._parse_raw_metadata(row["raw_metadata"])
 
         post_intent = row["post_intent"] if "post_intent" in row.keys() else None
         ai_summary = row["ai_summary"] if "ai_summary" in row.keys() else None
@@ -400,6 +446,47 @@ class Storage:
             conn.commit()
         return user
 
+    def ensure_user(self, user: User) -> User:
+        """Atomically fetches or inserts a user by email without raising IntegrityError on races."""
+        normalized_email = user.email.strip().lower()
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute(
+                    "SELECT * FROM users WHERE lower(email) = lower(?)",
+                    (normalized_email,),
+                ).fetchone()
+                if not row:
+                    conn.execute(
+                        """
+                        INSERT INTO users (id, email, full_name, password_hash, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(email) DO NOTHING
+                        """,
+                        (
+                            user.id,
+                            normalized_email,
+                            user.full_name,
+                            user.password_hash,
+                            user.created_at.isoformat(),
+                        ),
+                    )
+                    row = conn.execute(
+                        "SELECT * FROM users WHERE lower(email) = lower(?)",
+                        (normalized_email,),
+                    ).fetchone()
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            return User(
+                id=row["id"],
+                email=row["email"],
+                full_name=row["full_name"],
+                password_hash=row["password_hash"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+            )
+
     def get_user_by_email(self, email: str) -> Optional[User]:
         with self._connection() as conn:
             row = conn.execute(
@@ -435,6 +522,26 @@ class Storage:
     # -------------------------------------------------------------
     # User Profile, CV & Tone of Voice
     # -------------------------------------------------------------
+    @staticmethod
+    def _row_to_profile(row: sqlite3.Row) -> UserProfile:
+        return UserProfile(
+            user_id=row["user_id"],
+            cv_filename=row["cv_filename"],
+            cv_text=row["cv_text"],
+            portfolio_url=row["portfolio_url"],
+            github_url=row["github_url"],
+            linkedin_url=row["linkedin_url"],
+            bio=row["bio"],
+            writing_sample=row["writing_sample"],
+            writing_tone=row["writing_tone"] or "naturel, direct, enthousiaste et percutant",
+            target_roles=json.loads(row["target_roles"]) if row["target_roles"] else [],
+            skills=json.loads(row["skills"]) if row["skills"] else [],
+            min_salary=row["min_salary"],
+            remote_preference=row["remote_preference"],
+            ideal_job_brief=row["ideal_job_brief"] if "ideal_job_brief" in row.keys() else None,
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
     def get_profile(self, user_id: str) -> Optional[UserProfile]:
         with self._connection() as conn:
             row = conn.execute(
@@ -443,25 +550,49 @@ class Storage:
             ).fetchone()
             if not row:
                 return None
-            return UserProfile(
-                user_id=row["user_id"],
-                cv_filename=row["cv_filename"],
-                cv_text=row["cv_text"],
-                portfolio_url=row["portfolio_url"],
-                github_url=row["github_url"],
-                linkedin_url=row["linkedin_url"],
-                bio=row["bio"],
-                writing_sample=row["writing_sample"],
-                writing_tone=row["writing_tone"] or "naturel, direct, enthousiaste et percutant",
-                target_roles=json.loads(row["target_roles"]) if row["target_roles"] else [],
-                skills=json.loads(row["skills"]) if row["skills"] else [],
-                min_salary=row["min_salary"],
-                remote_preference=row["remote_preference"],
-                ideal_job_brief=row["ideal_job_brief"] if "ideal_job_brief" in row.keys() else None,
-                updated_at=datetime.fromisoformat(row["updated_at"]),
+            return self._row_to_profile(row)
+
+    def ensure_profile(self, profile: UserProfile) -> UserProfile:
+        """Atomically inserts a default profile if missing without overwriting existing fields."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO user_profiles (
+                    user_id, cv_filename, cv_text, portfolio_url, github_url,
+                    linkedin_url, bio, writing_sample, writing_tone, target_roles,
+                    skills, min_salary, remote_preference, ideal_job_brief, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO NOTHING
+                """,
+                (
+                    profile.user_id,
+                    profile.cv_filename,
+                    profile.cv_text,
+                    profile.portfolio_url,
+                    profile.github_url,
+                    profile.linkedin_url,
+                    profile.bio,
+                    profile.writing_sample,
+                    profile.writing_tone,
+                    json.dumps(profile.target_roles),
+                    json.dumps(profile.skills),
+                    profile.min_salary,
+                    profile.remote_preference,
+                    profile.ideal_job_brief,
+                    now_iso,
+                ),
             )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM user_profiles WHERE user_id = ?",
+                (profile.user_id,),
+            ).fetchone()
+            return self._row_to_profile(row)
 
     def save_profile(self, profile: UserProfile) -> None:
+        now = datetime.now(timezone.utc)
         with self._connection() as conn:
             conn.execute(
                 """
@@ -502,10 +633,11 @@ class Storage:
                     profile.min_salary,
                     profile.remote_preference,
                     profile.ideal_job_brief,
-                    datetime.now(timezone.utc).isoformat(),
+                    now.isoformat(),
                 ),
             )
             conn.commit()
+        profile.updated_at = now
 
     # -------------------------------------------------------------
     # Embedded Application Kanban Pipeline
