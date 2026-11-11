@@ -265,5 +265,34 @@ def show_providers() -> None:
     console.print(table)
 
 
+@app.command("ui")
+def start_ui(
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Adresse IP d'écoute"),
+    port: int = typer.Option(8000, "--port", "-p", help="Port d'écoute"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Ne pas ouvrir automatiquement le navigateur"),
+) -> None:
+    """Lance le serveur web PWA de Jobby et ouvre l'interface dans le navigateur."""
+    import threading
+    import webbrowser
+    import uvicorn
+
+    url = f"http://{host}:{port}"
+    console.print(Panel(
+        f"[bold green]Application Jobby PWA disponible ![/bold green]\n\n"
+        f"[dim]Interface :[/dim] [underline cyan]{url}[/underline cyan]\n"
+        f"[dim]PWA Manifest :[/dim] [cyan]{url}/manifest.json[/cyan]\n"
+        f"[dim]Service Worker :[/dim] [cyan]{url}/sw.js[/cyan]\n\n"
+        f"[dim]Appuyez sur Ctrl+C pour arreter le serveur.[/dim]",
+        title="Jobby Web Dashboard (PWA)",
+        border_style="cyan",
+        safe_box=True,
+    ))
+
+    if not no_browser:
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+
+    uvicorn.run("jobby.server:app", host=host, port=port, reload=False)
+
+
 if __name__ == "__main__":
     app()

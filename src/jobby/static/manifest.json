@@ -1,0 +1,24 @@
+{
+  "name": "Jobby — Chasseur d'Emploi Intelligent",
+  "short_name": "Jobby",
+  "description": "Agent autonome multi-sources de recherche d'emploi et posts informels de recruteurs",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0284c7",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jobby — Chasseur d'Emploi Intelligent</title>
+  
+  <!-- PWA Meta tags -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0284c7">
+  <meta name="description" content="Agent intelligent de veille et capture d'opportunités d'emploi & posts LinkedIn">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="icon" type="image/png" href="/static/icon-192.png">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              500: '#0284c7',
+              600: '#0369a1',
+              700: '#075985',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-sky-500 selection:text-white">
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 sticky top-0 z-40 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+        <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <circle cx="12" cy="12" r="9" stroke-width="2" />
+          <circle cx="12" cy="12" r="4" stroke-width="2" />
+          <circle cx="12" cy="12" r="1" fill="currentColor" />
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-xl font-black tracking-tight bg-gradient-to-r from-white via-sky-200 to-sky-400 bg-clip-text text-transparent">Jobby</h1>
+        <p class="text-xs text-slate-400 font-medium">Agent IA Chasseur d'Emploi & Posts</p>
+      </div>
+    </div>
+
+    <!-- PWA Install & Quick Stats -->
+    <div class="flex items-center gap-3">
+      <button id="pwa-install-btn" class="hidden items-center gap-2 px-3 py-1.5 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs font-semibold hover:bg-sky-500/20 transition">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        Installer l'App (PWA)
+      </button>
+
+      <div class="hidden sm:flex items-center gap-2 text-xs bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-slate-300 font-medium" id="header-stats">Chargement...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER (SPLIT LAYOUT) -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- LEFT COLUMN: CRITERIA FORM -->
+    <section class="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-5 h-fit lg:sticky lg:top-20">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h2 class="font-bold text-base text-slate-200 flex items-center gap-2">
+          <span>🎯</span> Critères de Recherche
+        </h2>
+        <button id="save-config-btn" title="Sauvegarder par défaut" class="text-xs text-sky-400 hover:text-sky-300 font-medium">Sauvegarder</button>
+      </div>
+
+      <!-- Job Title / Keywords -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Poste / Métier recherché</label>
+        <input type="text" id="input-role" placeholder="ex: Développeur Python, Data Engineer"
+               class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition">
+        <p class="text-[11px] text-slate-400 mt-1">Séparez par des virgules pour plusieurs rôles</p>
+      </div>
+
+      <!-- Location & Remote -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Lieu</label>
+          <input type="text" id="input-location" placeholder="ex: Paris, France"
+                 class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Télétravail</label>
+          <select id="select-remote" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500 transition">
+            <option value="all">Indifférent / Tous</option>
+            <option value="remote_only">100% Remote</option>
+            <option value="hybrid">Hybride accepté</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Salary Range -->
+      <div>
+        <div class="flex justify-between items-center mb-1.5">
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Salaire Min. Annuel</label>
+          <span id="salary-display" class="text-xs font-bold text-sky-400">45 000 €</span>
+        </div>
+        <input type="range" id="input-salary" min="30" max="130" step="5" value="45"
+               class="w-full accent-sky-500 bg-slate-950 cursor-pointer">
+        <div class="flex justify-between text-[10px] text-slate-400">
+          <span>30k €</span>
+          <span>60k €</span>
+          <span>90k €</span>
+          <span>120k+ €</span>
+        </div>
+      </div>
+
+      <!-- Key Skills / Stack -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Compétences clés / Stack</label>
+        <input type="text" id="input-skills" placeholder="ex: FastAPI, Docker, LLM, PostgreSQL"
+               class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition">
+      </div>
+
+      <!-- Exclusions -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Exclure (mots négatifs)</label>
+        <input type="text" id="input-negatives" placeholder="ex: Stage, Alternance, Junior"
+               class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition">
+      </div>
+
+      <!-- Platforms Selection -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Sources actives</label>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
+            <input type="checkbox" id="src-linkedin" checked class="rounded accent-sky-500">
+            <span class="font-medium text-slate-200">LinkedIn (Offres)</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-sky-500/30 bg-sky-950/10 cursor-pointer hover:border-sky-500/50">
+            <input type="checkbox" id="src-linkedin-posts" checked class="rounded accent-sky-500">
+            <span class="font-bold text-sky-300">LinkedIn (Posts) 🔥</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
+            <input type="checkbox" id="src-hellowork" checked class="rounded accent-sky-500">
+            <span class="font-medium text-slate-200">HelloWork</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700">
+            <input type="checkbox" id="src-wttj" checked class="rounded accent-sky-500">
+            <span class="font-medium text-slate-200">WTTJ</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Action Button -->
+      <button id="search-btn" class="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-bold text-sm shadow-lg shadow-sky-500/25 hover:from-sky-400 hover:to-indigo-500 transition-all flex items-center justify-center gap-2">
+        <svg id="search-spinner" class="hidden animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+        <span id="search-btn-text">🚀 Lancer la Chasse</span>
+      </button>
+    </section>
+
+    <!-- RIGHT COLUMN: RESULTS PANE -->
+    <section class="lg:col-span-8 flex flex-col gap-4">
+
+      <!-- FILTER TABS & SEARCH BAR -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row gap-3 items-center justify-between">
+        <!-- Tabs -->
+        <div class="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0" id="tabs-container">
+          <button class="tab-btn active px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-500 text-white" data-filter="all">Tous (<span id="count-all">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="top">🌟 Matchs ≥ 70% (<span id="count-top">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="post">📢 Posts Réseau (<span id="count-posts">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="saved">📌 Favoris (<span id="count-saved">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="applied">✉️ Postulés (<span id="count-applied">0</span>)</button>
+        </div>
+
+        <!-- Quick filter in current results -->
+        <div class="relative w-full sm:w-48">
+          <input type="text" id="quick-filter" placeholder="Filtrer résultats..."
+                 class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500">
+        </div>
+      </div>
+
+      <!-- RESULTS LIST CONTAINER -->
+      <div id="results-container" class="flex flex-col gap-3 min-h-[400px]">
+        <!-- Cards inserted dynamically -->
+      </div>
+    </section>
+  </main>
+
+  <!-- PWA SERVICE WORKER & APP LOGIC SCRIPT -->
+  <script>
+    // PWA Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => console.log('[PWA] Service Worker registered'))
+          .catch(err => console.log('[PWA] Service Worker error:', err));
+      });
+    }
+
+    // PWA Install prompt handling
+    let deferredPrompt;
+    const pwaBtn = document.getElementById('pwa-install-btn');
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      pwaBtn.classList.remove('hidden');
+      pwaBtn.classList.add('flex');
+    });
+
+    pwaBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        pwaBtn.classList.add('hidden');
+      }
+      deferredPrompt = null;
+    });
+
+    // STATE
+    let allOpportunities = [];
+    let currentFilter = 'all';
+
+    // ELEMENTS
+    const inputRole = document.getElementById('input-role');
+    const inputLocation = document.getElementById('input-location');
+    const selectRemote = document.getElementById('select-remote');
+    const inputSalary = document.getElementById('input-salary');
+    const salaryDisplay = document.getElementById('salary-display');
+    const inputSkills = document.getElementById('input-skills');
+    const inputNegatives = document.getElementById('input-negatives');
+    const searchBtn = document.getElementById('search-btn');
+    const searchSpinner = document.getElementById('search-spinner');
+    const searchBtnText = document.getElementById('search-btn-text');
+    const resultsContainer = document.getElementById('results-container');
+    const quickFilter = document.getElementById('quick-filter');
+
+    // Salary slider label update
+    inputSalary.addEventListener('input', (e) => {
+      salaryDisplay.textContent = `${e.target.value} 000 €`;
+    });
+
+    // LOAD INITIAL CONFIG & OPPORTUNITIES
+    async function init() {
+      try {
+        const configResp = await fetch('/api/config');
+        const config = await configResp.json();
+        
+        inputRole.value = config.target_roles.join(', ');
+        inputLocation.value = config.preferred_locations[0] || 'Paris';
+        selectRemote.value = config.remote_only ? 'remote_only' : 'all';
+        inputSalary.value = config.min_salary || 45;
+        salaryDisplay.textContent = `${inputSalary.value} 000 €`;
+        inputSkills.value = config.skills_keywords.join(', ');
+        inputNegatives.value = config.negative_keywords.join(', ');
+
+        // Load existing stored opportunities
+        await loadOpportunities();
+        await updateStats();
+      } catch (err) {
+        console.error('Init error:', err);
+      }
+    }
+
+    async function loadOpportunities() {
+      try {
+        const resp = await fetch('/api/opportunities?limit=80');
+        allOpportunities = await resp.json();
+        render();
+      } catch (e) {
+        console.error('Failed to load opportunities:', e);
+      }
+    }
+
+    async function updateStats() {
+      try {
+        const resp = await fetch('/api/stats');
+        const stats = await resp.json();
+        document.getElementById('header-stats').textContent = 
+          `${stats.total} opportunités (${stats.by_type?.post || 0} posts, ${stats.by_type?.offer || 0} offres)`;
+      } catch (e) {}
+    }
+
+    // SEARCH TRIGGER
+    searchBtn.addEventListener('click', async () => {
+      setLoading(true);
+
+      const roles = inputRole.value.split(',').map(s => s.strip ? s.strip() : s.trim()).filter(Boolean);
+      const sources = [];
+      if (document.getElementById('src-linkedin').checked) sources.push('linkedin');
+      if (document.getElementById('src-hellowork').checked) sources.push('hellowork');
+      if (document.getElementById('src-wttj').checked) sources.push('wttj');
+      
+      const payload = {
+        keywords: roles.length > 0 ? roles : ['Python'],
+        location: inputLocation.value.trim() || 'France',
+        remote_only: selectRemote.value === 'remote_only',
+        min_salary: parseInt(inputSalary.value),
+        include_posts: document.getElementById('src-linkedin-posts').checked,
+        include_offers: true,
+        sources: sources,
+        max_results: 30
+      };
+
+      try {
+        const res = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        allOpportunities = data.opportunities;
+        render();
+        await updateStats();
+      } catch (err) {
+        alert('Erreur lors de la recherche : ' + err);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    function setLoading(isLoading) {
+      if (isLoading) {
+        searchSpinner.classList.remove('hidden');
+        searchBtnText.textContent = 'Chasse en cours...';
+        searchBtn.disabled = true;
+      } else {
+        searchSpinner.classList.add('hidden');
+        searchBtnText.textContent = '🚀 Lancer la Chasse';
+        searchBtn.disabled = false;
+      }
+    }
+
+    // TABS LOGIC
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          b.classList.remove('bg-sky-500', 'text-white');
+          b.classList.add('bg-slate-800', 'text-slate-400');
+        });
+        btn.classList.add('bg-sky-500', 'text-white');
+        btn.classList.remove('bg-slate-800', 'text-slate-400');
+        currentFilter = btn.dataset.filter;
+        render();
+      });
+    });
+
+    quickFilter.addEventListener('input', () => {
+      render();
+    });
+
+    // UPDATE STATUS ACTION
+    async function changeStatus(id, newStatus) {
+      try {
+        await fetch(`/api/opportunities/${id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+        const item = allOpportunities.find(o => o.id === id);
+        if (item) item.status = newStatus;
+        render();
+        await updateStats();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // RENDER CARDS
+    function render() {
+      const q = quickFilter.value.toLowerCase().trim();
+
+      // Counts
+      document.getElementById('count-all').textContent = allOpportunities.length;
+      document.getElementById('count-top').textContent = allOpportunities.filter(o => (o.score || 0) >= 70).length;
+      document.getElementById('count-posts').textContent = allOpportunities.filter(o => o.opportunity_type === 'post').length;
+      document.getElementById('count-saved').textContent = allOpportunities.filter(o => o.status === 'saved').length;
+      document.getElementById('count-applied').textContent = allOpportunities.filter(o => o.status === 'applied').length;
+
+      // Filtered list
+      let filtered = allOpportunities.filter(o => {
+        if (currentFilter === 'top' && (o.score || 0) < 70) return false;
+        if (currentFilter === 'post' && o.opportunity_type !== 'post') return false;
+        if (currentFilter === 'saved' && o.status !== 'saved') return false;
+        if (currentFilter === 'applied' && o.status !== 'applied') return false;
+
+        if (q) {
+          const matchTitle = (o.title || '').toLowerCase().includes(q);
+          const matchCompany = (o.company || '').toLowerCase().includes(q);
+          const matchAuthor = (o.author_name || '').toLowerCase().includes(q);
+          const matchDesc = (o.description || '').toLowerCase().includes(q);
+          if (!matchTitle && !matchCompany && !matchAuthor && !matchDesc) return false;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        resultsContainer.innerHTML = `
+          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
+            <span class="text-4xl">🔍</span>
+            <h3 class="text-base font-bold text-slate-300">Aucune opportunité trouvée</h3>
+            <p class="text-xs text-slate-500 max-w-sm">Lancez une recherche avec le bouton de gauche ou changez d'onglet.</p>
+          </div>
+        `;
+        return;
+      }
+
+      resultsContainer.innerHTML = filtered.map(opp => {
+        const isPost = opp.opportunity_type === 'post';
+        const score = Math.round(opp.score || 0);
+
+        let scoreBadgeClass = "bg-slate-800 text-slate-300 border-slate-700";
+        if (score >= 75) scoreBadgeClass = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+        else if (score >= 50) scoreBadgeClass = "bg-amber-500/10 text-amber-400 border-amber-500/30";
+
+        const reasonsHtml = (opp.score_reasons || []).map(r => 
+          `<span class="inline-block bg-slate-800/80 text-slate-300 text-[10px] px-2 py-0.5 rounded-full border border-slate-700">${r}</span>`
+        ).join('');
+
+        const tagsHtml = (opp.tags || []).slice(0, 4).map(t =>
+          `<span class="inline-block bg-sky-950/60 text-sky-300 text-[10px] font-medium px-2 py-0.5 rounded-md border border-sky-800/40">${t}</span>`
+        ).join('');
+
+        return `
+          <article class="bg-slate-900 border ${isPost ? 'border-sky-500/40 shadow-sky-500/5' : 'border-slate-800'} rounded-2xl p-4 sm:p-5 shadow-lg hover:border-slate-700 transition flex flex-col gap-3">
+            
+            <!-- Top Card Header -->
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-bold px-2 py-0.5 rounded-lg border ${scoreBadgeClass}">
+                  ${score}% match
+                </span>
+                <span class="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300">
+                  ${opp.source}
+                </span>
+                ${isPost ? `
+                  <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-sm flex items-center gap-1">
+                    📢 Post Réseau
+                  </span>
+                ` : `
+                  <span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-800/50 text-slate-400 border border-slate-700">
+                    🏢 Offre
+                  </span>
+                `}
+                ${opp.remote_policy === 'full' ? `
+                  <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    100% Remote
+                  </span>
+                ` : ''}
+              </div>
+
+              <!-- Status Dropdown / Action -->
+              <select onchange="changeStatus('${opp.id}', this.value)" class="text-[11px] bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-300 focus:outline-none">
+                <option value="new" ${opp.status === 'new' ? 'selected' : ''}>Nouveau</option>
+                <option value="saved" ${opp.status === 'saved' ? 'selected' : ''}>⭐ Favori</option>
+                <option value="applied" ${opp.status === 'applied' ? 'selected' : ''}>✉️ Postulé</option>
+                <option value="interview" ${opp.status === 'interview' ? 'selected' : ''}>📅 Entretien</option>
+                <option value="archived" ${opp.status === 'archived' ? 'selected' : ''}>✖️ Archivé</option>
+              </select>
+            </div>
+
+            <!-- Job Title -->
+            <h3 class="text-base font-bold text-white hover:text-sky-400 transition">
+              <a href="${opp.url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5">
+                <span>${opp.title}</span>
+                <svg class="w-3.5 h-3.5 text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
+            </h3>
+
+            <!-- Recruiter / Author details (for posts) -->
+            ${opp.author_name ? `
+              <div class="flex items-center gap-2 p-2 bg-slate-950/80 rounded-xl border border-slate-800 text-xs text-slate-300">
+                <div class="w-7 h-7 rounded-full bg-sky-600/30 text-sky-400 flex items-center justify-center font-bold">
+                  ${opp.author_name.charAt(0)}
+                </div>
+                <div class="flex flex-col">
+                  <span class="font-bold text-slate-200">${opp.author_name}</span>
+                  <span class="text-[11px] text-slate-400">${opp.author_title || 'Recruteur / Réseau'}</span>
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- Company / Location / Salary -->
+            <div class="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
+              ${opp.company ? `<span class="flex items-center gap-1">🏢 <strong>${opp.company}</strong></span>` : ''}
+              ${opp.location ? `<span class="flex items-center gap-1">📍 ${opp.location}</span>` : ''}
+              ${opp.salary_raw ? `<span class="flex items-center gap-1 text-emerald-400 font-semibold">💰 ${opp.salary_raw}</span>` : ''}
+            </div>
+
+            <!-- Snippet -->
+            ${opp.description ? `
+              <p class="text-xs text-slate-400 leading-relaxed line-clamp-2 italic bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60">
+                "${opp.description.replace(/\n+/g, ' ')}"
+              </p>
+            ` : ''}
+
+            <!-- Footer: Match Reasons & Tags -->
+            <div class="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-800/80">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                ${reasonsHtml}
+                ${tagsHtml}
+              </div>
+              <a href="${opp.url}" target="_blank" rel="noopener noreferrer" 
+                 class="px-3 py-1.5 rounded-lg bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 text-xs font-semibold transition flex items-center gap-1">
+                <span>Voir ${isPost ? 'le Post' : "l'Offre"}</span>
+                <span>↗</span>
+              </a>
+            </div>
+
+          </article>
+        `;
+      }).join('');
+    }
+
+    // Save criteria as default config
+    document.getElementById('save-config-btn').addEventListener('click', async () => {
+      const roles = inputRole.value.split(',').map(s => s.trim()).filter(Boolean);
+      const skills = inputSkills.value.split(',').map(s => s.trim()).filter(Boolean);
+      const negatives = inputNegatives.value.split(',').map(s => s.trim()).filter(Boolean);
+      
+      const updated = {
+        target_roles: roles,
+        preferred_locations: [inputLocation.value.trim() || 'Paris'],
+        remote_only: selectRemote.value === 'remote_only',
+        min_salary: parseInt(inputSalary.value),
+        skills_keywords: skills,
+        negative_keywords: negatives,
+      };
+
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updated)
+        });
+        alert('Préférences sauvegardées par défaut avec succès !');
+      } catch (e) {
+        alert('Erreur de sauvegarde: ' + e);
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>
