@@ -139,31 +139,47 @@ class LinkedInProvider(JobSourceProvider):
         return opportunities
 
     async def _enrich_job_description(self, client: httpx.AsyncClient, opp: JobOpportunity) -> None:
-        """Fetch full job posting details from LinkedIn guest API."""
+        """Fetch full job posting details from LinkedIn guest API or fallback to view page."""
         m = re.search(r"(\d{8,12})", opp.url)
         if not m:
             return
         job_id = m.group(1)
         api_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
-        try:
-            resp = await client.get(api_url, timeout=10.0)
-            if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
-                desc_elem = soup.find(class_=re.compile(r"show-more-less-html__markup|description__text", re.I))
+        view_url = f"https://www.linkedin.com/jobs/view/{job_id}/"
 
-                parts: List[str] = []
-                criteria = soup.find_all(class_=re.compile(r"description__job-criteria-item", re.I))
-                criteria_texts = [c.get_text(" : ", strip=True) for c in criteria if c.get_text(strip=True)]
-                if criteria_texts:
-                    parts.append("📌 Informations clés :\n• " + "\n• ".join(criteria_texts))
+        for target_url in [api_url, view_url]:
+            try:
+                resp = await client.get(target_url, timeout=12.0)
+                if resp.status_code == 200:
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    desc_elem = soup.find(class_=re.compile(r"show-more-less-html__markup|description__text", re.I))
 
-                if desc_elem:
-                    parts.append("📝 Descriptif complet du poste :\n" + desc_elem.get_text("\n", strip=True))
+                    parts: List[str] = []
+                    criteria = soup.find_all(class_=re.compile(r"description__job-criteria-item", re.I))
+                    criteria_texts = [c.get_text(" : ", strip=True) for c in criteria if c.get_text(strip=True)]
+                    if criteria_texts:
+                        parts.append("📌 Informations clés :\n• " + "\n• ".join(criteria_texts))
 
-                if parts:
-                    opp.description = "\n\n".join(parts)
-        except Exception as e:
-            logger.debug(f"Could not enrich LinkedIn job {job_id}: {e}")
+                    if desc_elem:
+                        parts.append("📝 Descriptif complet du poste :\n" + desc_elem.get_text("\n", strip=True))
+
+                    if parts:
+                        opp.description = "\n\n".join(parts)
+                        return
+                elif resp.status_code == 429:
+                    # Rate limit hit on first endpoint, fall back to view_url
+                    continue
+            except Exception as e:
+                logger.debug(f"Could not enrich LinkedIn job {job_id} via {target_url}: {e}")
+
+        # If external fetch was completely unavailable, ensure clean summary
+        if not opp.description or len(opp.description) < 60 or "il y a" in opp.description:
+            opp.description = (
+                f"Offre LinkedIn : {opp.title}"
+                + (f" chez {opp.company}" if opp.company else "")
+                + (f" ({opp.location})" if opp.location else "")
+                + ".\n\nConsultez l'offre directement sur LinkedIn pour afficher le descriptif complet et postuler."
+            )
 
     def _parse_job_cards(self, html_content: str) -> List[JobOpportunity]:
         """Parse job cards from LinkedIn guest HTML response."""
@@ -201,14 +217,17 @@ class LinkedInProvider(JobSourceProvider):
             salary_elem = item.find("span", class_=re.compile(r"job-search-card__salary-info", re.I))
             salary = salary_elem.get_text(strip=True) if salary_elem else None
 
-            # Card snippet or summary description
-            snippet_elem = item.find(class_=re.compile(r"job-search-card__snippet|job-snippet|base-search-card__metadata", re.I))
+            # Card snippet (only genuine job snippet, ignore date/city badges)
+            snippet_elem = item.find(class_=re.compile(r"job-search-card__snippet|job-snippet", re.I))
             snippet = snippet_elem.get_text(strip=True) if snippet_elem else None
+            if snippet and (len(snippet) < 30 or any(x in snippet.lower() for x in ["il y a", "recrutement actif"])):
+                snippet = None
+
             description = snippet or (
-                f"Offre LinkedIn pour le poste de {title}"
+                f"Offre LinkedIn : {title}"
                 + (f" chez {company}" if company else "")
-                + (f" à {location}" if location else "")
-                + ".\nCliquez sur le lien pour afficher la fiche de poste complète sur LinkedIn et postuler."
+                + (f" ({location})" if location else "")
+                + ".\n\nCliquez sur le lien pour afficher la fiche de poste complète sur LinkedIn et postuler."
             )
 
             opp = JobOpportunity(
