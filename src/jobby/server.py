@@ -522,8 +522,8 @@ class ProfileUpdateRequest(BaseModel):
     bio: Optional[str] = None
     writing_sample: Optional[str] = None
     writing_tone: Optional[str] = None
-    target_roles: List[str] = Field(default_factory=list)
-    skills: List[str] = Field(default_factory=list)
+    target_roles: Optional[List[str]] = None
+    skills: Optional[List[str]] = None
     min_salary: Optional[int] = None
     remote_preference: Optional[str] = None
 
@@ -583,6 +583,7 @@ def update_user_profile_brief(body: BriefUpdateRequest, request: Request) -> Dic
 
 
 @app.post("/api/profile")
+@app.put("/api/profile")
 def update_user_profile(body: ProfileUpdateRequest, request: Request) -> Dict[str, Any]:
     config = load_config()
     storage = Storage(config.database_path)
@@ -592,22 +593,40 @@ def update_user_profile(body: ProfileUpdateRequest, request: Request) -> Dict[st
     cv_filename = existing.cv_filename if existing else None
     cv_text = existing.cv_text if existing else None
     ideal_job_brief = existing.ideal_job_brief if existing else None
+    raw_metadata = existing.raw_metadata if existing else {}
+
+    if body.target_roles is not None:
+        target_roles = [r.strip() for r in body.target_roles if r.strip()]
+    elif existing and existing.target_roles is not None:
+        target_roles = existing.target_roles
+    else:
+        target_roles = list(config.target_roles or [])
+
+    if body.skills is not None:
+        skills = [s.strip() for s in body.skills if s.strip()]
+    elif existing and existing.skills is not None:
+        skills = existing.skills
+    else:
+        skills = list(config.skills_keywords or [])
+
+    min_salary = max(0, body.min_salary) if body.min_salary is not None else None
 
     profile = UserProfile(
         user_id=user.id,
         cv_filename=cv_filename,
         cv_text=cv_text,
-        portfolio_url=body.portfolio_url,
-        github_url=body.github_url,
-        linkedin_url=body.linkedin_url,
-        bio=body.bio,
-        writing_sample=body.writing_sample,
-        writing_tone=body.writing_tone or "naturel, direct, enthousiaste et percutant",
-        target_roles=body.target_roles if body.target_roles else (config.target_roles or []),
-        skills=body.skills if body.skills else (config.skills_keywords or []),
-        min_salary=body.min_salary,
-        remote_preference=body.remote_preference,
+        portfolio_url=_clean_optional_str(body.portfolio_url),
+        github_url=_clean_optional_str(body.github_url),
+        linkedin_url=_clean_optional_str(body.linkedin_url),
+        bio=_clean_optional_str(body.bio),
+        writing_sample=_clean_optional_str(body.writing_sample),
+        writing_tone=_clean_optional_str(body.writing_tone) or "naturel, direct, enthousiaste et percutant",
+        target_roles=target_roles,
+        skills=skills,
+        min_salary=min_salary,
+        remote_preference=_clean_optional_str(body.remote_preference),
         ideal_job_brief=ideal_job_brief,
+        raw_metadata=raw_metadata,
     )
     storage.save_profile(profile)
     return {"status": "saved", "profile": profile.model_dump()}
@@ -619,16 +638,25 @@ async def upload_cv(file: UploadFile = File(...), request: Request = None) -> Di
     storage = Storage(config.database_path)
     user = get_current_user_or_default(request, storage)
 
+    if not file.filename or not file.filename.strip():
+        raise HTTPException(status_code=400, detail="Nom de fichier manquant.")
+
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Fichier vide.")
 
-    # Extract text from PDF / TXT
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=400,
+            detail="Le fichier dépasse la taille maximale autorisée (10 Mo).",
+        )
+
+    # Extract text from PDF / TXT / MD
     extracted_text = extract_text_from_cv(content, file.filename)
     if not extracted_text:
         raise HTTPException(
             status_code=400,
-            detail="Impossible d'extraire le texte de ce fichier. Assurez-vous d'envoyer un PDF avec du texte sélectionnable ou un fichier .txt.",
+            detail="Impossible d'extraire le texte de ce fichier. Assurez-vous d'envoyer un PDF avec du texte sélectionnable, un fichier .txt ou .md.",
         )
 
     profile = _get_or_init_profile(storage, user.id, config)
@@ -641,6 +669,7 @@ async def upload_cv(file: UploadFile = File(...), request: Request = None) -> Di
         "filename": file.filename,
         "characters_extracted": len(extracted_text),
         "preview": extracted_text[:300] + ("..." if len(extracted_text) > 300 else ""),
+        "profile": profile.model_dump(),
     }
 
 

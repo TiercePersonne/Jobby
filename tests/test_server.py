@@ -306,6 +306,166 @@ def test_brief_drawer_warm_porcelain_markup(client):
     assert "export function rankOpportunitiesByBrief" in api_js
 
 
+def test_profile_view_warm_porcelain_markup(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    html = resp.text
+
+    assert 'id="view-profile"' in html
+    profile_section = html.split('id="view-profile"', 1)[1].split('id="view-settings"', 1)[0]
+
+    # Warm Porcelain constraints
+    assert "jp-container-narrow" in html.split('id="view-profile"')[0].split("<section")[-1] or "jp-container-narrow" in profile_section[:200]
+    assert "onclick=" not in profile_section
+    assert "<script" not in profile_section.lower()
+    assert "text-[9px]" not in profile_section
+    assert "text-[10px]" not in profile_section
+    assert "text-[11px]" not in profile_section
+
+    # Key panels and IDs
+    for marker in [
+        'id="profile-form"',
+        'id="profile-cv-dropzone"',
+        'id="profile-cv-file"',
+        'id="profile-cv-status"',
+        'id="profile-cv-filename"',
+        'id="profile-cv-characters"',
+        'id="profile-cv-preview"',
+        'id="btn-profile-browse-cv"',
+        'id="profile-portfolio-url"',
+        'id="profile-github-url"',
+        'id="profile-linkedin-url"',
+        'id="profile-target-roles"',
+        'id="profile-skills"',
+        'id="profile-remote-preference"',
+        'id="profile-min-salary"',
+        'id="profile-bio"',
+        'id="profile-writing-sample"',
+        'id="profile-writing-tone"',
+        'id="btn-save-profile"',
+        'id="profile-save-status"',
+        'tabindex="-1"',
+        "CV &amp; Documents",
+        "Liens professionnels",
+        "Positionnement &amp; Compétences",
+        "Ma Voix",
+    ]:
+        assert marker in profile_section
+
+    # CSS check for dropzone
+    css_text = client.get("/static/css/tokens.css").text
+    assert ".jp-dropzone" in css_text
+
+    # JS export checks
+    api_js = client.get("/static/js/api.js").text
+    assert "export function saveProfile" in api_js
+    assert "export function uploadProfileCv" in api_js
+
+
+def test_profile_put_and_cv_upload_endpoints(client, monkeypatch, tmp_path):
+    from jobby.config import JobbyConfig, save_config
+
+    db_path = tmp_path / "profile_test.db"
+    cfg_path = tmp_path / "jobby_config.yaml"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    save_config(JobbyConfig(database_path=str(db_path), target_roles=["Designer"], skills_keywords=["Figma"]), cfg_path)
+
+    # 1. Cold start GET /api/profile
+    get_res = client.get("/api/profile")
+    assert get_res.status_code == 200
+    assert get_res.json()["has_cv"] is False
+    assert get_res.json()["profile"]["target_roles"] == ["Designer"]
+
+    # 2. PUT /api/profile updates profile and trims values
+    put_res = client.put(
+        "/api/profile",
+        json={
+            "portfolio_url": "  https://example.com/portfolio  ",
+            "github_url": "https://github.com/test",
+            "linkedin_url": "https://linkedin.com/in/test",
+            "target_roles": ["  Lead Designer  ", "Principal"],
+            "skills": ["Figma", "  Tokens "],
+            "remote_preference": "full",
+            "min_salary": 72000,
+            "bio": "  Bio courte  ",
+            "writing_sample": "  Exemple de style  ",
+            "writing_tone": "  sobre et direct  ",
+        },
+    )
+    assert put_res.status_code == 200
+    prof = put_res.json()["profile"]
+    assert prof["portfolio_url"] == "https://example.com/portfolio"
+    assert prof["target_roles"] == ["Lead Designer", "Principal"]
+    assert prof["skills"] == ["Figma", "Tokens"]
+    assert prof["bio"] == "Bio courte"
+    assert prof["writing_sample"] == "Exemple de style"
+    assert prof["writing_tone"] == "sobre et direct"
+    assert prof["min_salary"] == 72000
+    assert prof["remote_preference"] == "full"
+
+    # 3. Upload CV via POST /api/profile/upload-cv
+    cv_content = b"Candidate CV Text\nExperience in Figma and UI design."
+    up_res = client.post(
+        "/api/profile/upload-cv",
+        files={"file": ("mon_cv.txt", cv_content, "text/plain")},
+    )
+    assert up_res.status_code == 200
+    up_data = up_res.json()
+    assert up_data["status"] == "success"
+    assert up_data["filename"] == "mon_cv.txt"
+    assert up_data["characters_extracted"] > 0
+    assert "Candidate CV Text" in up_data["preview"]
+    assert "profile" in up_data
+
+    # Verify profile preserved links and skills after CV upload
+    re_get = client.get("/api/profile").json()
+    assert re_get["has_cv"] is True
+    assert re_get["profile"]["cv_filename"] == "mon_cv.txt"
+    assert re_get["profile"]["portfolio_url"] == "https://example.com/portfolio"
+    assert re_get["profile"]["target_roles"] == ["Lead Designer", "Principal"]
+
+    # 4. Error handling on upload: empty file -> 400; missing filename -> 400; > 10MB -> 400
+    empty_res = client.post(
+        "/api/profile/upload-cv",
+        files={"file": ("empty.txt", b"", "text/plain")},
+    )
+    assert empty_res.status_code == 400
+    assert "Fichier vide" in empty_res.json()["detail"]
+
+    missing_name_res = client.post(
+        "/api/profile/upload-cv",
+        files={"file": ("   ", b"Valid content", "text/plain")},
+    )
+    assert missing_name_res.status_code == 400
+    assert "Nom de fichier manquant" in missing_name_res.json()["detail"]
+
+    huge_content = b"X" * (10 * 1024 * 1024 + 1)
+    huge_res = client.post(
+        "/api/profile/upload-cv",
+        files={"file": ("huge.txt", huge_content, "text/plain")},
+    )
+    assert huge_res.status_code == 400
+    assert "10 Mo" in huge_res.json()["detail"]
+
+    # 5. Negative salary clamped to 0
+    neg_salary_res = client.put("/api/profile", json={"min_salary": -1000})
+    assert neg_salary_res.status_code == 200
+    assert neg_salary_res.json()["profile"]["min_salary"] == 0
+
+    # 6. Preserves empty lists [] rather than resurrecting config defaults on partial updates
+    empty_lists_res = client.put("/api/profile", json={"target_roles": [], "skills": []})
+    assert empty_lists_res.status_code == 200
+    assert empty_lists_res.json()["profile"]["target_roles"] == []
+    assert empty_lists_res.json()["profile"]["skills"] == []
+
+    partial_res = client.put("/api/profile", json={"bio": "New bio"})
+    assert partial_res.status_code == 200
+    assert partial_res.json()["profile"]["target_roles"] == []
+    assert partial_res.json()["profile"]["skills"] == []
+    assert partial_res.json()["profile"]["bio"] == "New bio"
+
+
 def test_opportunity_status_canonicalization_and_seen_flag(client, monkeypatch, tmp_path):
     db_path = tmp_path / "server_status.db"
     monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))

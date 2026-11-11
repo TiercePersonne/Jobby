@@ -4,16 +4,128 @@
     <p class="jp-body mt-0.5">Dossier candidat permanent (CV, liens et style d'écriture « Ma Voix »), isolé du flux actif.</p>
   </div>
 
-  <div class="jp-card flex flex-col gap-3">
-    <div class="flex items-center gap-2">
-      <span class="jp-dot-sage" aria-hidden="true"></span>
-      <h2 class="jp-card-title">Espace Profil en préparation</h2>
+  <form id="profile-form" class="flex flex-col gap-5" novalidate>
+    <!-- Panneau 1 : CV & Documents -->
+    <div class="jp-card flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <h2 class="jp-card-title">CV &amp; Documents</h2>
+        <div id="profile-cv-status-badge" class="jp-pill jp-pill-sage hidden">
+          <span class="jp-dot-sage" aria-hidden="true"></span>
+          <span id="profile-cv-status-badge-text">CV actif</span>
+        </div>
+      </div>
+      <p class="jp-body">
+        Téléversez votre CV (formats acceptés : PDF, TXT, MD). Le texte extrait enrichit automatiquement la rédaction de vos lettres sur-mesure.
+      </p>
+
+      <div id="profile-cv-dropzone" class="jp-dropzone flex flex-col items-center justify-center p-6 text-center cursor-pointer" tabindex="0" role="region" aria-label="Zone de dépôt du CV">
+        <svg class="w-8 h-8 text-[var(--ink-muted)] mb-2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="12" y1="18" x2="12" y2="12"></line>
+          <line x1="9" y1="15" x2="12" y2="12"></line>
+          <line x1="15" y1="15" x2="12" y2="12"></line>
+        </svg>
+        <p class="jp-body font-medium pointer-events-none">Glissez votre CV ici, ou <button type="button" id="btn-profile-browse-cv" tabindex="-1" class="text-[var(--accent-primary)] hover:underline font-semibold bg-transparent border-0 p-0 cursor-pointer pointer-events-auto">parcourez vos fichiers</button></p>
+        <p class="jp-label mt-1 pointer-events-none">Formats acceptés : .pdf, .txt, .md</p>
+        <input type="file" id="profile-cv-file" accept=".pdf,.txt,.md,text/plain,application/pdf" class="hidden" aria-label="Sélectionner un fichier CV">
+      </div>
+
+      <div id="profile-cv-status" class="jp-surface-subtle p-3.5 flex flex-col gap-2 hidden">
+        <div class="flex items-center justify-between">
+          <span id="profile-cv-filename" class="font-medium text-[var(--ink-primary)] jp-body font-semibold"></span>
+          <span id="profile-cv-characters" class="jp-label text-[var(--ink-muted)]"></span>
+        </div>
+        <div id="profile-cv-preview" class="jp-label text-[var(--ink-secondary)] italic max-h-24 overflow-y-auto whitespace-pre-wrap leading-relaxed"></div>
+      </div>
     </div>
-    <p class="jp-body">
-      L'import de votre CV (PDF/texte), vos liens Portfolio, GitHub et LinkedIn ainsi que votre échantillon « Ma Voix » seront disponibles ici dans l'Epic 3 sans jamais altérer vos filtres de veille.
-    </p>
-    <div id="profile-shell-status" class="jp-surface-subtle px-3.5 py-2.5 jp-label">
-      Isolation active : aucune modification de profil n'affecte Flux &amp; Chasse.
+
+    <!-- Panneau 2 : Liens professionnels -->
+    <div class="jp-card flex flex-col gap-4">
+      <h2 class="jp-card-title">Liens professionnels</h2>
+      <p class="jp-body">
+        Ces liens sont consultables pour préparer vos candidatures et personnaliser vos prises de contact.
+      </p>
+      <div class="flex flex-col gap-1.5">
+        <label for="profile-portfolio-url" class="jp-label">Portfolio / Site web</label>
+        <input id="profile-portfolio-url" name="portfolio_url" type="url" class="jp-input" placeholder="https://monsite.fr">
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label for="profile-github-url" class="jp-label">Profil GitHub</label>
+        <input id="profile-github-url" name="github_url" type="url" class="jp-input" placeholder="https://github.com/monprofil">
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label for="profile-linkedin-url" class="jp-label">Profil LinkedIn</label>
+        <input id="profile-linkedin-url" name="linkedin_url" type="url" class="jp-input" placeholder="https://linkedin.com/in/monprofil">
+      </div>
     </div>
-  </div>
+
+    <!-- Panneau 3 : Positionnement & Compétences -->
+    <div class="jp-card flex flex-col gap-4">
+      <h2 class="jp-card-title">Positionnement &amp; Compétences</h2>
+      <p class="jp-body">
+        Définissez vos rôles de prédilection et votre socle de compétences clés.
+      </p>
+      <div class="flex flex-col gap-1.5">
+        <label for="profile-target-roles" class="jp-label">Rôles ciblés (séparés par des virgules)</label>
+        <input id="profile-target-roles" name="target_roles" type="text" class="jp-input" placeholder="Ex. Product Designer, Lead UX, Design Ops">
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label for="profile-skills" class="jp-label">Compétences clés (séparées par des virgules)</label>
+        <input id="profile-skills" name="skills" type="text" class="jp-input" placeholder="Ex. Figma, Tokens, Design System, Prototypage">
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="flex flex-col gap-1.5">
+          <label for="profile-remote-preference" class="jp-label">Rythme de travail</label>
+          <select id="profile-remote-preference" name="remote_preference" class="jp-input">
+            <option value="">Indifférent / Non spécifié</option>
+            <option value="full">100 % Télétravail</option>
+            <option value="hybrid">Hybride</option>
+            <option value="onsite">Sur site</option>
+          </select>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="profile-min-salary" class="jp-label">Salaire minimum annuel brut (€)</label>
+          <input id="profile-min-salary" name="min_salary" type="number" min="0" step="1000" class="jp-input" placeholder="Ex. 65000">
+        </div>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label for="profile-bio" class="jp-label">Bio / Pitch synthétique</label>
+        <textarea id="profile-bio" name="bio" rows="3" class="jp-input resize-y" placeholder="Présentation synthétique de votre parcours et de vos points forts..."></textarea>
+      </div>
+    </div>
+
+    <!-- Panneau 4 : Ma Voix -->
+    <div class="jp-card flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <h2 class="jp-card-title">Ma Voix (Échantillon de style)</h2>
+        <span class="jp-label text-[var(--accent-sage)]">Clonage de style</span>
+      </div>
+      <p class="jp-body">
+        Collez ici un extrait représentatif de votre façon authentique d'écrire (email d'accroche, post, note de candidature, message LinkedIn). L'IA adoptera ce ton pour rédiger vos lettres personnalisées sans tournures robotiques.
+      </p>
+      <div class="flex flex-col gap-1.5">
+        <label for="profile-writing-sample" class="jp-label">Échantillon de rédaction</label>
+        <textarea id="profile-writing-sample" name="writing_sample" rows="6" class="jp-input resize-y" placeholder="Collez un ou deux paragraphes représentatifs de votre style naturel..."></textarea>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label for="profile-writing-tone" class="jp-label">Consigne de ton</label>
+        <input id="profile-writing-tone" name="writing_tone" type="text" class="jp-input" placeholder="naturel, direct, enthousiaste et percutant">
+        <p class="jp-label">Ce ton oriente la tonalité globale de la génération de lettre.</p>
+      </div>
+      <div class="jp-surface-subtle p-3.5 jp-label text-[var(--ink-secondary)]">
+        Confidentialité : votre profil et votre style sont stockés localement dans SQLite et ne sont partagés avec aucun service tiers sans action explicite de votre part.
+      </div>
+    </div>
+
+    <!-- Pied de formulaire : Sauvegarde & Statut d'isolation -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-8">
+      <div id="profile-save-status" class="jp-label text-[var(--ink-muted)]">
+        Isolation active : aucune modification de profil n'affecte Flux &amp; Chasse.
+      </div>
+      <button type="submit" id="btn-save-profile" class="jp-btn-primary self-end sm:self-auto">
+        Enregistrer le profil
+      </button>
+    </div>
+  </form>
 </section>

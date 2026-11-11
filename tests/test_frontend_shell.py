@@ -3583,3 +3583,240 @@ def test_brief_drawer_e2e_unmocked_sqlite_persistence(browser, live_server_url, 
         assert errors == []
     finally:
         context.close()
+
+
+def test_profile_view_e2e_cv_upload_form_persistence_and_dirty_protection(browser, live_server_url, monkeypatch, tmp_path):
+    from jobby.config import JobbyConfig, save_config
+
+    db_path = tmp_path / "e2e_profile.db"
+    cfg_path = tmp_path / "e2e_profile_config.yaml"
+    cv_file = tmp_path / "mon_cv.txt"
+    cv_file.write_text("Staff Product Designer. 10 years experience in Figma and Design Tokens.", encoding="utf-8")
+
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    save_config(
+        JobbyConfig(
+            target_roles=["Lead Product Designer"],
+            skills_keywords=["Figma", "Design System"],
+            remote_only=True,
+            database_path=str(db_path),
+            digest_output_path=str(tmp_path / "digest.md"),
+        ),
+        config_path=cfg_path,
+    )
+
+    context, page = _new_isolated_page(browser)
+    errors = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+
+        # 1. Navigate to Mon Profil
+        page.click("#nav-profile")
+        assert page.locator("#view-profile").is_visible()
+        assert not page.locator("#view-feed").is_visible()
+
+        # Config defaults pre-filled & tabindex check
+        assert page.locator("#btn-profile-browse-cv").get_attribute("tabindex") == "-1"
+        assert page.locator("#profile-target-roles").input_value() == "Lead Product Designer"
+        assert page.locator("#profile-skills").input_value() == "Figma, Design System"
+        assert page.locator("#profile-remote-preference").input_value() == "full"
+        assert "hidden" in (page.locator("#profile-cv-status").get_attribute("class") or "")
+
+        # 2. Upload CV via #profile-cv-file
+        with page.expect_response("**/api/profile/upload-cv"):
+            page.set_input_files("#profile-cv-file", str(cv_file))
+
+        # CV status active in DOM
+        assert not page.locator("#profile-cv-status").is_hidden()
+        assert "Actif : mon_cv.txt" in page.locator("#profile-cv-filename").inner_text()
+        assert "Staff Product Designer" in page.locator("#profile-cv-preview").inner_text()
+        toast_success = page.locator("#toast-container .jp-toast-success").last
+        assert toast_success.is_visible()
+        assert "mon_cv.txt" in toast_success.inner_text()
+
+        # 3. Edit fields
+        page.fill("#profile-portfolio-url", "https://gauth.design")
+        page.fill("#profile-github-url", "https://github.com/gauth")
+        page.fill("#profile-linkedin-url", "https://linkedin.com/in/gauth")
+        page.fill("#profile-target-roles", "Principal Designer, Head of Design")
+        page.fill("#profile-skills", "Figma, Design Tokens, React")
+        page.select_option("#profile-remote-preference", "hybrid")
+        page.fill("#profile-min-salary", "85000")
+        page.fill("#profile-bio", "Lead design et architecture produit.")
+        page.fill("#profile-writing-sample", "Voici un échantillon de mon style direct et percutant.")
+        page.fill("#profile-writing-tone", "sobre, chaleureux et précis")
+
+        # 4. Dirty protection: background renderProfileView does not overwrite typing
+        page.evaluate(
+            """async () => {
+                const { renderProfileView } = await import('/static/js/views/profile.js');
+                const { getState } = await import('/static/js/state.js');
+                renderProfileView(getState());
+            }"""
+        )
+        assert page.locator("#profile-portfolio-url").input_value() == "https://gauth.design"
+        assert page.locator("#profile-target-roles").input_value() == "Principal Designer, Head of Design"
+        assert page.locator("#profile-bio").input_value() == "Lead design et architecture produit."
+
+        # 5. Save profile
+        with page.expect_response("**/api/profile"):
+            page.click("#btn-save-profile")
+
+        save_toast = page.locator("#toast-container .jp-toast-success").last
+        assert save_toast.is_visible()
+        assert "Profil enregistré." in save_toast.inner_text()
+
+        # 6. Page reload verifies persistent SQLite storage
+        page.reload(wait_until="networkidle")
+        page.click("#nav-profile")
+        assert page.locator("#profile-portfolio-url").input_value() == "https://gauth.design"
+        assert page.locator("#profile-github-url").input_value() == "https://github.com/gauth"
+        assert page.locator("#profile-target-roles").input_value() == "Principal Designer, Head of Design"
+        assert page.locator("#profile-skills").input_value() == "Figma, Design Tokens, React"
+        assert page.locator("#profile-remote-preference").input_value() == "hybrid"
+        assert page.locator("#profile-min-salary").input_value() == "85000"
+        assert page.locator("#profile-bio").input_value() == "Lead design et architecture produit."
+        assert page.locator("#profile-writing-sample").input_value() == "Voici un échantillon de mon style direct et percutant."
+        assert page.locator("#profile-writing-tone").input_value() == "sobre, chaleureux et précis"
+        assert "Actif : mon_cv.txt" in page.locator("#profile-cv-filename").inner_text()
+
+        # Direct SQLite assertion
+        storage = Storage(db_path=db_path)
+        user = storage.get_user_by_email("user@jobby.local")
+        prof_db = storage.get_profile(user.id)
+        assert prof_db.portfolio_url == "https://gauth.design"
+        assert prof_db.target_roles == ["Principal Designer", "Head of Design"]
+        assert prof_db.skills == ["Figma", "Design Tokens", "React"]
+        assert prof_db.min_salary == 85000
+        assert prof_db.cv_filename == "mon_cv.txt"
+
+        # 7. Clearing remote_preference & min_salary does NOT resurrect config defaults
+        page.select_option("#profile-remote-preference", "")
+        page.fill("#profile-min-salary", "")
+        with page.expect_response("**/api/profile"):
+            page.click("#btn-save-profile")
+
+        page.reload(wait_until="networkidle")
+        page.click("#nav-profile")
+        assert page.locator("#profile-remote-preference").input_value() == ""
+        assert page.locator("#profile-min-salary").input_value() == ""
+        assert storage.get_profile(user.id).remote_preference is None
+        assert storage.get_profile(user.id).min_salary is None
+
+        # 8. Negative salary clamped to 0 in UI
+        page.fill("#profile-min-salary", "-5000")
+        with page.expect_response("**/api/profile"):
+            page.click("#btn-save-profile")
+        assert storage.get_profile(user.id).min_salary == 0
+        page.reload(wait_until="networkidle")
+        page.click("#nav-profile")
+        assert page.locator("#profile-min-salary").input_value() == "0"
+
+        assert errors == []
+    finally:
+        context.close()
+
+
+def test_profile_isolation_from_feed_and_ideal_brief_e2e(browser, live_server_url, monkeypatch, tmp_path):
+    from jobby.config import JobbyConfig, save_config
+
+    db_path = tmp_path / "e2e_isolation.db"
+    cfg_path = tmp_path / "e2e_isolation_config.yaml"
+    cv_file = tmp_path / "cv_isolate.txt"
+    cv_file.write_text("Product Manager CV Text.", encoding="utf-8")
+
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    save_config(
+        JobbyConfig(
+            target_roles=["Product Manager"],
+            skills_keywords=["Agile", "Roadmap"],
+            remote_only=False,
+            database_path=str(db_path),
+            digest_output_path=str(tmp_path / "digest.md"),
+        ),
+        config_path=cfg_path,
+    )
+
+    storage = Storage(db_path=db_path)
+    storage.upsert_opportunity(
+        JobOpportunity(
+            id="opp-iso-1",
+            source="wttj",
+            title="Senior PM Platform",
+            company="IsoCorp",
+            location="Paris, France",
+            remote_policy="full",
+            description="Leading core platform roadmap.",
+            published_at="2026-11-11T10:00:00+00:00",
+            discovered_at="2026-11-11T10:00:00+00:00",
+            url="https://example.com/iso-1",
+            score=95.0,
+            raw_metadata={"contract_type": "CDI", "ai_match": {"verdict": "Perfect fit"}},
+        )
+    )
+
+    context, page = _new_isolated_page(browser)
+    errors = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+
+        # 1. On feed, open drawer and set ideal_job_brief
+        page.click("#brief-toggle-btn")
+        page.fill("#brief-input", "Lead PM Platform Full Remote")
+        with page.expect_response("**/api/profile/brief"):
+            page.locator("#brief-input").blur()
+
+        assert page.locator("#brief-dot").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(21, 128, 61)"
+        assert "Lead PM Platform Full Remote" in page.locator("#brief-preview-text").inner_text()
+        assert page.locator('[data-opp-id="opp-iso-1"]').is_visible()
+
+        # 2. Switch to Mon Profil
+        page.click("#nav-profile")
+        assert page.locator("#view-profile").is_visible()
+
+        # Upload CV
+        with page.expect_response("**/api/profile/upload-cv"):
+            page.set_input_files("#profile-cv-file", str(cv_file))
+
+        # Edit and save profile
+        page.fill("#profile-portfolio-url", "https://pm.example.com")
+        page.fill("#profile-target-roles", "Senior PM, Group PM")
+        page.fill("#profile-bio", "Product leader")
+        page.fill("#profile-writing-sample", "Exemple de ton direct.")
+        with page.expect_response("**/api/profile"):
+            page.click("#btn-save-profile")
+
+        save_toast = page.locator("#toast-container .jp-toast-success").last
+        assert save_toast.is_visible()
+
+        # 3. Switch back to Flux & Chasse (AD-2 verification)
+        page.click("#nav-feed")
+        assert page.locator("#view-feed").is_visible()
+
+        # Assert brief is 100% intact and unchanged
+        assert "Lead PM Platform Full Remote" in page.locator("#brief-preview-text").inner_text()
+        assert page.locator("#brief-dot").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(21, 128, 61)"
+        page.click("#brief-toggle-btn")
+        assert page.locator("#brief-input").input_value() == "Lead PM Platform Full Remote"
+
+        # Assert opportunity is completely unchanged
+        opp_card = page.locator('[data-opp-id="opp-iso-1"]')
+        assert opp_card.is_visible()
+        assert "Senior PM Platform" in opp_card.inner_text()
+
+        # Verify DB directly: ideal_job_brief preserved alongside new profile fields
+        user = storage.get_user_by_email("user@jobby.local")
+        prof_after = storage.get_profile(user.id)
+        assert prof_after.ideal_job_brief == "Lead PM Platform Full Remote"
+        assert prof_after.portfolio_url == "https://pm.example.com"
+        assert prof_after.target_roles == ["Senior PM", "Group PM"]
+        assert prof_after.cv_filename == "cv_isolate.txt"
+        assert errors == []
+    finally:
+        context.close()

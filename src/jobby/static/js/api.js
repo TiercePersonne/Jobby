@@ -188,6 +188,22 @@ export function fetchProfile() {
   return request('/api/profile');
 }
 
+export function saveProfile(profileData) {
+  return request('/api/profile', {
+    method: 'PUT',
+    body: profileData,
+  });
+}
+
+export function uploadProfileCv(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request('/api/profile/upload-cv', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
 export function saveProfileBrief(brief) {
   return request('/api/profile/brief', {
     method: 'PUT',

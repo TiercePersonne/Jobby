@@ -330,6 +330,25 @@ body {
   font-weight: 500;
 }
 
+.jp-dropzone {
+  background-color: var(--surface-subtle);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--ink-secondary);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.jp-dropzone:hover,
+.jp-dropzone.is-dragover {
+  border-color: var(--ink-primary);
+  background-color: var(--surface-hover);
+}
+
+.jp-dropzone:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 .jp-pill {
   display: inline-flex;
   align-items: center;
