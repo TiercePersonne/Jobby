@@ -34,14 +34,18 @@ class GlassdoorProvider(JobSourceProvider):
     def _fetch_sync(self, keywords: str, location: str, params: SearchParams) -> List[JobOpportunity]:
         results: List[JobOpportunity] = []
         try:
+            import os
             from playwright.sync_api import sync_playwright
 
             with sync_playwright() as p:
                 launch_args = ["--no-sandbox", "--disable-blink-features=AutomationControlled"]
+                proxy_url = os.environ.get("GLASSDOOR_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY")
+                proxy_dict = {"server": proxy_url} if proxy_url else None
+
                 try:
-                    browser = p.chromium.launch(headless=True, channel="chrome", args=launch_args)
+                    browser = p.chromium.launch(headless=True, channel="chrome", args=launch_args, proxy=proxy_dict)
                 except Exception:
-                    browser = p.chromium.launch(headless=True, args=launch_args)
+                    browser = p.chromium.launch(headless=True, args=launch_args, proxy=proxy_dict)
 
                 # Select appropriate domain based on location
                 loc_lower = location.lower()
@@ -59,6 +63,12 @@ class GlassdoorProvider(JobSourceProvider):
                 logger.info(f"Navigating to Glassdoor: {search_url}")
                 page.goto(search_url, timeout=25000, wait_until="domcontentloaded")
                 page.wait_for_timeout(3000)
+
+                page_title = page.title()
+                if "Security | Glassdoor" in page_title or "Un instant" in page_title:
+                    logger.warning("Glassdoor Cloudflare challenge encountered on datacenter IP. Configure GLASSDOOR_PROXY to route via residential proxy.")
+                    browser.close()
+                    return results
 
                 cards = page.query_selector_all(
                     'li[data-test="jobListing"], div[data-test="jobListing"], li.JobsList_jobListItem__wjTHv, div.JobCard_jobCardContainer__vR27w'
