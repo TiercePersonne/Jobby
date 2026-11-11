@@ -1,0 +1,49 @@
+<section id="view-kanban" data-view-panel="kanban" aria-labelledby="view-kanban-heading" class="jp-container-kanban w-full mx-auto hidden flex flex-col gap-5">
+  <div class="flex flex-wrap items-baseline justify-between gap-3">
+    <div>
+      <h1 id="view-kanban-heading" class="jp-display">Suivi Kanban</h1>
+      <p class="jp-body mt-0.5">Pipeline des candidatures retenues : Repérés, Candidaté, Entretiens et Offres reçues.</p>
+    </div>
+    <span id="kanban-shell-summary" class="jp-pill">0 candidature active</span>
+  </div>
+
+  <div class="jp-card flex flex-col gap-2">
+    <p class="jp-body">
+      Le tableau Kanban interactif (glisser-déposer, notes de relance et rédaction de lettres) sera activé dans l'Epic 3.
+    </p>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+    <div class="jp-card flex flex-col gap-3 min-h-[220px]">
+      <div class="flex items-center justify-between jp-label uppercase tracking-wider">
+        <span>Repérés</span>
+        <span data-kanban-col-count="saved">0</span>
+      </div>
+      <div class="jp-empty-dashed text-center py-8 px-3">Colonne en attente</div>
+    </div>
+
+    <div class="jp-card flex flex-col gap-3 min-h-[220px]">
+      <div class="flex items-center justify-between jp-label uppercase tracking-wider">
+        <span>Candidaté</span>
+        <span data-kanban-col-count="applied">0</span>
+      </div>
+      <div class="jp-empty-dashed text-center py-8 px-3">Colonne en attente</div>
+    </div>
+
+    <div class="jp-card flex flex-col gap-3 min-h-[220px]">
+      <div class="flex items-center justify-between jp-label uppercase tracking-wider">
+        <span>Entretiens</span>
+        <span data-kanban-col-count="interview">0</span>
+      </div>
+      <div class="jp-empty-dashed text-center py-8 px-3">Colonne en attente</div>
+    </div>
+
+    <div class="jp-card flex flex-col gap-3 min-h-[220px]">
+      <div class="flex items-center justify-between jp-label uppercase tracking-wider">
+        <span>Offres reçues</span>
+        <span data-kanban-col-count="offer">0</span>
+      </div>
+      <div class="jp-empty-dashed text-center py-8 px-3">Colonne en attente</div>
+    </div>
+  </div>
+</section>

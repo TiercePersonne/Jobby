@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jobby-v3';
+const CACHE_NAME = 'jobby-v4';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -8,7 +8,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.map((key) => caches.delete(key))
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
       );
     })
   );

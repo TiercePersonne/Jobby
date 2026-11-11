@@ -4,8 +4,8 @@
   "description": "Agent intelligent de veille et capture d'opportunités d'emploi & posts LinkedIn",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F8F9FB",
-  "theme_color": "#FFFFFF",
+  "background_color": "#F6F5F2",
+  "theme_color": "#FDFCFB",
   "orientation": "portrait-primary",
   "icons": [
     {
