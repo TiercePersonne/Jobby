@@ -23,6 +23,10 @@ class JobbyConfig(BaseModel):
     linkedin_include_posts: bool = Field(default=True)
     linkedin_include_offers: bool = Field(default=True)
 
+    # Welcome to the Jungle authentication
+    wttj_session_cookie: Optional[str] = Field(default=None, description="WTTJ session cookie (Google/Gmail login)")
+    wttj_auth_token: Optional[str] = Field(default=None, description="WTTJ auth token")
+
     # Storage & paths
     database_path: str = Field(default="_bmad-output/jobby.db")
     digest_output_path: str = Field(default="_bmad-output/latest_digest.md")

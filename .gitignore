@@ -22,7 +22,10 @@ yarn-error.log*
 *.pem
 credentials.json
 
-# OS & Editors
+# BMAD outputs & browser data
+_bmad-output/
+*.db
+
 .DS_Store
 Thumbs.db
 .vscode/
