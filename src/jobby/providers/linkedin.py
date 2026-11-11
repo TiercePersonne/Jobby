@@ -21,6 +21,7 @@ import httpx
 from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 
+from jobby.ai_analyzer import analyze_post_heuristic, detect_remote_policy
 from jobby.config import load_config
 from jobby.models import JobOpportunity, OpportunityType, SearchParams
 from jobby.providers.base import JobSourceProvider
@@ -234,12 +235,15 @@ class LinkedInProvider(JobSourceProvider):
                 + ".\n\nCliquez sur le lien pour afficher la fiche de poste complète sur LinkedIn et postuler."
             )
 
+            remote_policy = detect_remote_policy(title=title, description=description, location=location)
+
             opp = JobOpportunity(
                 source=self.name,
                 opportunity_type=OpportunityType.OFFER,
                 title=title,
                 company=company,
                 location=location,
+                remote_policy=remote_policy,
                 salary_raw=salary,
                 url=url,
                 published_at=published_at,
@@ -344,6 +348,7 @@ class LinkedInProvider(JobSourceProvider):
                 # Extract first line for title
                 first_line = commentary.strip().split("\n")[0][:100]
                 title = f"Post de {author_name or 'Recruteur'}: {first_line}"
+                analysis = analyze_post_heuristic(commentary, author_name or "", author_title or "")
 
                 posts.append(JobOpportunity(
                     source=self.name,
@@ -354,7 +359,10 @@ class LinkedInProvider(JobSourceProvider):
                     author_title=author_title,
                     author_profile_url=author_url,
                     description=commentary,
-                    tags=["linkedin-post", "recruteur-réseau"],
+                    remote_policy=analysis.get("remote_policy"),
+                    post_intent=analysis.get("intent"),
+                    ai_summary=analysis.get("summary"),
+                    tags=["linkedin-post", analysis.get("intent", "post")],
                 ))
         return posts
 
@@ -484,6 +492,7 @@ class LinkedInProvider(JobSourceProvider):
                         post_url = author_url or "https://www.linkedin.com/feed/"
 
                     first_line = commentary.split("\n")[0][:90]
+                    analysis = analyze_post_heuristic(commentary, author_name or "", author_title or "")
                     posts.append(JobOpportunity(
                         source=self.name,
                         opportunity_type=OpportunityType.POST,
@@ -494,7 +503,10 @@ class LinkedInProvider(JobSourceProvider):
                         author_name=author_name,
                         author_title=author_title,
                         description=commentary,
-                        tags=["linkedin-post", "recruteur-réseau"],
+                        remote_policy=analysis.get("remote_policy"),
+                        post_intent=analysis.get("intent"),
+                        ai_summary=analysis.get("summary"),
+                        tags=["linkedin-post", analysis.get("intent", "post")],
                     ))
                     if len(posts) >= params.max_results:
                         break

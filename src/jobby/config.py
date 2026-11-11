@@ -27,6 +27,13 @@ class JobbyConfig(BaseModel):
     wttj_session_cookie: Optional[str] = Field(default=None, description="WTTJ session cookie (Google/Gmail login)")
     wttj_auth_token: Optional[str] = Field(default=None, description="WTTJ auth token")
 
+    # AI & Post intelligence settings
+    ai_provider: str = Field(default="auto", description="AI Provider: auto, gemini, openai, ollama, or heuristic")
+    ai_api_key: Optional[str] = Field(default=None, description="API Key for Gemini, OpenAI or other LLM provider")
+    ai_ollama_url: Optional[str] = Field(default="http://localhost:11434", description="Ollama API base URL")
+    ai_model: Optional[str] = Field(default=None, description="Custom model name")
+    filter_candidate_posts: bool = Field(default=False, description="Filter out posts where candidates seek alternances or jobs")
+
     # Storage & paths
     database_path: str = Field(default="_bmad-output/jobby.db")
     digest_output_path: str = Field(default="_bmad-output/latest_digest.md")
@@ -45,6 +52,16 @@ def load_config(config_path: str | Path = "_bmad-output/jobby_config.yaml") -> J
     li_at_env = os.environ.get("LINKEDIN_LI_AT")
     if li_at_env:
         data["linkedin_li_at"] = li_at_env
+
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key and not data.get("ai_api_key"):
+        data["ai_api_key"] = gemini_key
+        data["ai_provider"] = "gemini"
+
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key and not data.get("ai_api_key"):
+        data["ai_api_key"] = openai_key
+        data["ai_provider"] = "openai"
 
     return JobbyConfig(**data)
 

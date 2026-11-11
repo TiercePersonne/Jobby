@@ -47,7 +47,9 @@ class JobOpportunity(BaseModel):
     published_at: Optional[datetime] = Field(default=None, description="Original publication datetime")
     discovered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    # Intelligence & State
+    # Intelligence, AI & State
+    post_intent: Optional[str] = Field(default=None, description="Intent: candidate_seeking_alternance, candidate_seeking_job, hiring_alternance, hiring_job, other")
+    ai_summary: Optional[str] = Field(default=None, description="Concise 1-sentence AI summary of the post or job")
     score: Optional[float] = Field(default=None, ge=0.0, le=100.0, description="Relevance score (0-100)")
     score_reasons: List[str] = Field(default_factory=list, description="Explanations for the assigned score")
     tags: List[str] = Field(default_factory=list, description="Extracted keywords, tech stack, skills")

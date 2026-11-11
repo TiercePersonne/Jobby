@@ -53,9 +53,17 @@ class Storage:
                     tags TEXT,
                     status TEXT NOT NULL DEFAULT 'new',
                     dedup_key TEXT NOT NULL,
-                    raw_metadata TEXT
+                    raw_metadata TEXT,
+                    post_intent TEXT,
+                    ai_summary TEXT
                 )
             """)
+            # Auto-migrate table columns if missing
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(opportunities)").fetchall()}
+            if "post_intent" not in cols:
+                conn.execute("ALTER TABLE opportunities ADD COLUMN post_intent TEXT")
+            if "ai_summary" not in cols:
+                conn.execute("ALTER TABLE opportunities ADD COLUMN ai_summary TEXT")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_dedup ON opportunities (dedup_key)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_source ON opportunities (source)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON opportunities (status)")
@@ -88,16 +96,20 @@ class Storage:
                     id, source, opportunity_type, title, company, location,
                     remote_policy, salary_raw, url, author_name, author_profile_url,
                     author_title, description, published_at, discovered_at,
-                    score, score_reasons, tags, status, dedup_key, raw_metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    score, score_reasons, tags, status, dedup_key, raw_metadata,
+                    post_intent, ai_summary
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
                     company = COALESCE(excluded.company, opportunities.company),
                     location = COALESCE(excluded.location, opportunities.location),
+                    remote_policy = COALESCE(excluded.remote_policy, opportunities.remote_policy),
                     description = excluded.description,
                     score = COALESCE(excluded.score, opportunities.score),
                     score_reasons = excluded.score_reasons,
-                    tags = excluded.tags
+                    tags = excluded.tags,
+                    post_intent = COALESCE(excluded.post_intent, opportunities.post_intent),
+                    ai_summary = COALESCE(excluded.ai_summary, opportunities.ai_summary)
             """, (
                 opp.id,
                 opp.source,
@@ -119,7 +131,9 @@ class Storage:
                 tags_json,
                 status,
                 opp.dedup_key,
-                raw_meta_json
+                raw_meta_json,
+                opp.post_intent,
+                opp.ai_summary
             ))
             conn.commit()
 
@@ -196,6 +210,9 @@ class Storage:
         tags = json.loads(row["tags"]) if row["tags"] else []
         raw_meta = json.loads(row["raw_metadata"]) if row["raw_metadata"] else {}
 
+        post_intent = row["post_intent"] if "post_intent" in row.keys() else None
+        ai_summary = row["ai_summary"] if "ai_summary" in row.keys() else None
+
         return JobOpportunity(
             id=row["id"],
             source=row["source"],
@@ -216,5 +233,7 @@ class Storage:
             score_reasons=reasons,
             tags=tags,
             status=row["status"],
-            raw_metadata=raw_meta
+            raw_metadata=raw_meta,
+            post_intent=post_intent,
+            ai_summary=ai_summary,
         )

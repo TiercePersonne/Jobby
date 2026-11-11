@@ -177,6 +177,23 @@
         </div>
       </div>
 
+      <!-- Filtres Intelligents & IA Posts -->
+      <div class="p-3 rounded-xl bg-slate-950/90 border border-slate-800 flex flex-col gap-2">
+        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+          <span class="flex items-center gap-1.5">
+            <span>🤖</span>
+            <span>Filtres Intelligents IA</span>
+          </span>
+          <span class="text-[10px] text-sky-400 font-bold bg-sky-950/80 px-2 py-0.5 rounded border border-sky-800/60">NLP Actif</span>
+        </label>
+        <label class="flex items-start gap-2.5 cursor-pointer text-xs p-1.5 rounded-lg hover:bg-slate-900/60 transition">
+          <input type="checkbox" id="filter-candidate-alternance" checked class="mt-0.5 rounded accent-sky-500 cursor-pointer">
+          <span class="text-slate-300 leading-tight">
+            Masquer les <strong class="text-white">candidatures d'alternance</strong> de membres (conserver uniquement les offres de recrutement)
+          </span>
+        </label>
+      </div>
+
       <!-- Action Button -->
       <button id="search-btn" class="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-bold text-sm shadow-lg shadow-sky-500/25 hover:from-sky-400 hover:to-indigo-500 transition-all flex items-center justify-center gap-2 cursor-pointer">
         <svg id="search-spinner" class="hidden animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
@@ -219,9 +236,24 @@
           <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="teamtailor">Teamtailor (<span id="count-teamtailor">0</span>)</button>
           <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white shrink-0 cursor-pointer" data-filter="jobgether">Jobgether (<span id="count-jobgether">0</span>)</button>
           <span class="text-slate-700 mx-1 shrink-0">|</span>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/20 shrink-0 cursor-pointer" data-filter="remote">🌐 Remote (<span id="count-remote">0</span>)</button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/25 hover:bg-sky-500/20 shrink-0 cursor-pointer" data-filter="hybrid">🏢 Hybride (<span id="count-hybrid">0</span>)</button>
+          <span class="text-slate-700 mx-1 shrink-0">|</span>
           <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 shrink-0 cursor-pointer" data-filter="favorite">⭐ Favoris (<span id="count-favorite">0</span>)</button>
           <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 shrink-0 cursor-pointer" data-filter="kept">✅ Je garde (<span id="count-kept">0</span>)</button>
           <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 text-slate-400 hover:text-slate-200 shrink-0 cursor-pointer" data-filter="archived">📦 Archivés (<span id="count-archived">0</span>)</button>
+        </div>
+
+        <!-- Sub-filter bar for Posts & Alternance triage -->
+        <div class="flex items-center gap-2 pt-2 border-t border-slate-800/70 text-xs">
+          <span class="text-slate-400 text-[11px] font-semibold flex items-center gap-1 shrink-0">
+            <span>🤖 Tri IA Posts :</span>
+          </span>
+          <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            <button class="post-subfilter-btn active px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/50 shrink-0 cursor-pointer" data-subfilter="all">Tous les posts</button>
+            <button class="post-subfilter-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-950 text-slate-300 border border-slate-800 hover:text-white shrink-0 cursor-pointer" data-subfilter="hiring_only">💼 Offres de recrutement (<span id="count-hiring">0</span>)</button>
+            <button class="post-subfilter-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-950 text-violet-300 border border-slate-800 hover:border-violet-500/50 hover:bg-violet-950/20 shrink-0 cursor-pointer" data-subfilter="candidate_alternance">🎓 Candidatures d'alternance (<span id="count-candidates">0</span>)</button>
+          </div>
         </div>
       </div>
 
@@ -282,6 +314,47 @@
         <button id="linkedin-login-btn" type="button" class="w-full py-2.5 px-4 rounded-xl bg-[#0a66c2] hover:bg-[#004182] text-white text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-md">
           <span>Se connecter à LinkedIn</span>
         </button>
+      </div>
+
+      <!-- AI Post Analyzer Engine -->
+      <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">🤖</span>
+            <span class="font-bold text-sm text-slate-200">Intelligence Artificielle (Analyse des posts)</span>
+          </div>
+          <span id="ai-status-pill" class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">NLP Actif ✓</span>
+        </div>
+        <p class="text-xs text-slate-400">
+          Le moteur local NLP classe déjà automatiquement les posts (alternance, offre, remote). Vous pouvez renseigner une clé API Google Gemini (gratuite) ou OpenAI pour un résumé approfondi.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[10px] text-slate-400 uppercase font-semibold mb-1">Fournisseur IA</label>
+            <select id="select-ai-provider" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white">
+              <option value="auto">Auto (NLP Local + Clé si dispo)</option>
+              <option value="gemini">Google Gemini (Gratuit)</option>
+              <option value="openai">OpenAI (GPT-4o mini)</option>
+              <option value="ollama">Ollama (LLM Local)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] text-slate-400 uppercase font-semibold mb-1">Clé API (Optionnelle)</label>
+            <input type="password" id="input-ai-key" placeholder="AIzaSy... ou sk-..."
+                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-600">
+          </div>
+        </div>
+        <div class="flex items-center gap-2 pt-1 flex-wrap">
+          <button id="test-ai-btn" type="button" class="py-1.5 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-xs font-semibold border border-sky-500/40 transition cursor-pointer flex items-center gap-1">
+            <span>🧪</span>
+            <span>Tester la connexion IA</span>
+          </button>
+          <button id="reanalyze-all-btn" type="button" class="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition cursor-pointer flex items-center gap-1">
+            <span>🔄</span>
+            <span>Ré-analyser les opportunités</span>
+          </button>
+        </div>
+        <div id="ai-test-result" class="hidden text-xs p-2.5 rounded-xl border"></div>
       </div>
     </div>
   </div>
@@ -351,6 +424,19 @@
         inputSalary.value = config.min_salary || 45;
         salaryDisplay.textContent = `${inputSalary.value} 000 €`;
         inputNegatives.value = (config.negative_keywords || []).join(', ');
+
+        if (config.ai_provider) {
+          const sel = document.getElementById('select-ai-provider');
+          if (sel) sel.value = config.ai_provider;
+        }
+        if (config.ai_api_key) {
+          const inp = document.getElementById('input-ai-key');
+          if (inp) inp.value = config.ai_api_key;
+        }
+        if (config.filter_candidate_posts !== undefined) {
+          const chk = document.getElementById('filter-candidate-alternance');
+          if (chk) chk.checked = config.filter_candidate_posts;
+        }
 
         // Load existing stored opportunities
         await loadOpportunities();
@@ -482,7 +568,126 @@
       }
     }
 
+    // CLIENT-SIDE REMOTE DETECTION & PROMINENT BADGE
+    function detectClientRemotePolicy(opp) {
+      if (opp.remote_policy && opp.remote_policy !== 'unknown') return opp.remote_policy;
+      const text = `${opp.title || ''} ${opp.location || ''} ${opp.description || ''}`.toLowerCase();
+      if (text.includes('100% remote') || text.includes('full remote') || text.includes('full-remote') || 
+          text.includes('100% télétravail') || text.includes('100% teletravail') || text.includes('télétravail total') ||
+          text.includes('totalement à distance') || text.includes('remote only')) {
+        return 'full';
+      }
+      if (text.includes('hybride') || text.includes('hybrid') || text.includes('jours de télétravail') || 
+          text.includes('j/semaine') || text.includes('jours/semaine') || text.includes('télétravail possible') ||
+          text.includes('télétravail partiel') || text.includes('mixte')) {
+        return 'hybrid';
+      }
+      if (text.includes('sur site') || text.includes('sur-site') || text.includes('présentiel') || 
+          text.includes('presentiel') || text.includes('on-site') || text.includes('pas de télétravail')) {
+        return 'onsite';
+      }
+      return 'unknown';
+    }
+
+    function getRemoteBadge(opp) {
+      const policy = detectClientRemotePolicy(opp);
+      if (policy === 'full') {
+        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 shadow-sm">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>🌐 100% Télétravail</span>
+        </span>`;
+      }
+      if (policy === 'hybrid') {
+        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-500/40 flex items-center gap-1.5 shadow-sm">
+          <span>🏢/🏠 Mode Hybride</span>
+        </span>`;
+      }
+      if (policy === 'onsite') {
+        return `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
+          <span>📍 Présentiel / Sur site</span>
+        </span>`;
+      }
+      return `<span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-950/80 text-slate-400 border border-slate-800 flex items-center gap-1">
+        <span>❓ Télétravail non précisé</span>
+      </span>`;
+    }
+
+    // AI POST INTENT BADGE (ALTERNANCE / CANDIDAT / OFFRE)
+    function getPostAiBadge(opp) {
+      if (opp.opportunity_type !== 'post') return '';
+      const intent = opp.post_intent || '';
+      const summary = opp.ai_summary || '';
+
+      if (intent === 'candidate_seeking_alternance') {
+        return `
+          <div class="p-2.5 rounded-xl bg-violet-950/40 border border-violet-500/40 text-xs flex items-center justify-between gap-3 shadow-inner">
+            <div class="flex items-center gap-2.5">
+              <span class="text-base shrink-0">🎓</span>
+              <div class="flex flex-col">
+                <span class="font-bold text-violet-300 flex items-center gap-1">
+                  <span>Candidature : Recherche d'alternance</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-violet-900/60 text-violet-200 border border-violet-700/60 font-medium">Étudiant</span>
+                </span>
+                <span class="text-[11px] text-slate-300 leading-tight mt-0.5">${escapeHtml(summary || "L'auteur recherche activement une alternance pour ses études.")}</span>
+              </div>
+            </div>
+            <button onclick="changeStatus('${opp.id}', 'archived')" title="Archiver ce post" class="px-2.5 py-1 rounded-lg bg-violet-900/50 hover:bg-violet-800/80 text-[11px] font-semibold text-violet-200 border border-violet-700/60 shrink-0 cursor-pointer transition">
+              📦 Archiver
+            </button>
+          </div>
+        `;
+      }
+      if (intent === 'hiring_alternance') {
+        return `
+          <div class="p-2.5 rounded-xl bg-teal-950/40 border border-teal-500/40 text-xs flex items-center gap-2.5 shadow-inner">
+            <span class="text-base shrink-0">🏢</span>
+            <div class="flex flex-col">
+              <span class="font-bold text-teal-300 flex items-center gap-1">
+                <span>Offre d'alternance d'entreprise</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-teal-900/60 text-teal-200 border border-teal-700/60 font-medium">Recrutement</span>
+              </span>
+              <span class="text-[11px] text-slate-300 leading-tight mt-0.5">${escapeHtml(summary || "Cette entreprise recrute actuellement un(e) alternant(e).")}</span>
+            </div>
+          </div>
+        `;
+      }
+      if (intent === 'candidate_seeking_job') {
+        return `
+          <div class="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-xs flex items-center justify-between gap-3 shadow-inner">
+            <div class="flex items-center gap-2.5">
+              <span class="text-base shrink-0">🙋</span>
+              <div class="flex flex-col">
+                <span class="font-bold text-amber-300 flex items-center gap-1">
+                  <span>Candidat en recherche d'emploi</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-900/60 text-amber-200 border border-amber-700/60 font-medium">Open to Work</span>
+                </span>
+                <span class="text-[11px] text-slate-300 leading-tight mt-0.5">${escapeHtml(summary || "L'auteur partage son CV et cherche une opportunité.")}</span>
+              </div>
+            </div>
+            <button onclick="changeStatus('${opp.id}', 'archived')" title="Archiver ce post" class="px-2.5 py-1 rounded-lg bg-amber-900/50 hover:bg-amber-800/80 text-[11px] font-semibold text-amber-200 border border-amber-700/60 shrink-0 cursor-pointer transition">
+              📦 Archiver
+            </button>
+          </div>
+        `;
+      }
+      // Hiring job (Default recruiter post)
+      return `
+        <div class="p-2.5 rounded-xl bg-sky-950/30 border border-sky-500/30 text-xs flex items-center gap-2.5">
+          <span class="text-base shrink-0">💼</span>
+          <div class="flex flex-col">
+            <span class="font-bold text-sky-300 flex items-center gap-1">
+              <span>Offre de recrutement réseau</span>
+              <span class="text-[10px] px-1.5 py-0.2 rounded bg-sky-900/60 text-sky-200 border border-sky-700/60 font-medium">Recruteur</span>
+            </span>
+            <span class="text-[11px] text-slate-300 leading-tight mt-0.5">${escapeHtml(summary || "Offre d'emploi partagée par un recruteur ou collaborateur du réseau.")}</span>
+          </div>
+        </div>
+      `;
+    }
+
     // TABS LOGIC
+    let postSubfilter = 'all';
+
     function updateTabVisuals() {
       document.querySelectorAll('.tab-btn').forEach(b => {
         const isActive = b.dataset.filter === currentFilter;
@@ -508,6 +713,27 @@
         render();
       });
     });
+
+    // Sub-filters for Posts
+    document.querySelectorAll('.post-subfilter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.post-subfilter-btn').forEach(b => {
+          b.classList.remove('active', 'bg-sky-500/20', 'text-sky-300', 'border-sky-500/50');
+          b.classList.add('bg-slate-950', 'text-slate-300', 'border-slate-800');
+        });
+        btn.classList.add('active', 'bg-sky-500/20', 'text-sky-300', 'border-sky-500/50');
+        btn.classList.remove('bg-slate-950', 'text-slate-300', 'border-slate-800');
+        postSubfilter = btn.dataset.subfilter;
+        render();
+      });
+    });
+
+    const filterCandidateCheckbox = document.getElementById('filter-candidate-alternance');
+    if (filterCandidateCheckbox) {
+      filterCandidateCheckbox.addEventListener('change', () => {
+        render();
+      });
+    }
 
     quickFilter.addEventListener('input', () => {
       render();
@@ -574,9 +800,17 @@
       setVal('count-glassdoor', activeOpps.filter(o => o.source === 'glassdoor').length);
       setVal('count-teamtailor', activeOpps.filter(o => o.source === 'teamtailor').length);
       setVal('count-jobgether', activeOpps.filter(o => o.source === 'jobgether').length);
+      setVal('count-remote', activeOpps.filter(o => detectClientRemotePolicy(o) === 'full').length);
+      setVal('count-hybrid', activeOpps.filter(o => detectClientRemotePolicy(o) === 'hybrid').length);
       setVal('count-favorite', activeOpps.filter(o => o.status === 'favorite' || o.status === 'saved').length);
       setVal('count-kept', activeOpps.filter(o => o.status === 'kept').length);
       setVal('count-archived', archivedOpps.length);
+
+      const postOpps = activeOpps.filter(o => o.opportunity_type === 'post');
+      setVal('count-hiring', postOpps.filter(o => o.post_intent !== 'candidate_seeking_alternance' && o.post_intent !== 'candidate_seeking_job').length);
+      setVal('count-candidates', postOpps.filter(o => o.post_intent === 'candidate_seeking_alternance' || o.post_intent === 'candidate_seeking_job').length);
+
+      const hideCandidateAlternance = filterCandidateCheckbox?.checked ?? false;
 
       // Filtered list
       let filtered = allOpportunities.filter(o => {
@@ -596,15 +830,32 @@
           if (currentFilter === 'glassdoor' && o.source !== 'glassdoor') return false;
           if (currentFilter === 'teamtailor' && o.source !== 'teamtailor') return false;
           if (currentFilter === 'jobgether' && o.source !== 'jobgether') return false;
+          if (currentFilter === 'remote' && detectClientRemotePolicy(o) !== 'full') return false;
+          if (currentFilter === 'hybrid' && detectClientRemotePolicy(o) !== 'hybrid') return false;
           if (currentFilter === 'favorite' && o.status !== 'favorite' && o.status !== 'saved') return false;
           if (currentFilter === 'kept' && o.status !== 'kept') return false;
+        }
+
+        // Subfilter for posts (Tri IA)
+        const isCandidateSeeking = o.opportunity_type === 'post' && 
+          (o.post_intent === 'candidate_seeking_alternance' || o.post_intent === 'candidate_seeking_job');
+
+        if (currentFilter === 'post' || postSubfilter !== 'all') {
+          if (postSubfilter === 'hiring_only' && o.opportunity_type === 'post' && isCandidateSeeking) return false;
+          if (postSubfilter === 'candidate_alternance') {
+            if (o.opportunity_type !== 'post' || !isCandidateSeeking) return false;
+          }
+        }
+
+        // Sidebar checkbox: automatically filter out student candidates seeking alternance
+        if (hideCandidateAlternance && postSubfilter !== 'candidate_alternance' && currentFilter !== 'archived') {
+          if (isCandidateSeeking) return false;
         }
 
         if (q) {
           const matchTitle = (o.title || '').toLowerCase().includes(q);
           const matchCompany = (o.company || '').toLowerCase().includes(q);
           const matchDesc = (o.description || '').toLowerCase().includes(q);
-          // For posts, ignore author headline/title
           const matchAuthor = o.opportunity_type !== 'post' && (o.author_name || '').toLowerCase().includes(q);
           if (!matchTitle && !matchCompany && !matchAuthor && !matchDesc) return false;
         }
@@ -616,10 +867,10 @@
           resultsContainer.innerHTML = `
             <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
               <span class="text-4xl">📢</span>
-              <h3 class="text-base font-bold text-slate-300">Aucun post de recrutement extrait</h3>
+              <h3 class="text-base font-bold text-slate-300">Aucun post correspondant trouvé</h3>
               <p class="text-xs text-slate-400 max-w-md leading-relaxed">
-                Jobby extrait désormais les publications individuelles poste par poste (1 carte par post).<br>
-                Pour activer l'analyse des publications en direct de votre réseau, assurez-vous d'avoir connecté votre compte dans <span class="text-sky-400 font-semibold cursor-pointer underline" onclick="document.getElementById('open-auth-modal-btn').click()">Comptes &amp; Connexions</span> (en haut à droite).
+                Si vous avez activé le filtre de masquage des alternances, les candidatures étudiantes sont masquées.<br>
+                Vous pouvez basculer sur l'onglet <span class="text-violet-400 font-semibold cursor-pointer underline" onclick="document.querySelector('[data-subfilter=\\'candidate_alternance\\']').click()">Candidatures d'alternance</span> ou lancer une nouvelle recherche.
               </p>
             </div>
           `;
@@ -660,19 +911,15 @@
         return `
           <article class="bg-slate-900 border ${isPost ? 'border-sky-500/40 shadow-sky-500/5' : 'border-slate-800'} rounded-2xl p-4 sm:p-5 shadow-lg hover:border-slate-700 transition flex flex-col gap-3">
             
-            <!-- Top Card Header: Source, Date, 100% Remote, & Fast Triage Buttons -->
+            <!-- Top Card Header: Source, Remote Badge, Date, & Fast Triage Buttons -->
             <div class="flex items-center justify-between gap-3 flex-wrap">
               <div class="flex items-center gap-2 flex-wrap">
                 ${getSourceBadge(opp)}
+                ${getRemoteBadge(opp)}
                 <span class="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 flex items-center gap-1">
                   <span>🕒</span>
                   <span>${formatRelativeDate(opp.discovered_at)}</span>
                 </span>
-                ${opp.remote_policy === 'full' ? `
-                  <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    100% Remote
-                  </span>
-                ` : ''}
               </div>
 
               <!-- Fast Triage Actions (Favoris, Je garde, Archiver) -->
@@ -739,6 +986,9 @@
                 </div>
               </div>
             ` : ''}
+
+            <!-- AI Post Intent & Summary (Alternance, Recrutement, Candidat) -->
+            ${getPostAiBadge(opp)}
 
             <!-- Company / Location / Salary -->
             <div class="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
@@ -893,6 +1143,9 @@
         min_salary: parseInt(inputSalary.value),
         skills_keywords: [],
         negative_keywords: negatives,
+        ai_provider: document.getElementById('select-ai-provider')?.value || 'auto',
+        ai_api_key: document.getElementById('input-ai-key')?.value.trim() || null,
+        filter_candidate_posts: document.getElementById('filter-candidate-alternance')?.checked ?? true,
       };
 
       try {
@@ -901,11 +1154,72 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updated)
         });
-        alert('Préférences sauvegardées par défaut avec succès !');
+        alert('Préférences & paramètres IA sauvegardés par défaut avec succès !');
       } catch (e) {
         alert('Erreur de sauvegarde: ' + e);
       }
     });
+
+    // AI MODAL ACTIONS
+    const testAiBtn = document.getElementById('test-ai-btn');
+    const aiTestResult = document.getElementById('ai-test-result');
+    const reanalyzeBtn = document.getElementById('reanalyze-all-btn');
+
+    if (testAiBtn) {
+      testAiBtn.addEventListener('click', async () => {
+        testAiBtn.disabled = true;
+        testAiBtn.textContent = 'Test en cours...';
+        aiTestResult.classList.remove('hidden');
+        aiTestResult.className = "text-xs p-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-300";
+        aiTestResult.textContent = "Analyse d'un post test en cours...";
+
+        try {
+          const res = await fetch('/api/ai/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              provider: document.getElementById('select-ai-provider').value,
+              api_key: document.getElementById('input-ai-key').value.trim() || null,
+            })
+          });
+          const data = await res.json();
+          const a = data.analysis;
+          aiTestResult.className = "text-xs p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-200 flex flex-col gap-1";
+          aiTestResult.innerHTML = `
+            <div class="font-bold flex items-center gap-1.5">
+              <span>✓ Test réussi</span>
+              <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-900/60 font-mono">${data.provider.toUpperCase()}</span>
+            </div>
+            <div>Intent détecté : <strong>${a.intent}</strong> (Candidat: ${a.is_candidate}, Alternance: ${a.is_alternance})</div>
+            <div class="text-[11px] text-emerald-300">Résumé IA : <em>${escapeHtml(a.summary || '')}</em></div>
+          `;
+        } catch (err) {
+          aiTestResult.className = "text-xs p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-200";
+          aiTestResult.textContent = "Erreur lors du test IA : " + err;
+        } finally {
+          testAiBtn.disabled = false;
+          testAiBtn.innerHTML = '<span>🧪</span><span>Tester la connexion IA</span>';
+        }
+      });
+    }
+
+    if (reanalyzeBtn) {
+      reanalyzeBtn.addEventListener('click', async () => {
+        reanalyzeBtn.disabled = true;
+        reanalyzeBtn.textContent = 'Ré-analyse en cours...';
+        try {
+          const res = await fetch('/api/ai/analyze-all', { method: 'POST' });
+          const data = await res.json();
+          alert(`Analyse terminée ! ${data.updated_count} opportunités mises à jour sur ${data.analyzed_count}.`);
+          await loadOpportunities();
+        } catch (e) {
+          alert("Erreur lors de la ré-analyse : " + e);
+        } finally {
+          reanalyzeBtn.disabled = false;
+          reanalyzeBtn.innerHTML = '<span>🔄</span><span>Ré-analyser les opportunités</span>';
+        }
+      });
+    }
 
     init();
   </script>

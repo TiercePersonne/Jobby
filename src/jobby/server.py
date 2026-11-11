@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from jobby.ai_analyzer import analyze_post_heuristic, analyze_post_with_llm, detect_remote_policy
 from jobby.config import JobbyConfig, load_config, save_config
 from jobby.engine import DeduplicationEngine, ScoringEngine
 from jobby.models import OpportunityType, SearchParams
@@ -46,6 +47,13 @@ class SearchRequest(BaseModel):
 
 class StatusUpdateRequest(BaseModel):
     status: str
+
+
+class AITestRequest(BaseModel):
+    provider: Optional[str] = "auto"
+    api_key: Optional[str] = None
+    ollama_url: Optional[str] = "http://localhost:11434"
+    sample_text: Optional[str] = None
 
 
 @app.get("/manifest.json")
@@ -116,6 +124,62 @@ def trigger_linkedin_login() -> Dict[str, Any]:
     return {"status": "started", "message": "Le navigateur de connexion LinkedIn a été lancé."}
 
 
+@app.post("/api/ai/test")
+async def test_ai_connection(req: AITestRequest) -> Dict[str, Any]:
+    config = load_config()
+    provider = req.provider or config.ai_provider or "auto"
+    api_key = req.api_key or config.ai_api_key
+    ollama_url = req.ollama_url or config.ai_ollama_url
+    sample = req.sample_text or "Je recherche une alternance de 12 mois en Data / Python dès septembre. Mon CV est en PJ."
+
+    result = await analyze_post_with_llm(
+        commentary=sample,
+        author_name="Candidat Test",
+        author_title="Étudiant Master",
+        provider=provider,
+        api_key=api_key,
+        ollama_url=ollama_url,
+    )
+    return {
+        "status": "success",
+        "provider": result.get("provider", provider),
+        "analysis": result,
+    }
+
+
+@app.post("/api/ai/analyze-all")
+async def analyze_all_opportunities() -> Dict[str, Any]:
+    """Re-analyzes and normalizes remote_policy and post_intent for all stored opportunities."""
+    config = load_config()
+    storage = Storage(config.database_path)
+    opps = storage.list_opportunities(limit=500)
+
+    updated_count = 0
+    for opp in opps:
+        modified = False
+        # Normalize remote policy
+        new_remote = detect_remote_policy(opp.title, opp.description, opp.location, opp.remote_policy)
+        if new_remote != opp.remote_policy:
+            opp.remote_policy = new_remote
+            modified = True
+
+        # Classify posts
+        if opp.opportunity_type == OpportunityType.POST:
+            if not opp.post_intent or not opp.ai_summary or opp.post_intent == "post":
+                analysis = analyze_post_heuristic(opp.description, opp.author_name or "", opp.author_title or "")
+                opp.post_intent = analysis.get("intent")
+                opp.ai_summary = analysis.get("summary")
+                if not opp.remote_policy or opp.remote_policy == "unknown":
+                    opp.remote_policy = analysis.get("remote_policy")
+                modified = True
+
+        if modified:
+            storage.upsert_opportunity(opp)
+            updated_count += 1
+
+    return {"status": "completed", "analyzed_count": len(opps), "updated_count": updated_count}
+
+
 @app.get("/api/opportunities")
 def list_opportunities(
     status: Optional[str] = None,
@@ -179,9 +243,10 @@ async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
     deduped = DeduplicationEngine.deduplicate(raw_results)
     deduped.sort(key=lambda x: x.discovered_at, reverse=True)
 
-    # Save to SQLite
+    # Save to SQLite & evaluate intelligence
     new_count = 0
     for opp in deduped:
+        scoring.score_opportunity(opp)
         is_new, _ = storage.upsert_opportunity(opp)
         if is_new:
             new_count += 1

@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Dict, List, Tuple
 
+from jobby.ai_analyzer import analyze_post_heuristic, detect_remote_policy
 from jobby.config import JobbyConfig
 from jobby.models import JobOpportunity, OpportunityType
 
@@ -71,6 +72,18 @@ class ScoringEngine:
     def score_opportunity(self, opp: JobOpportunity) -> Tuple[float, List[str]]:
         score = 0.0
         reasons: List[str] = []
+
+        # Auto-detect remote policy if missing or unknown
+        if not opp.remote_policy or opp.remote_policy == "unknown":
+            opp.remote_policy = detect_remote_policy(opp.title, opp.description, opp.location)
+
+        # Auto-analyze post intent & summary for social posts
+        if opp.opportunity_type == OpportunityType.POST and (not opp.post_intent or not opp.ai_summary):
+            analysis = analyze_post_heuristic(opp.description, opp.author_name or "", opp.author_title or "")
+            opp.post_intent = analysis.get("intent")
+            opp.ai_summary = analysis.get("summary")
+            if not opp.remote_policy or opp.remote_policy == "unknown":
+                opp.remote_policy = analysis.get("remote_policy")
 
         title_cleaned = clean_text(opp.title)
         desc_cleaned = clean_text(opp.description)
