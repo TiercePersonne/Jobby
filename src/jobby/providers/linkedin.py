@@ -258,17 +258,17 @@ class LinkedInProvider(JobSourceProvider):
         li_at = self.li_at or load_config().linkedin_li_at or os.environ.get("LINKEDIN_LI_AT")
         profile_dir = Path("_bmad-output/browser_profiles/linkedin")
 
-        # 1. Try Voyager API if li_at cookie is configured
-        if li_at:
-            voyager_posts = await self._search_posts_with_voyager(params, li_at=li_at)
-            if voyager_posts:
-                return voyager_posts
-
-        # 2. Try Playwright browser session if persistent profile exists or li_at is set
+        # 1. Try Playwright browser session if persistent profile exists or li_at is set
         if profile_dir.exists() or li_at:
             browser_posts = await asyncio.to_thread(self._scrape_posts_with_browser_sync, params, li_at)
             if browser_posts:
                 return browser_posts
+
+        # 2. Try Voyager API fallback if li_at cookie is configured
+        if li_at:
+            voyager_posts = await self._search_posts_with_voyager(params, li_at=li_at)
+            if voyager_posts:
+                return voyager_posts
 
         logger.info("LinkedIn post search: unauthenticated. Connect in 'Comptes' to enable post-by-post extraction.")
         return []
@@ -378,16 +378,17 @@ class LinkedInProvider(JobSourceProvider):
                         headless=True,
                         channel="chrome",
                         args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+                        permissions=["clipboard-read", "clipboard-write"],
                     )
                 else:
                     browser = p.chromium.launch(headless=True, channel="chrome", args=["--no-sandbox"])
-                    context = browser.new_context()
+                    context = browser.new_context(permissions=["clipboard-read", "clipboard-write"])
                     if li_at:
                         context.add_cookies([{"name": "li_at", "value": li_at, "domain": ".linkedin.com", "path": "/"}])
 
                 page = context.new_page()
-                page.goto(search_url, timeout=20000, wait_until="domcontentloaded")
-                time.sleep(2.5)
+                page.goto(search_url, timeout=30000, wait_until="domcontentloaded")
+                time.sleep(3.5)
 
                 if "login" in page.url or "checkpoint" in page.url:
                     logger.info("LinkedIn requires login for post search; skipping automated scrape.")
@@ -395,23 +396,60 @@ class LinkedInProvider(JobSourceProvider):
                     return []
 
                 # Scroll once or twice to trigger feed loading
-                page.evaluate("window.scrollBy(0, 1200)")
-                time.sleep(2.0)
+                page.evaluate("window.scrollBy(0, 1000)")
+                time.sleep(1.5)
 
-                # Find post items
-                cards = page.query_selector_all("div.feed-shared-update-v2, div[data-urn*='activity']")
-                for card in cards[:params.max_results]:
-                    # Click "see more" if truncated
+                # Expand truncated texts
+                see_more_btns = page.query_selector_all('button:has-text("… plus"), button:has-text("... plus"), button:has-text("see more")')
+                for b in see_more_btns:
                     try:
-                        see_more = card.query_selector("button.feed-shared-inline-show-more-text__see-more-less-toggle, button[aria-label*='voir plus'], button[aria-label*='see more']")
-                        if see_more:
-                            see_more.click(timeout=1000)
+                        b.click(timeout=400)
                     except Exception:
                         pass
 
-                    # Extract commentary (the post text)
-                    desc_elem = card.query_selector(".feed-shared-update-v2__description, .update-components-text, .feed-shared-inline-show-more-text")
-                    commentary = desc_elem.inner_text().strip() if desc_elem else ""
+                # Find post cards with modern LinkedIn data-view-name
+                cards = page.query_selector_all('div[data-view-name="feed-full-update"], [role="listitem"]')
+                seen_commentaries = set()
+
+                for card in cards[:min(params.max_results * 2, 25)]:
+                    author_link_el = card.query_selector('a[href*="/in/"]')
+                    author_url = author_link_el.get_attribute('href') if author_link_el else ""
+
+                    all_lines = [l.strip() for l in card.inner_text().split('\n') if l.strip()]
+                    if not all_lines or len(all_lines) < 4:
+                        continue
+
+                    # Skip header badges like "Post du fil d’actualité"
+                    start_idx = 0
+                    if "fil d" in all_lines[0].lower():
+                        start_idx = 1
+
+                    author_name = all_lines[start_idx] if len(all_lines) > start_idx else "Recruteur LinkedIn"
+
+                    # Author headline line
+                    headline_idx = start_idx + 1
+                    while headline_idx < len(all_lines) and any(x in all_lines[headline_idx].lower() for x in ["1er", "2e", "3e", "suivre", "•"]):
+                        headline_idx += 1
+                    author_title = all_lines[headline_idx] if headline_idx < len(all_lines) else "Réseau LinkedIn"
+
+                    # Relative time line (e.g. 12 min, 1 h, 2 j)
+                    time_idx = headline_idx + 1
+                    while time_idx < len(all_lines) and not any(unit in all_lines[time_idx].lower() for unit in ["min", " h", " j", " s", "sem", "mo"]):
+                        time_idx += 1
+
+                    body_start = time_idx + 1
+                    while body_start < len(all_lines) and all_lines[body_start].lower() in ["suivre", "follow", "+ suivre"]:
+                        body_start += 1
+
+                    # Filter out trailing action button texts ("J’aime", "Commenter", etc.)
+                    body_lines = []
+                    for line in all_lines[body_start:]:
+                        if any(action in line.lower() for action in ["j’aime", "jaime", "commenter", "republier", "envoyer"]):
+                            if len(body_lines) > 2:
+                                break
+                        body_lines.append(line)
+
+                    commentary = "\n\n".join(body_lines) if body_lines else "\n".join(all_lines[body_start:])
                     if not commentary or len(commentary) < 25:
                         continue
 
@@ -422,26 +460,30 @@ class LinkedInProvider(JobSourceProvider):
                         if not any(k.lower() in comm_lower for k in params.keywords):
                             continue
 
-                    # Extract author name and title
-                    actor_elem = card.query_selector(".feed-shared-actor__name, .update-components-actor__name")
-                    author_name = actor_elem.inner_text().strip() if actor_elem else "Recruteur LinkedIn"
+                    # Avoid duplicate cards on same page
+                    if commentary[:80] in seen_commentaries:
+                        continue
+                    seen_commentaries.add(commentary[:80])
 
-                    title_elem = card.query_selector(".feed-shared-actor__description, .update-components-actor__description, .feed-shared-actor__sub-description")
-                    author_title = title_elem.inner_text().strip() if title_elem else "Réseau LinkedIn"
-
-                    # Extract permalink
-                    urn = card.get_attribute("data-urn") or ""
-                    link_elem = card.query_selector("a[href*='/feed/update/urn:li:activity:']")
+                    # Try copying exact permalink via clipboard
                     post_url = ""
-                    if link_elem:
-                        href = link_elem.get_attribute("href") or ""
-                        post_url = href.split("?")[0]
-                    elif urn:
-                        post_url = f"https://www.linkedin.com/feed/update/{urn}"
-                    else:
-                        post_url = "https://www.linkedin.com/feed/"
+                    try:
+                        menu_btn = card.query_selector('button[data-view-name="feed-control-menu"]')
+                        if menu_btn:
+                            menu_btn.click(timeout=800)
+                            time.sleep(0.3)
+                            copy_btn = page.query_selector('div[role="menuitem"]:has-text("Copier le lien"), div[role="menuitem"]:has-text("Copy link")')
+                            if copy_btn:
+                                copy_btn.click(timeout=800)
+                                time.sleep(0.3)
+                                post_url = page.evaluate("navigator.clipboard.readText()")
+                    except Exception:
+                        pass
 
-                    first_line = commentary.split("\n")[0][:100]
+                    if not post_url or not post_url.startswith("http"):
+                        post_url = author_url or "https://www.linkedin.com/feed/"
+
+                    first_line = commentary.split("\n")[0][:90]
                     posts.append(JobOpportunity(
                         source=self.name,
                         opportunity_type=OpportunityType.POST,
@@ -454,6 +496,8 @@ class LinkedInProvider(JobSourceProvider):
                         description=commentary,
                         tags=["linkedin-post", "recruteur-réseau"],
                     ))
+                    if len(posts) >= params.max_results:
+                        break
 
                 context.close()
         except Exception as e:

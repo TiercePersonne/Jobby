@@ -39,7 +39,14 @@ def test_parse_linkedin_job_cards():
 
 
 @pytest.mark.anyio
-async def test_linkedin_search_posts_unauthenticated_returns_empty():
+async def test_linkedin_search_posts_unauthenticated_returns_empty(monkeypatch):
+    from unittest.mock import MagicMock
+    from pathlib import Path
+    import jobby.providers.linkedin as li_mod
+
+    monkeypatch.setattr(li_mod, "load_config", lambda: MagicMock(linkedin_li_at=None))
+    monkeypatch.setattr(Path, "exists", lambda self: False)
+
     provider = LinkedInProvider()
     params = SearchParams(keywords=["Python", "FastAPI"], location="Paris")
     posts = await provider._search_social_posts(params)
