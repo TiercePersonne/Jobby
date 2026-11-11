@@ -119,6 +119,14 @@ class HelloWorkProvider(JobSourceProvider):
             if "télétravail" in card_text_lower or "remote" in card_text_lower:
                 tags.append("Remote")
 
+            # Rich description extraction for expandable card
+            paragraphs = [p.get_text(strip=True) for p in card.find_all(["p", "span", "div"]) if len(p.get_text(strip=True)) > 25]
+            cleaned_paras = [p for p in paragraphs if "favoris" not in p.lower() and "candidature" not in p.lower()]
+            if cleaned_paras:
+                description = "\n\n".join(dict.fromkeys(cleaned_paras))
+            else:
+                description = card.get_text(" | ", strip=True)
+
             opp = JobOpportunity(
                 source=self.name,
                 opportunity_type=OpportunityType.OFFER,
@@ -127,7 +135,7 @@ class HelloWorkProvider(JobSourceProvider):
                 location=location,
                 url=job_url,
                 tags=tags,
-                description=card.get_text(" | ", strip=True)[:300],
+                description=description,
             )
             results.append(opp)
 

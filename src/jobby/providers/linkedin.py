@@ -164,6 +164,16 @@ class LinkedInProvider(JobSourceProvider):
             salary_elem = item.find("span", class_=re.compile(r"job-search-card__salary-info", re.I))
             salary = salary_elem.get_text(strip=True) if salary_elem else None
 
+            # Card snippet or summary description
+            snippet_elem = item.find(class_=re.compile(r"job-search-card__snippet|job-snippet|base-search-card__metadata", re.I))
+            snippet = snippet_elem.get_text(strip=True) if snippet_elem else None
+            description = snippet or (
+                f"Offre LinkedIn pour le poste de {title}"
+                + (f" chez {company}" if company else "")
+                + (f" à {location}" if location else "")
+                + ".\nCliquez sur le lien pour afficher la fiche de poste complète sur LinkedIn et postuler."
+            )
+
             opp = JobOpportunity(
                 source=self.name,
                 opportunity_type=OpportunityType.OFFER,
@@ -173,6 +183,7 @@ class LinkedInProvider(JobSourceProvider):
                 salary_raw=salary,
                 url=url,
                 published_at=published_at,
+                description=description,
             )
             results.append(opp)
 

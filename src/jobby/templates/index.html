@@ -131,13 +131,6 @@
         </div>
       </div>
 
-      <!-- Key Skills / Stack -->
-      <div>
-        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Compétences clés / Stack</label>
-        <input type="text" id="input-skills" placeholder="ex: FastAPI, Docker, LLM, PostgreSQL"
-               class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition">
-      </div>
-
       <!-- Exclusions -->
       <div>
         <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Exclure (mots négatifs)</label>
@@ -301,7 +294,6 @@
     const selectRemote = document.getElementById('select-remote');
     const inputSalary = document.getElementById('input-salary');
     const salaryDisplay = document.getElementById('salary-display');
-    const inputSkills = document.getElementById('input-skills');
     const inputNegatives = document.getElementById('input-negatives');
     const searchBtn = document.getElementById('search-btn');
     const searchSpinner = document.getElementById('search-spinner');
@@ -325,8 +317,7 @@
         selectRemote.value = config.remote_only ? 'remote_only' : 'all';
         inputSalary.value = config.min_salary || 45;
         salaryDisplay.textContent = `${inputSalary.value} 000 €`;
-        inputSkills.value = config.skills_keywords.join(', ');
-        inputNegatives.value = config.negative_keywords.join(', ');
+        inputNegatives.value = (config.negative_keywords || []).join(', ');
 
         // Load existing stored opportunities
         await loadOpportunities();
@@ -563,12 +554,27 @@
               ${opp.salary_raw ? `<span class="flex items-center gap-1 text-emerald-400 font-semibold">💰 ${opp.salary_raw}</span>` : ''}
             </div>
 
-            <!-- Snippet -->
+            <!-- Dépliant Description -->
             ${opp.description ? `
-              <p class="text-xs text-slate-400 leading-relaxed line-clamp-2 italic bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60">
-                "${opp.description.replace(/\n+/g, ' ')}"
-              </p>
-            ` : ''}
+              <details class="group bg-slate-950/70 rounded-xl border border-slate-800/80 transition-all hover:border-slate-700/80">
+                <summary class="flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-slate-300 cursor-pointer hover:text-sky-400 select-none list-none">
+                  <span class="flex items-center gap-2">
+                    <span class="text-sky-400 text-sm">📋</span>
+                    <span>Description détaillée de l'annonce</span>
+                  </span>
+                  <span class="text-[11px] text-slate-500 font-bold group-open:rotate-180 transition-transform duration-200">
+                    ▼
+                  </span>
+                </summary>
+                <div class="px-3.5 pb-3.5 pt-2 text-xs text-slate-300 leading-relaxed border-t border-slate-800/60 whitespace-pre-line font-normal select-text max-h-80 overflow-y-auto">
+                  ${escapeHtml(opp.description)}
+                </div>
+              </details>
+            ` : `
+              <div class="text-[11px] text-slate-500 italic px-2">
+                Aucune description textuelle disponible pour cette annonce. Consultez le lien source pour les détails complets.
+              </div>
+            `}
 
             <!-- Footer: Match Reasons & Tags -->
             <div class="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-800/80">
@@ -673,10 +679,19 @@
       }
     });
 
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     // Save criteria as default config
     document.getElementById('save-config-btn').addEventListener('click', async () => {
       const roles = inputRole.value.split(',').map(s => s.trim()).filter(Boolean);
-      const skills = inputSkills.value.split(',').map(s => s.trim()).filter(Boolean);
       const negatives = inputNegatives.value.split(',').map(s => s.trim()).filter(Boolean);
       
       const updated = {
@@ -684,7 +699,7 @@
         preferred_locations: [inputLocation.value.trim() || 'Paris'],
         remote_only: selectRemote.value === 'remote_only',
         min_salary: parseInt(inputSalary.value),
-        skills_keywords: skills,
+        skills_keywords: [],
         negative_keywords: negatives,
       };
 

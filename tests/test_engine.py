@@ -37,7 +37,6 @@ def test_deduplication_engine():
 def test_scoring_engine_high_match():
     config = JobbyConfig(
         target_roles=["Python", "AI Engineer"],
-        skills_keywords=["Python", "Docker", "LLM", "FastAPI"],
         preferred_locations=["Paris"],
         negative_keywords=["Stage", "Junior"],
     )
@@ -55,8 +54,7 @@ def test_scoring_engine_high_match():
 
     score, reasons = engine.score_opportunity(opp)
     assert score >= 70.0
-    assert any("Cible métier" in r for r in reasons)
-    assert any("Compétences" in r for r in reasons)
+    assert any("Poste ciblé" in r for r in reasons)
 
 
 def test_scoring_engine_negative_penalty():

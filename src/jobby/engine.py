@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Tuple
 
 from jobby.config import JobbyConfig
 from jobby.models import JobOpportunity, OpportunityType
@@ -18,7 +18,6 @@ def clean_text(text: str) -> str:
         return ""
     # Remove H/F, F/H, CDI, (H/F), etc.
     text = re.sub(r"\(?[hf]/[hf]\)?", "", text, flags=re.I)
-    # Remove punctuation
     cleaned = re.sub(r"[^\w\s]", " ", text)
     return " ".join(cleaned.lower().split())
 
@@ -28,16 +27,11 @@ class DeduplicationEngine:
 
     @staticmethod
     def deduplicate(opportunities: List[JobOpportunity]) -> List[JobOpportunity]:
-        """
-        Deduplicate a list of opportunities.
-        Merges duplicates from different platforms into a single rich opportunity.
-        """
         merged_by_key: Dict[str, JobOpportunity] = {}
 
         for opp in opportunities:
             key = opp.dedup_key
             if not key or key == "unknown:":
-                # If key is degenerate, fall back to id
                 key = opp.id
 
             if key not in merged_by_key:
@@ -82,29 +76,15 @@ class ScoringEngine:
         desc_cleaned = clean_text(opp.description)
         full_text = f"{title_cleaned} {desc_cleaned}"
 
-        # 1. Target roles match (up to 35 pts)
-        role_matched = False
+        # 1. Target roles / Métier match (up to 55 pts)
         for role in self.config.target_roles:
             norm_role = clean_text(role)
             if norm_role and (norm_role in title_cleaned or norm_role in full_text):
-                score += 35.0
-                reasons.append(f"Cible métier '{role}' identifiée (+35)")
-                role_matched = True
+                score += 55.0
+                reasons.append(f"Poste ciblé '{role}' (+55)")
                 break
 
-        # 2. Key skills / Tech stack (up to 30 pts)
-        matched_skills: Set[str] = set()
-        for skill in self.config.skills_keywords:
-            pattern = r"\b" + re.escape(skill.lower()) + r"\b"
-            if re.search(pattern, full_text):
-                matched_skills.add(skill)
-
-        if matched_skills:
-            skill_pts = min(len(matched_skills) * 6.0, 30.0)
-            score += skill_pts
-            reasons.append(f"Compétences clés trouvées ({', '.join(sorted(matched_skills))}) (+{int(skill_pts)})")
-
-        # 3. Location / Remote preferences (up to 20 pts)
+        # 2. Location / Remote preferences (up to 30 pts)
         location_text = clean_text(opp.location or "")
         remote_matched = False
 
@@ -113,29 +93,29 @@ class ScoringEngine:
 
         if self.config.remote_only:
             if remote_matched:
-                score += 20.0
-                reasons.append("100% Télétravail confirmé (+20)")
+                score += 30.0
+                reasons.append("100% Télétravail confirmé (+30)")
             else:
-                score -= 25.0
-                reasons.append("Non 100% remote alors que requis (-25)")
+                score -= 30.0
+                reasons.append("Non 100% remote alors que requis (-30)")
         else:
             loc_matched = False
             for loc in self.config.preferred_locations:
                 if clean_text(loc) in location_text or clean_text(loc) in full_text:
-                    score += 15.0
-                    reasons.append(f"Localisation '{loc}' correspondante (+15)")
+                    score += 25.0
+                    reasons.append(f"Localisation '{loc}' correspondante (+25)")
                     loc_matched = True
                     break
             if not loc_matched and remote_matched:
-                score += 15.0
-                reasons.append("Option télétravail détectée (+15)")
+                score += 20.0
+                reasons.append("Option télétravail détectée (+20)")
 
-        # 4. Social post / Recruiter direct contact bonus (+15 pts)
+        # 3. Social post / Recruiter direct contact bonus (+15 pts)
         if opp.opportunity_type == OpportunityType.POST:
             score += 15.0
-            reasons.append("Post direct de recruteur/réseau LinkedIn (+15)")
+            reasons.append("Post direct de recruteur/réseau (+15)")
 
-        # 5. Negative keywords penalty (-30 pts)
+        # 4. Negative keywords penalty (-40 pts)
         found_negatives: List[str] = []
         for neg in self.config.negative_keywords:
             pattern = r"\b" + re.escape(neg.lower()) + r"\b"
@@ -143,8 +123,8 @@ class ScoringEngine:
                 found_negatives.append(neg)
 
         if found_negatives:
-            score -= 30.0
-            reasons.append(f"Mots-clés indésirables détectés ({', '.join(found_negatives)}) (-30)")
+            score -= 40.0
+            reasons.append(f"Mots indésirables détectés ({', '.join(found_negatives)}) (-40)")
 
         # Bound score between 0 and 100
         final_score = max(0.0, min(100.0, round(score, 1)))

@@ -158,7 +158,23 @@ class WTTJProvider(JobSourceProvider):
                 if isinstance(s, dict) and "name" in s:
                     tags.append(s["name"])
 
-            description = job.get("company_summary") or organization.get("industry") or ""
+            desc_lines = []
+            if job.get("company_summary"):
+                desc_lines.append(f"🏢 À propos de l'entreprise :\n{job.get('company_summary')}")
+            if organization.get("industry"):
+                desc_lines.append(f"📌 Secteur d'activité : {organization.get('industry')}")
+            if contract_type:
+                desc_lines.append(f"📄 Type de contrat : {str(contract_type).upper()}")
+            if remote_policy:
+                desc_lines.append(f"🏠 Mode de travail : {'100% Télétravail' if remote_policy == 'full' else 'Hybride / Présentiel'}")
+            if salary_raw:
+                desc_lines.append(f"💰 Rémunération indicative : {salary_raw}")
+            if job.get("experience_min") is not None or job.get("experience_max") is not None:
+                exp_min = job.get("experience_min", 0)
+                exp_max = job.get("experience_max", "")
+                desc_lines.append(f"🎓 Expérience : {exp_min} à {exp_max} an(s)")
+
+            description = "\n\n".join(desc_lines) if desc_lines else (job.get("company_summary") or "")
 
             opp = JobOpportunity(
                 source=self.name,

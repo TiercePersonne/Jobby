@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jobby-v2';
+const CACHE_NAME = 'jobby-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
