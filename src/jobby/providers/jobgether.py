@@ -44,7 +44,11 @@ class JobgetherProvider(JobSourceProvider):
             from playwright.sync_api import sync_playwright
 
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True, channel="chrome", args=["--no-sandbox"])
+                launch_args = ["--no-sandbox", "--disable-blink-features=AutomationControlled"]
+                try:
+                    browser = p.chromium.launch(headless=True, channel="chrome", args=launch_args)
+                except Exception:
+                    browser = p.chromium.launch(headless=True, args=launch_args)
                 page = browser.new_page()
                 page.goto(search_url, timeout=25000, wait_until="domcontentloaded")
                 page.wait_for_timeout(3500)

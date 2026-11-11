@@ -380,16 +380,28 @@ class LinkedInProvider(JobSourceProvider):
         posts: List[JobOpportunity] = []
         try:
             with sync_playwright() as p:
+                launch_args = ["--disable-blink-features=AutomationControlled", "--no-sandbox"]
                 if profile_dir.exists():
-                    context = p.chromium.launch_persistent_context(
-                        user_data_dir=str(profile_dir),
-                        headless=True,
-                        channel="chrome",
-                        args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-                        permissions=["clipboard-read", "clipboard-write"],
-                    )
+                    try:
+                        context = p.chromium.launch_persistent_context(
+                            user_data_dir=str(profile_dir),
+                            headless=True,
+                            channel="chrome",
+                            args=launch_args,
+                            permissions=["clipboard-read", "clipboard-write"],
+                        )
+                    except Exception:
+                        context = p.chromium.launch_persistent_context(
+                            user_data_dir=str(profile_dir),
+                            headless=True,
+                            args=launch_args,
+                            permissions=["clipboard-read", "clipboard-write"],
+                        )
                 else:
-                    browser = p.chromium.launch(headless=True, channel="chrome", args=["--no-sandbox"])
+                    try:
+                        browser = p.chromium.launch(headless=True, channel="chrome", args=launch_args)
+                    except Exception:
+                        browser = p.chromium.launch(headless=True, args=launch_args)
                     context = browser.new_context(permissions=["clipboard-read", "clipboard-write"])
                     if li_at:
                         context.add_cookies([{"name": "li_at", "value": li_at, "domain": ".linkedin.com", "path": "/"}])
