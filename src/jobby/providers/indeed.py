@@ -100,8 +100,18 @@ class IndeedProvider(JobSourceProvider):
                     salary_el = card.query_selector("div.salary-snippet-container, div.metadata.salary-snippet-container")
                     salary = salary_el.inner_text().strip() if salary_el else None
 
-                    snip_el = card.query_selector('div.job-snippet, [data-testid="job-snippet"], ul')
+                    snip_el = card.query_selector('div.job-snippet, [data-testid="job-snippet"]')
                     snippet = snip_el.inner_text().strip() if snip_el else ""
+
+                    card_raw_text = card.inner_text().strip()
+                    card_lines = [l.strip() for l in card_raw_text.split("\n") if l.strip()]
+                    meaningful_lines = [
+                        l for l in card_lines
+                        if l not in [title, company, card_location, salary]
+                        and len(l) > 3
+                        and not any(x in l.lower() for x in ["rechercher les salaires", "consulter les questions", "voir toutes les offres", "postulez via", "sauvegarder l'offre"])
+                    ]
+                    clean_snippet = "\n• ".join(dict.fromkeys(meaningful_lines)) if meaningful_lines else snippet
 
                     description = (
                         f"Offre d'emploi Indeed : {title}\n"
@@ -109,8 +119,10 @@ class IndeedProvider(JobSourceProvider):
                         f"Localisation : {card_location}\n"
                     )
                     if salary:
-                        description += f"Rémunération : {salary}\n"
-                    description += f"\nDescriptif de l'annonce :\n{snippet}\n\nConsultez l'offre sur Indeed pour postuler."
+                        description += f"💰 Rémunération : {salary}\n"
+                    if clean_snippet:
+                        description += f"\n📝 Détails de l'offre :\n• {clean_snippet}\n"
+                    description += "\nConsultez l'annonce sur Indeed pour la fiche de poste détaillée et postuler."
 
                     # Remote policy detection
                     remote_policy = None

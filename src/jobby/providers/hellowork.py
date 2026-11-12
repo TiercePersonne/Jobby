@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import random
 import re
@@ -60,7 +62,19 @@ class HelloWorkProvider(JobSourceProvider):
                     logger.warning(f"HelloWork search returned status {resp.status_code}")
                     return []
 
-                return self._parse_html(resp.text, limit=params.max_results)
+                results = self._parse_html(resp.text, limit=params.max_results)
+
+                # Concurrently enrich job descriptions from public job pages
+                if results:
+                    sem = asyncio.Semaphore(5)
+                    async def sem_enrich(opp: JobOpportunity):
+                        async with sem:
+                            await self._enrich_job_description(client, opp)
+                            await asyncio.sleep(0.08)
+
+                    await asyncio.gather(*(sem_enrich(opp) for opp in results), return_exceptions=True)
+
+                return results
 
         except Exception as e:
             logger.error(f"HelloWork query failed: {e}")
@@ -147,3 +161,37 @@ class HelloWorkProvider(JobSourceProvider):
             results.append(opp)
 
         return results
+
+    async def _enrich_job_description(self, client: httpx.AsyncClient, opp: JobOpportunity) -> None:
+        """Fetch full job posting details from HelloWork public job page."""
+        if not opp.url or not opp.url.startswith("http"):
+            return
+        try:
+            resp = await client.get(opp.url, timeout=10.0)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                # 1. Try JSON-LD schema
+                for s in soup.find_all("script", type="application/ld+json"):
+                    if not s.string:
+                        continue
+                    try:
+                        data = json.loads(s.string)
+                        if isinstance(data, dict) and data.get("description"):
+                            raw_html = data["description"]
+                            clean_text = BeautifulSoup(raw_html, "html.parser").get_text("\n", strip=True)
+                            if len(clean_text) > 80:
+                                opp.description = f"📝 Descriptif complet du poste :\n{clean_text}"
+                                return
+                    except Exception:
+                        pass
+
+                # 2. Try main section HTML
+                for sel in ["section.peer", "div[data-cy='job-description']", "section[class*='border-b-grey']"]:
+                    main_el = soup.select_one(sel)
+                    if main_el:
+                        clean_text = main_el.get_text("\n", strip=True)
+                        if len(clean_text) > 80:
+                            opp.description = f"📝 Descriptif complet du poste :\n{clean_text}"
+                            return
+        except Exception as e:
+            logger.debug(f"Could not enrich HelloWork job {opp.url}: {e}")

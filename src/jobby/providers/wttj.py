@@ -8,6 +8,7 @@ import random
 from typing import Any, Dict, List, Optional
 
 import httpx
+from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 
 from jobby.models import JobOpportunity, OpportunityType, SearchParams
@@ -94,6 +95,20 @@ class WTTJProvider(JobSourceProvider):
                 except Exception as e:
                     logger.error(f"Error querying WTTJ API page {page}: {e}")
                     break
+
+            # Concurrently enrich job descriptions via WTTJ v1 public API
+            if results:
+                sem = asyncio.Semaphore(5)
+                async def sem_enrich(opp: JobOpportunity):
+                    meta = opp.raw_metadata or {}
+                    org_slug = meta.get("org_slug")
+                    job_slug = meta.get("job_slug")
+                    if org_slug and job_slug:
+                        async with sem:
+                            await self._enrich_job_description(client, opp, org_slug, job_slug)
+                            await asyncio.sleep(0.08)
+
+                await asyncio.gather(*(sem_enrich(opp) for opp in results), return_exceptions=True)
 
         return results
 
@@ -199,8 +214,54 @@ class WTTJProvider(JobSourceProvider):
                 raw_metadata={
                     "wttj_reference": job.get("reference"),
                     "is_bookmarked": job.get("is_bookmarked", False),
+                    "org_slug": org_slug,
+                    "job_slug": job_slug,
                 }
             )
             opportunities.append(opp)
 
         return opportunities
+
+    async def _enrich_job_description(
+        self, client: httpx.AsyncClient, opp: JobOpportunity, org_slug: str, job_slug: str
+    ) -> None:
+        """Fetch full job posting details from WTTJ v1 public API."""
+        url = f"https://api.welcometothejungle.com/api/v1/organizations/{org_slug}/jobs/{job_slug}"
+        try:
+            resp = await client.get(url, timeout=10.0)
+            if resp.status_code == 200:
+                job_data = resp.json().get("job", {})
+                sections: List[str] = []
+
+                # Company presentation
+                comp_desc = job_data.get("company_description")
+                if comp_desc:
+                    clean_comp = BeautifulSoup(comp_desc, "html.parser").get_text("\n", strip=True)
+                    if clean_comp:
+                        sections.append(f"🏢 À propos de l'entreprise :\n{clean_comp}")
+
+                # Job mission & description
+                desc_html = job_data.get("description")
+                if desc_html:
+                    clean_desc = BeautifulSoup(desc_html, "html.parser").get_text("\n", strip=True)
+                    if clean_desc:
+                        sections.append(f"📝 Descriptif du poste & Missions :\n{clean_desc}")
+
+                # Profile requirements
+                profile_html = job_data.get("profile")
+                if profile_html:
+                    clean_profile = BeautifulSoup(profile_html, "html.parser").get_text("\n", strip=True)
+                    if clean_profile:
+                        sections.append(f"🎯 Profil recherché :\n{clean_profile}")
+
+                # Recruitment process
+                process_html = job_data.get("recruitment_process")
+                if process_html:
+                    clean_process = BeautifulSoup(process_html, "html.parser").get_text("\n", strip=True)
+                    if clean_process:
+                        sections.append(f"🚀 Déroulement des entretiens :\n{clean_process}")
+
+                if sections:
+                    opp.description = "\n\n".join(sections)
+        except Exception as e:
+            logger.debug(f"Could not enrich WTTJ job {org_slug}/{job_slug}: {e}")
