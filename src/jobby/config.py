@@ -11,12 +11,32 @@ from pydantic import BaseModel, Field
 
 class JobbyConfig(BaseModel):
     # Candidate profile for scoring and relevance
-    target_roles: List[str] = Field(default_factory=lambda: ["Python", "AI Engineer", "Backend Developer"])
+    target_roles: List[str] = Field(
+        default_factory=lambda: [
+            "Brand Designer",
+            "Graphiste",
+            "Graphic Designer",
+            "Art Director",
+            "Directeur Artistique",
+        ]
+    )
     preferred_locations: List[str] = Field(default_factory=lambda: ["France", "Paris", "Remote"])
     remote_only: bool = Field(default=False)
     min_salary: Optional[int] = Field(default=None)
-    skills_keywords: List[str] = Field(default_factory=lambda: ["Python", "FastAPI", "PostgreSQL", "Docker", "LLM", "Agent"])
-    negative_keywords: List[str] = Field(default_factory=lambda: ["Stage", "Alternance", "Junior", "PHP", "COBOL"])
+    skills_keywords: List[str] = Field(
+        default_factory=lambda: [
+            "Branding",
+            "Figma",
+            "Identité Visuelle",
+            "Direction Artistique",
+            "Adobe Illustrator",
+            "Photoshop",
+            "InDesign",
+            "Typographie",
+            "Design System",
+        ]
+    )
+    negative_keywords: List[str] = Field(default_factory=lambda: ["Stage", "Alternance", "Junior", "PHP", "COBOL", "Développeur"])
 
     # LinkedIn authentication & options
     linkedin_li_at: Optional[str] = Field(default=None, description="LinkedIn session cookie (li_at) for authenticated post search")
