@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import os
@@ -37,6 +38,7 @@ from jobby.models import Application, ApplicationStatus, MatchEvaluation, Opport
 from jobby.providers import registry
 from jobby.reporter import Reporter
 from jobby.storage import Storage, normalize_opportunity_status
+from contextlib import asynccontextmanager
 from jobby.user_auth import create_session_token, delete_session_token, hash_password, validate_session_token, verify_password
 
 logger = logging.getLogger(__name__)
@@ -45,7 +47,25 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
 
-app = FastAPI(title="Jobby API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler_task = None
+    if os.environ.get("JOBBY_DISABLE_SCHEDULER") != "1":
+        from jobby.scheduler import scheduler_loop
+        scheduler_task = asyncio.create_task(scheduler_loop())
+
+    yield
+
+    if scheduler_task and not scheduler_task.done():
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="Jobby API", version="0.1.0", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -259,62 +279,8 @@ async def run_automation_now(request: Request) -> Dict[str, Any]:
     config = load_config()
     storage = Storage(config.database_path)
     user = get_current_user_or_default(request, storage)
-    queries = config.auto_search_queries or config.target_roles or ["brand designer"]
-
-    from jobby.engine import ScoringEngine
-    from jobby.models import SearchParams
-    from jobby.pipeline import HuntingPipeline
-
-    total_new = 0
-    total_found = 0
-    pipeline = HuntingPipeline(config=config)
-
-    for query in queries:
-        params = SearchParams(
-            keywords=[query],
-            location=config.preferred_locations[0] if config.preferred_locations else "France",
-            remote_only=config.remote_only,
-            include_posts=config.linkedin_include_posts,
-            include_offers=config.linkedin_include_offers,
-        )
-        opps = await pipeline.collect_from_all(params)
-        scoring = ScoringEngine(config=config)
-        scored_opps = scoring.score_all(opps)
-        for opp in scored_opps:
-            existing = storage.get_opportunity(opp.id)
-            if not existing:
-                opp.is_seen = False
-                total_new += 1
-            storage.upsert_opportunity(opp)
-            total_found += 1
-
-    # Auto-scoring Gemini on unscored opportunities if ideal_job_brief is present
-    profile = storage.get_profile(user.id)
-    if profile and profile.ideal_job_brief:
-        brief = profile.ideal_job_brief
-        unscored = [
-            o for o in storage.get_opportunities(limit=50)
-            if not (o.raw_metadata and o.raw_metadata.get("ai_match"))
-        ]
-        if unscored:
-            try:
-                from jobby.ai_analyzer import rank_opportunities_by_brief_with_meta
-                api_key = _resolve_server_gemini_key(config)
-                await rank_opportunities_by_brief_with_meta(
-                    brief=brief,
-                    opportunities=unscored[:15],
-                    api_key=api_key,
-                )
-            except Exception as e:
-                logger.warning(f"Auto-scoring Gemini fallback during run-now: {e}")
-
-    return {
-        "status": "success",
-        "total_queries": len(queries),
-        "total_found": total_found,
-        "new_count": total_new,
-        "message": f"Chasse terminée : {len(queries)} requêtes exécutées, {total_new} nouvelles opportunités.",
-    }
+    from jobby.scheduler import execute_sequential_hunt
+    return await execute_sequential_hunt(config=config, storage=storage, user_id=user.id, inter_query_delay=0.1)
 
 
 @app.get("/api/providers")
