@@ -1338,6 +1338,48 @@ def test_settings_status_and_linkedin_cookie_flow(tmp_path, monkeypatch):
         assert updated_data["auto_search_times"] == ["09:00", "18:00"]
 
 
+def test_vps_production_health_and_docker_readiness(tmp_path, monkeypatch):
+    """Verifies that public health, manifest, service worker and PWA shell work without credentials, ready for VPS."""
+    from jobby.config import JobbyConfig, save_config
+
+    db_path = tmp_path / "vps_test.db"
+    cfg_path = tmp_path / "jobby_vps.json"
+    save_config(JobbyConfig(database_path=str(db_path)), config_path=cfg_path)
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("JOBBY_AUTH_USER", "admin")
+    monkeypatch.setenv("JOBBY_AUTH_PASSWORD", "supersecret123")
+
+    with TestClient(app) as test_client:
+        # 1. Healthcheck endpoint bypasses basic auth
+        res_health = test_client.get("/health")
+        assert res_health.status_code == 200
+        assert res_health.json() == {"status": "ok"}
+
+        # 2. Manifest endpoint bypasses basic auth
+        res_manifest = test_client.get("/manifest.json")
+        assert res_manifest.status_code == 200
+        manifest = res_manifest.json()
+        assert "Jobby" in manifest["name"]
+        assert manifest["display"] == "standalone"
+
+        # 3. Service Worker bypasses basic auth
+        res_sw = test_client.get("/sw.js")
+        assert res_sw.status_code == 200
+        assert "application/javascript" in res_sw.headers.get("content-type", "")
+
+        # 4. Protected API requires auth
+        res_unauth = test_client.get("/api/config")
+        assert res_unauth.status_code == 401
+
+        # 5. Protected API succeeds with credentials
+        import base64
+        auth_header = "Basic " + base64.b64encode(b"admin:supersecret123").decode("ascii")
+        res_auth = test_client.get("/api/config", headers={"Authorization": auth_header})
+        assert res_auth.status_code == 200
+
+
+
 
 
 
