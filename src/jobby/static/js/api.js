@@ -261,6 +261,13 @@ export function deleteApplication(appId) {
   });
 }
 
+export function generateCoverLetter(oppId, { force = false } = {}) {
+  const query = force ? '?force=true' : '';
+  return request(`/api/ai/cover-letter/${encodeURIComponent(oppId)}${query}`, {
+    method: 'POST',
+  });
+}
+
 export function triggerSearch({
   keywords = [],
   location = null,

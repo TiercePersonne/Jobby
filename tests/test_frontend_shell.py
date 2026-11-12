@@ -1516,7 +1516,7 @@ def test_ux_dr6_cards_scoring_synthesis_accordion_and_scroll_neutrality(browser,
         assert "Rémunération : 75k€" in page.locator('[data-opp-id="card-high"] .jp-accordion-body').text_content()
         assert "Aucune description détaillée fournie." in page.locator('[data-opp-id="card-null-score"] .jp-accordion-body').text_content()
 
-        # Accordion collapsed by default; strictly 3 actions (no Lettre IA); zero box-shadow
+        # Accordion collapsed by default; 4 actions (toggle-keep, archive, letter, open-link); zero box-shadow
         for card_id, expected_cta in [
             ("card-high", "Voir l'offre"),
             ("card-post-mid", "Voir le post"),
@@ -1526,9 +1526,9 @@ def test_ux_dr6_cards_scoring_synthesis_accordion_and_scroll_neutrality(browser,
             assert card.locator("details.jp-accordion").get_attribute("open") is None
             assert card.locator('[data-action="toggle-keep"]').is_visible()
             assert card.locator('[data-action="archive"]').is_visible()
+            assert card.locator('[data-action="letter"]').is_visible()
             assert expected_cta in card.locator('[data-action="open-link"]').inner_text()
-            assert card.locator('[data-action]').count() == 3
-            assert "Lettre IA" not in card.inner_text()
+            assert card.locator('[data-action]').count() == 4
 
         # Scroll down and up: zero /seen calls and unseen cards remain is_seen=false
         page.evaluate("() => { window.scrollTo(0, 600); window.scrollTo(0, 1200); window.scrollTo(0, 0); }")
@@ -4048,4 +4048,144 @@ def test_kanban_full_lifecycle_and_interactions_e2e(browser, live_server_url):
 
     finally:
         context.close()
+
+
+def test_cover_letter_modal_e2e_flow(browser, live_server_url):
+    """Playwright E2E: Validates Warm Porcelain cover letter modal generation, editing, force regeneration, and 1-click copy."""
+    context, page = _new_isolated_page(browser)
+    try:
+        context.grant_permissions(["clipboard-read", "clipboard-write"])
+    except Exception:
+        pass
+
+    opps = [
+        {
+            "id": "opp-let-1",
+            "title": "Staff Product Designer",
+            "company": "Qonto",
+            "location": "Paris (Hybrid)",
+            "source": "wttj",
+            "url": "https://example.com/opp/let-1",
+            "score": 94,
+            "status": "kept",
+            "is_seen": True,
+            "description": "Nous recherchons un Staff Product Designer.",
+        }
+    ]
+    apps = [
+        {
+            "id": "app-let-1",
+            "opportunity_id": "opp-let-1",
+            "status": "saved",
+            "notes": "Candidature en préparation.",
+            "title": "Staff Product Designer",
+            "company": "Qonto",
+            "location": "Paris (Hybrid)",
+        }
+    ]
+
+    _mock_base_apis(page, opps=opps, apps=apps)
+
+    cl_requests = []
+
+    def handle_cover_letter_route(route):
+        url = route.request.url
+        is_force = "force=true" in url
+        cl_requests.append({"url": url, "force": is_force})
+        if is_force:
+            body = {
+                "cover_letter": "Bonjour Qonto,\n\nVoici ma lettre régénérée avec insistance sur mon expérience Staff Design.",
+                "provider_used": "gemini",
+                "used_fallback": False,
+                "fallback_reason": None,
+            }
+        else:
+            body = {
+                "cover_letter": "Bonjour Qonto,\n\nVoici ma lettre initiale sur-mesure respectant Ma Voix.",
+                "provider_used": "gemini",
+                "used_fallback": False,
+                "fallback_reason": None,
+            }
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+
+    page.route("**/api/ai/cover-letter/*", handle_cover_letter_route)
+
+    errors = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+
+        # 1. From Feed view: click "Lettre IA" button on feed card
+        feed_card = page.locator('article[data-opp-id="opp-let-1"]')
+        assert feed_card.is_visible()
+        btn_letter = feed_card.locator('button[data-action="letter"]')
+        assert btn_letter.is_visible()
+
+        with page.expect_response("**/api/ai/cover-letter/opp-let-1*"):
+            btn_letter.click()
+
+        # Modal is open and shows opportunity title
+        modal = page.locator("#modal-letter")
+        assert modal.is_visible()
+        assert "Staff Product Designer" in page.locator("#letter-opp-title").inner_text()
+        assert "Qonto" in page.locator("#letter-opp-title").inner_text()
+
+        # Provider badge
+        provider_badge = page.locator("#letter-provider")
+        assert provider_badge.is_visible()
+        assert "Gemini 1.5 Flash" in provider_badge.inner_text()
+
+        # Textarea contains the generated letter
+        textarea = page.locator("#letter-text")
+        assert textarea.is_visible()
+        assert "Voici ma lettre initiale sur-mesure" in textarea.input_value()
+        assert cl_requests[0]["force"] is False
+
+        # 2. Editable textarea
+        textarea.fill("Texte personnalisé manuellement par le candidat.")
+        assert textarea.input_value() == "Texte personnalisé manuellement par le candidat."
+
+        # 3. Regenerate button calls API with ?force=true
+        btn_regen = page.locator("#btn-letter-regenerate")
+        with page.expect_response("**/api/ai/cover-letter/opp-let-1*force=true*"):
+            btn_regen.click()
+
+        assert len(cl_requests) == 2
+        assert cl_requests[1]["force"] is True
+        assert "Voici ma lettre régénérée avec insistance" in textarea.input_value()
+
+        # 4. 1-click copy button
+        btn_copy = page.locator("#btn-letter-copy")
+        btn_copy.click()
+        page.wait_for_selector("#btn-letter-copy:has-text('Copié !')")
+        assert "Copié !" in btn_copy.inner_text()
+
+        # 5. Close modal with close button
+        page.click('#modal-letter [data-modal-close="modal-letter"]')
+        assert not modal.is_visible()
+
+        # 6. From Kanban view: test "Lettre IA" button on kanban card
+        page.click("#nav-kanban")
+        assert page.locator("#view-kanban").is_visible()
+        kanban_card = page.locator('article[data-app-id="app-let-1"]')
+        assert kanban_card.is_visible()
+
+        kanban_letter_btn = kanban_card.locator('button[data-action="generate-letter"]')
+        assert kanban_letter_btn.is_visible()
+
+        with page.expect_response("**/api/ai/cover-letter/opp-let-1*"):
+            kanban_letter_btn.click()
+
+        assert modal.is_visible()
+        assert textarea.is_visible()
+
+        # Close via Escape key
+        page.keyboard.press("Escape")
+        assert not modal.is_visible()
+
+        assert not errors, f"Unexpected JS page errors: {errors}"
+    finally:
+        context.close()
+
 

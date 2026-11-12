@@ -81,24 +81,55 @@
 
 <!-- Modale centrée : Lettre IA -->
 <div id="modal-letter" class="jp-modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-letter-title" aria-hidden="true">
-  <div class="jp-modal-panel">
-    <div class="px-5 py-4 border-b border-[#E7E5E4] flex items-center justify-between gap-3">
-      <h2 id="modal-letter-title" class="jp-card-title">Lettre IA</h2>
-      <button type="button" data-modal-close="modal-letter" class="jp-nav-icon-btn" aria-label="Fermer la fenêtre" title="Fermer">
+  <div class="jp-modal-panel max-w-2xl w-full flex flex-col max-h-[90vh]">
+    <div class="px-5 py-4 border-b border-[#E7E5E4] flex items-center justify-between gap-3 shrink-0">
+      <div class="min-w-0 flex flex-col gap-0.5">
+        <h2 id="modal-letter-title" class="jp-card-title truncate">Lettre sur-mesure</h2>
+        <div id="letter-opp-title" class="text-xs text-[#57534E] truncate">Chargement de l'opportunité...</div>
+      </div>
+      <button type="button" data-modal-close="modal-letter" class="jp-nav-icon-btn shrink-0" aria-label="Fermer la fenêtre" title="Fermer">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
     </div>
 
-    <div class="p-5 flex flex-col gap-3">
-      <p class="jp-body">
-        La génération de lettres sur-mesure à partir de votre CV et de votre échantillon « Ma Voix » sera activée dans l'Epic 3.
-      </p>
+    <div class="p-5 flex flex-col gap-3 overflow-y-auto flex-1 min-h-0">
+      <div id="letter-provider" class="flex items-center gap-2 text-xs flex-wrap"></div>
+
+      <div id="letter-loading" class="hidden flex flex-col items-center justify-center py-12 gap-3 text-center">
+        <div class="w-7 h-7 border-2 border-[#15803D] border-t-transparent rounded-full animate-spin"></div>
+        <p class="jp-body text-xs text-[#57534E]">Rédaction de votre lettre avec votre CV et votre échantillon Ma Voix...</p>
+      </div>
+
+      <div id="letter-error" class="hidden p-3 rounded bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-xs"></div>
+
+      <div id="letter-body" class="flex flex-col gap-2 flex-1">
+        <label for="letter-text" class="jp-label">Texte de la lettre (éditable)</label>
+        <textarea id="letter-text" class="jp-input w-full font-sans text-xs leading-relaxed resize-y min-h-[220px] p-3" placeholder="Votre lettre s'affichera ici..."></textarea>
+      </div>
     </div>
 
-    <div class="px-5 py-3 border-t border-[#E7E5E4] bg-[#F7F5F0] flex items-center justify-end gap-2">
-      <button type="button" data-modal-close="modal-letter" class="jp-btn-secondary">Fermer</button>
+    <div class="px-5 py-3 border-t border-[#E7E5E4] bg-[#F7F5F0] flex items-center justify-between gap-2 shrink-0">
+      <div class="flex items-center gap-2">
+        <button type="button" id="btn-letter-regenerate" class="jp-btn-secondary text-xs flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          <span>Régénérer</span>
+        </button>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" data-modal-close="modal-letter" class="jp-btn-secondary text-xs">Fermer</button>
+        <button type="button" id="btn-letter-copy" class="jp-btn-primary text-xs flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          <span id="btn-letter-copy-label">Copier le texte</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>

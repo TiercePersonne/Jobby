@@ -419,6 +419,7 @@ function renderOpportunityRow(opp) {
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" data-action="toggle-keep" class="jp-btn-secondary jp-btn-keep${isKept ? ' is-kept' : ''}" aria-pressed="${isKept ? 'true' : 'false'}" aria-label="${keepAriaLabel}"${keepDisabledAttr}${busyAttr}>${keepContent}</button>
           <button type="button" data-action="archive" class="jp-btn-ghost" aria-label="${archiveAriaLabel}"${archiveDisabledAttr}${busyAttr}>Archiver</button>
+          <button type="button" data-action="letter" data-modal-open="modal-letter" class="jp-btn-ghost" aria-label="Générer une lettre IA : ${rawTitle}" title="Générer une lettre de motivation">Lettre IA</button>
         </div>
         ${linkHtml}
       </div>

@@ -974,7 +974,7 @@ async def match_cv_with_opportunity(opportunity_id: str, request: Request) -> Di
 
 
 @app.post("/api/ai/cover-letter/{opportunity_id}")
-async def generate_cover_letter_for_opportunity(opportunity_id: str, request: Request) -> Dict[str, Any]:
+async def generate_cover_letter_for_opportunity(opportunity_id: str, request: Request, force: bool = False) -> Dict[str, Any]:
     config = load_config()
     storage = Storage(config.database_path)
     user = get_current_user_or_default(request, storage)
@@ -989,7 +989,7 @@ async def generate_cover_letter_for_opportunity(opportunity_id: str, request: Re
 
     api_key = _resolve_server_gemini_key(config)
     cached = storage.get_match_evaluation(user.id, opportunity_id)
-    if cached is not None and cached.cover_letter:
+    if not force and cached is not None and cached.cover_letter:
         is_gemini_cl = _is_gemini_artifact(
             cached.cover_letter_provider_used,
             cached.cover_letter_used_fallback,

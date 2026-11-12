@@ -1171,5 +1171,105 @@ def test_kanban_application_endpoints_and_two_way_sync(tmp_path, monkeypatch):
         assert app4_entry["status"] == "offer"
 
 
+def test_cover_letter_force_regenerate_and_cache(tmp_path, monkeypatch):
+    """Verifies that POST /api/ai/cover-letter returns cached by default and recalculates with force=true."""
+    from jobby.config import JobbyConfig, save_config
+    from jobby.models import JobOpportunity, MatchEvaluation, User, UserProfile
+    import jobby.server as server_module
+
+    db_path = tmp_path / "cl_test.db"
+    cfg_path = tmp_path / "jobby.json"
+    save_config(JobbyConfig(database_path=str(db_path)), config_path=cfg_path)
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+
+    storage = Storage(db_path)
+    test_user = storage.ensure_user(
+        User(
+            id="usr_user_jobby_local",
+            email="user@jobby.local",
+            full_name="Mon Profil Candidat",
+            password_hash="fake",
+        )
+    )
+    user_id = test_user.id
+
+    opp = JobOpportunity(
+        id="opp-cl-1",
+        title="Directeur Artistique Senior",
+        company="Studio Graphique",
+        location="Paris (Remote)",
+        source="wttj",
+        url="https://example.com/job/cl-1",
+        status="kept",
+        is_seen=True,
+    )
+    storage.upsert_opportunity(opp)
+
+    profile = UserProfile(
+        user_id=user_id,
+        writing_sample="Mon style est direct, sobre, percutant et sans jargon.",
+        writing_tone="naturel et percutant",
+        target_roles=["Directeur Artistique"],
+        skills=["Figma", "Branding"],
+    )
+    storage.save_profile(profile)
+
+    # Seed cached evaluation with initial letter
+    cached = MatchEvaluation(
+        user_id=user_id,
+        opportunity_id="opp-cl-1",
+        score=95,
+        verdict="Excellent match",
+        cover_letter="Version 1 initiale en cache",
+        provider_used="gemini",
+        used_fallback=False,
+    )
+    storage.save_match_result(cached)
+    storage.save_cover_letter_result(
+        user_id=user_id,
+        opportunity_id="opp-cl-1",
+        cover_letter="Version 1 initiale en cache",
+        provider_used="gemini",
+        used_fallback=False,
+    )
+
+    call_count = {"count": 0}
+
+    async def fake_generator(*args, **kwargs):
+        call_count["count"] += 1
+        return {
+            "cover_letter": f"Version régénérée {call_count['count']}",
+            "provider_used": "gemini",
+            "used_fallback": False,
+            "fallback_reason": None,
+        }
+
+    monkeypatch.setattr(server_module, "generate_tailored_cover_letter_with_meta", fake_generator)
+
+    with TestClient(app) as test_client:
+        # 1. First call without force: returns cached version 1 without calling generator
+        res1 = test_client.post("/api/ai/cover-letter/opp-cl-1")
+        assert res1.status_code == 200
+        data1 = res1.json()
+        assert data1["cover_letter"] == "Version 1 initiale en cache"
+        assert call_count["count"] == 0
+
+        # 2. Second call with force=true: ignores cache and regenerates
+        res2 = test_client.post("/api/ai/cover-letter/opp-cl-1?force=true")
+        assert res2.status_code == 200
+        data2 = res2.json()
+        assert data2["cover_letter"] == "Version régénérée 1"
+        assert call_count["count"] == 1
+
+        # 3. Third call without force: returns newly persisted cover letter
+        res3 = test_client.post("/api/ai/cover-letter/opp-cl-1")
+        assert res3.status_code == 200
+        data3 = res3.json()
+        assert data3["cover_letter"] == "Version régénérée 1"
+        assert call_count["count"] == 1
+
+
+
 
 

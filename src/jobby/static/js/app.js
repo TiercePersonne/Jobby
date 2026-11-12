@@ -25,6 +25,7 @@ import { initFeedView } from './views/feed.js';
 import { initKanbanView } from './views/kanban.js';
 import { initProfileView } from './views/profile.js';
 import { initSettingsView } from './views/settings.js';
+import { initLetterModal } from './views/letter.js';
 
 export { showToast };
 
@@ -558,6 +559,7 @@ export async function initApp() {
   initKanbanView();
   initProfileView();
   initSettingsView();
+  initLetterModal();
 
   bindNavigationEvents();
   bindModalAndKeyboardEvents();
