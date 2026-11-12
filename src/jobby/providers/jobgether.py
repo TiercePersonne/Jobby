@@ -80,6 +80,11 @@ class JobgetherProvider(JobSourceProvider):
                     desc_lines = [l for l in lines[1:] if "view job" not in l.lower()]
                     description = f"Offre Jobgether : {title}\nEntreprise : {company}\nMode : {location}\n\n" + "\n".join(desc_lines)
 
+                    kw_lower = [k.lower() for k in (params.keywords or []) if k]
+                    full_content = f"{title} {description}".lower()
+                    if kw_lower and not any(k in full_content for k in kw_lower):
+                        continue
+
                     opp = JobOpportunity(
                         source=self.name,
                         opportunity_type=OpportunityType.OFFER,

@@ -166,6 +166,11 @@ class TeamtailorProvider(JobSourceProvider):
                             desc_text = html.unescape(re.sub(r"<[^>]+>", " ", raw_desc)).strip()
                             desc_text = re.sub(r"\s+", " ", desc_text)
 
+                            # Verify that the job actually matches the requested search keywords
+                            full_content = f"{title} {desc_text}".lower()
+                            if kw_lower and not any(k in full_content for k in kw_lower):
+                                continue
+
                             is_remote = job.get("remote", False)
                             rem_policy = "full" if is_remote else None
 

@@ -116,7 +116,15 @@ class WTTJProvider(JobSourceProvider):
 
             # Location extraction
             office = job.get("office") or {}
-            location = office.get("city") if isinstance(office, dict) else None
+            city = office.get("city") if isinstance(office, dict) else None
+            country = office.get("country") if isinstance(office, dict) else None
+            if not city and job.get("offices") and isinstance(job["offices"], list) and len(job["offices"]) > 0:
+                first_office = job["offices"][0]
+                if isinstance(first_office, dict):
+                    city = first_office.get("city")
+                    country = first_office.get("country")
+            loc_parts = [p for p in [city, country] if p]
+            location = ", ".join(loc_parts) if loc_parts else None
 
             # Remote extraction
             remote_val = job.get("remote")

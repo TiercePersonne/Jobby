@@ -342,9 +342,8 @@ function renderOpportunityRow(opp) {
       : opp.author_name;
     authorParts.push(`<span data-opp-author>Par ${escapeHtml(authorDisplay)}</span>`);
   }
-  if (locationText) {
-    authorParts.push(`<span>${locationText}</span>`);
-  }
+  const displayLoc = locationText || (remoteLabel ? remoteLabel : 'France / Non précisée');
+  authorParts.push(`<span class="inline-flex items-center gap-1 font-medium text-[#44403C]" data-opp-location>📍 ${escapeHtml(displayLoc)}</span>`);
 
   const synthesis = resolveSynthesis(opp);
   const synthesisHtml = synthesis

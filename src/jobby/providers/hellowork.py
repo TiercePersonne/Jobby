@@ -111,6 +111,13 @@ class HelloWorkProvider(JobSourceProvider):
             loc_elem = card.find(class_=re.compile(r"location|city|town", re.I))
             if loc_elem:
                 location = loc_elem.get_text(strip=True)
+            else:
+                for span in card.find_all(["span", "p", "div"]):
+                    stext = span.get_text(strip=True)
+                    if re.search(r"\b(75\d{3}|69\d{3}|13\d{3}|33\d{3}|44\d{3}|31\d{3}|59\d{3}|\d{2}\s\d{3})\b", stext) or any(city in stext.lower() for city in ["paris", "lyon", "bordeaux", "marseille", "nantes", "toulouse", "lille", "remote", "télétravail"]):
+                        if len(stext) < 40 and not any(w in stext.lower() for w in ["candidature", "publiée", "sauvegarder", "postuler", "salaire", "offre"]):
+                            location = stext
+                            break
 
             tags: List[str] = []
             card_text_lower = card.get_text().lower()

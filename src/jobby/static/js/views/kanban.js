@@ -97,7 +97,7 @@ function renderKanbanCard(app, opp = {}) {
         ${titleHtml}
         <div class="flex items-center gap-1.5 text-xs text-[#57534E]">
           <span class="font-medium truncate">${escapeHtml(company)}</span>
-          ${location ? `<span class="text-[#78716C]">&bull;</span><span class="text-[#78716C] truncate">${escapeHtml(location)}</span>` : ''}
+          <span class="text-[#78716C]">&bull;</span><span class="text-[#78716C] truncate">📍 ${escapeHtml(location || (opp.remote_policy === 'full' ? '100% Remote' : 'France'))}</span>
         </div>
       </div>
 
