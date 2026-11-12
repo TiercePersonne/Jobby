@@ -152,10 +152,169 @@ def get_config() -> JobbyConfig:
     return load_config()
 
 
+@app.put("/api/config")
 @app.post("/api/config")
 def update_config(config: JobbyConfig) -> Dict[str, Any]:
     save_config(config)
     return {"status": "saved", "config": config}
+
+
+@app.get("/api/settings/status")
+def get_settings_status() -> Dict[str, Any]:
+    config = load_config()
+    connectors = [
+        {"id": "wttj", "name": "Welcome to the Jungle", "type": "public", "status": "ready", "label": "Prêt (public, sans compte)"},
+        {"id": "teamtailor", "name": "Teamtailor", "type": "public", "status": "ready", "label": "Prêt (public, sans compte)"},
+        {"id": "hellowork", "name": "HelloWork", "type": "public", "status": "ready", "label": "Prêt (public, sans compte)"},
+        {"id": "indeed", "name": "Indeed", "type": "public", "status": "ready", "label": "Prêt (public, sans compte)"},
+        {"id": "jobgether", "name": "Jobgether", "type": "public", "status": "ready", "label": "Prêt (public, sans compte)"},
+        {"id": "linkedin_jobs", "name": "LinkedIn Offres", "type": "public", "status": "ready", "label": "Prêt (public, sans compte)"},
+        {
+            "id": "linkedin_posts",
+            "name": "LinkedIn Posts Réseau",
+            "type": "authenticated",
+            "status": "active" if bool(config.linkedin_li_at) else "missing",
+            "label": "Connecté (cookie li_at actif)" if bool(config.linkedin_li_at) else "Non configuré (cookie li_at requis)",
+        },
+        {"id": "glassdoor", "name": "Glassdoor", "type": "restricted", "status": "inactive", "label": "Inactif (bloqué Cloudflare VPS)"},
+    ]
+    raw_key = config.ai_api_key or os.environ.get("GEMINI_API_KEY") or ""
+    masked_key = f"{raw_key[:6]}...{raw_key[-4:]}" if len(raw_key) > 10 else ("Configurée" if raw_key else "Non configurée")
+    return {
+        "connectors": connectors,
+        "linkedin_connected": bool(config.linkedin_li_at),
+        "ai_provider": config.ai_provider,
+        "has_gemini_key": bool(raw_key),
+        "gemini_key_masked": masked_key,
+        "auto_search_enabled": config.auto_search_enabled,
+        "auto_search_times": config.auto_search_times,
+        "auto_search_queries": config.auto_search_queries,
+    }
+
+
+class LinkedInCookieRequest(BaseModel):
+    li_at: str
+
+
+@app.post("/api/auth/linkedin-cookie")
+def set_linkedin_cookie(req: LinkedInCookieRequest) -> Dict[str, Any]:
+    cookie_val = (req.li_at or "").strip()
+    if not cookie_val:
+        raise HTTPException(status_code=400, detail="Le cookie li_at ne peut pas être vide.")
+    config = load_config()
+    config.linkedin_li_at = cookie_val
+    save_config(config)
+    return {"status": "saved", "linkedin_connected": True, "message": "Cookie LinkedIn li_at enregistré avec succès."}
+
+
+@app.post("/api/auth/test-linkedin")
+async def test_linkedin_connection() -> Dict[str, Any]:
+    config = load_config()
+    li_at = config.linkedin_li_at or os.environ.get("LINKEDIN_LI_AT")
+    if not li_at:
+        return {
+            "valid": False,
+            "status": "missing",
+            "message": "Aucun cookie li_at configuré.",
+        }
+
+    import httpx
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Cookie": f'li_at={li_at}; JSESSIONID="ajax:1234567890"',
+        "csrf-token": "ajax:1234567890",
+        "x-restli-protocol-version": "2.0.0",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get("https://www.linkedin.com/voyager/api/me", headers=headers)
+            if resp.status_code == 200:
+                return {
+                    "valid": True,
+                    "status": "active",
+                    "message": "Connexion LinkedIn active et session valide !",
+                }
+            elif resp.status_code in (401, 403):
+                return {
+                    "valid": False,
+                    "status": "expired",
+                    "message": "Session LinkedIn expirée ou cookie invalide.",
+                }
+            else:
+                return {
+                    "valid": True,
+                    "status": "active",
+                    "message": f"Cookie vérifié (HTTP {resp.status_code}).",
+                }
+    except Exception as e:
+        return {
+            "valid": False,
+            "status": "error",
+            "message": f"Impossible de vérifier la connexion : {e}",
+        }
+
+
+@app.post("/api/automation/run-now")
+async def run_automation_now(request: Request) -> Dict[str, Any]:
+    config = load_config()
+    storage = Storage(config.database_path)
+    user = get_current_user_or_default(request, storage)
+    queries = config.auto_search_queries or config.target_roles or ["brand designer"]
+
+    from jobby.engine import ScoringEngine
+    from jobby.models import SearchParams
+    from jobby.pipeline import HuntingPipeline
+
+    total_new = 0
+    total_found = 0
+    pipeline = HuntingPipeline(config=config)
+
+    for query in queries:
+        params = SearchParams(
+            keywords=[query],
+            location=config.preferred_locations[0] if config.preferred_locations else "France",
+            remote_only=config.remote_only,
+            include_posts=config.linkedin_include_posts,
+            include_offers=config.linkedin_include_offers,
+        )
+        opps = await pipeline.collect_from_all(params)
+        scoring = ScoringEngine(config=config)
+        scored_opps = scoring.score_all(opps)
+        for opp in scored_opps:
+            existing = storage.get_opportunity(opp.id)
+            if not existing:
+                opp.is_seen = False
+                total_new += 1
+            storage.upsert_opportunity(opp)
+            total_found += 1
+
+    # Auto-scoring Gemini on unscored opportunities if ideal_job_brief is present
+    profile = storage.get_profile(user.id)
+    if profile and profile.ideal_job_brief:
+        brief = profile.ideal_job_brief
+        unscored = [
+            o for o in storage.get_opportunities(limit=50)
+            if not (o.raw_metadata and o.raw_metadata.get("ai_match"))
+        ]
+        if unscored:
+            try:
+                from jobby.ai_analyzer import rank_opportunities_by_brief_with_meta
+                api_key = _resolve_server_gemini_key(config)
+                await rank_opportunities_by_brief_with_meta(
+                    brief=brief,
+                    opportunities=unscored[:15],
+                    api_key=api_key,
+                )
+            except Exception as e:
+                logger.warning(f"Auto-scoring Gemini fallback during run-now: {e}")
+
+    return {
+        "status": "success",
+        "total_queries": len(queries),
+        "total_found": total_found,
+        "new_count": total_new,
+        "message": f"Chasse terminée : {len(queries)} requêtes exécutées, {total_new} nouvelles opportunités.",
+    }
 
 
 @app.get("/api/providers")

@@ -268,6 +268,36 @@ export function generateCoverLetter(oppId, { force = false } = {}) {
   });
 }
 
+export function getSettingsStatus() {
+  return request('/api/settings/status');
+}
+
+export function updateConfig(config) {
+  return request('/api/config', {
+    method: 'PUT',
+    body: config,
+  });
+}
+
+export function saveLinkedInCookie(liAt) {
+  return request('/api/auth/linkedin-cookie', {
+    method: 'POST',
+    body: { li_at: String(liAt || '').trim() },
+  });
+}
+
+export function testLinkedInConnection() {
+  return request('/api/auth/test-linkedin', {
+    method: 'POST',
+  });
+}
+
+export function runAutomationNow() {
+  return request('/api/automation/run-now', {
+    method: 'POST',
+  });
+}
+
 export function triggerSearch({
   keywords = [],
   location = null,

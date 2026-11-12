@@ -1,16 +1,154 @@
-<section id="view-settings" data-view-panel="settings" aria-labelledby="view-settings-heading" class="jp-container-narrow w-full mx-auto hidden flex flex-col gap-5">
+<section id="view-settings" data-view-panel="settings" aria-labelledby="view-settings-heading" class="jp-container-narrow w-full mx-auto hidden flex flex-col gap-6">
   <div>
-    <h1 id="view-settings-heading" class="jp-display">Paramètres</h1>
-    <p class="jp-body mt-0.5">Configuration technique : clé API Gemini, connexion LinkedIn et veille automatique.</p>
+    <h1 id="view-settings-heading" class="jp-display">Paramètres &amp; Connexions</h1>
+    <p class="jp-body mt-0.5">État des connecteurs d'emploi, authentification LinkedIn Posts Réseau et veille quotidienne bilingue.</p>
   </div>
 
-  <div class="jp-card flex flex-col gap-3">
-    <h2 class="jp-card-title">Paramètres techniques en préparation</h2>
-    <p class="jp-body">
-      La gestion de la clé Gemini, du cookie LinkedIn (<code>li_at</code>) et des créneaux de veille automatique sera activée dans l'Epic 4.
-    </p>
-    <div id="settings-shell-summary" class="jp-surface-subtle px-3.5 py-2.5 jp-label">
-      Chargement de la configuration...
+  <!-- Résumé dynamique de configuration -->
+  <div id="settings-shell-summary" class="jp-surface-subtle px-3.5 py-2.5 jp-label rounded border border-[#E7E5E4] text-xs">
+    Chargement de la configuration...
+  </div>
+
+  <!-- 1. Tableau d'état des connecteurs -->
+  <div id="settings-connectors-card" class="jp-card flex flex-col gap-4">
+    <div class="flex items-center justify-between gap-3 border-b border-[#E7E5E4] pb-3">
+      <div>
+        <h2 class="jp-card-title text-base">État des connecteurs d'emploi</h2>
+        <p class="text-xs text-[#57534E]">Suivi en direct de la disponibilité de chaque plateforme de recrutement.</p>
+      </div>
+      <button type="button" id="btn-refresh-connectors" class="jp-btn-secondary text-xs flex items-center gap-1.5" title="Actualiser les statuts">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        <span>Actualiser</span>
+      </button>
     </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs text-left">
+        <thead>
+          <tr class="border-b border-[#E7E5E4] text-[#78716C] uppercase font-semibold">
+            <th class="py-2.5 px-3">Plateforme</th>
+            <th class="py-2.5 px-3">Type</th>
+            <th class="py-2.5 px-3">Statut actuel</th>
+          </tr>
+        </thead>
+        <tbody id="connectors-table-body" class="divide-y divide-[#E7E5E4]">
+          <!-- Rempli dynamiquement par settings.js -->
+          <tr>
+            <td colspan="3" class="py-4 text-center text-[#78716C]">Chargement des connecteurs...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 2. Assistant LinkedIn Posts Réseau & Cookie li_at -->
+  <div id="settings-linkedin-card" class="jp-card flex flex-col gap-4">
+    <div class="flex items-center justify-between gap-3 border-b border-[#E7E5E4] pb-3">
+      <div>
+        <h2 class="jp-card-title text-base">LinkedIn Posts Réseau (Compte Secondaire)</h2>
+        <p class="text-xs text-[#57534E]">Débloquez la collecte des publications de recruteurs et fondateurs sur LinkedIn.</p>
+      </div>
+      <div id="linkedin-status-badge" class="px-2.5 py-1 rounded text-xs font-medium">
+        Vérification...
+      </div>
+    </div>
+
+    <p class="text-xs text-[#44403C] leading-relaxed">
+      LinkedIn protège la recherche de publications derrière une session connectée. Pour éviter tout risque sur votre compte principal, utilisez un <strong>compte LinkedIn secondaire</strong>.
+    </p>
+
+    <!-- Guide Assistant 1-clic -->
+    <div class="p-3.5 rounded bg-[#FAF9F6] border border-[#E7E5E4] flex flex-col gap-2">
+      <div class="flex items-center gap-2 font-medium text-xs text-[#1C1917]">
+        <svg class="w-4 h-4 text-[#15803D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <span>Méthode 1-Clic Windows (Recommandée)</span>
+      </div>
+      <p class="text-xs text-[#57534E] leading-relaxed">
+        Double-cliquez sur le fichier <code class="px-1.5 py-0.5 rounded bg-[#E7E5E4] font-mono text-xs">connect-linkedin.bat</code> à la racine du projet Jobby sur votre PC Windows. Une vraie fenêtre Chromium s'ouvrira pour vous connecter, et votre cookie <code class="font-mono text-xs">li_at</code> sera immédiatement synchronisé avec Jobby en toute sécurité.
+      </p>
+    </div>
+
+    <!-- Actions directes & Test -->
+    <div class="flex flex-wrap items-center gap-3 pt-1">
+      <button type="button" id="btn-test-linkedin" class="jp-btn-secondary text-xs flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        <span>Tester la connexion LinkedIn</span>
+      </button>
+
+      <button type="button" id="btn-toggle-manual-cookie" class="jp-btn-ghost text-xs text-[#57534E]">
+        Saisie manuelle du cookie &darr;
+      </button>
+    </div>
+
+    <div id="linkedin-test-feedback" class="hidden text-xs p-3 rounded"></div>
+
+    <!-- Tiroir saisie manuelle (replié par défaut) -->
+    <div id="linkedin-manual-drawer" class="hidden flex flex-col gap-3 p-3.5 rounded bg-[#F7F5F0] border border-[#E7E5E4]">
+      <label for="input-linkedin-li-at" class="jp-label">Cookie de session LinkedIn (<code class="font-mono">li_at</code>)</label>
+      <div class="flex gap-2">
+        <input type="password" id="input-linkedin-li-at" class="jp-input text-xs font-mono flex-1" placeholder="Collez votre li_at ici (ex: AQEDATr...)">
+        <button type="button" id="btn-save-linkedin-cookie" class="jp-btn-primary text-xs shrink-0">Enregistrer</button>
+      </div>
+      <p class="text-xs text-[#78716C]">Ce cookie est stocké localement dans votre fichier de configuration et ne quitte jamais votre serveur.</p>
+    </div>
+  </div>
+
+  <!-- 3. Chasse Automatique Quotidienne & Clé IA Gemini -->
+  <div id="settings-automation-card" class="jp-card flex flex-col gap-5">
+    <div class="flex items-center justify-between gap-3 border-b border-[#E7E5E4] pb-3">
+      <div>
+        <h2 class="jp-card-title text-base">Veille Quotidienne &amp; Moteur Gemini</h2>
+        <p class="text-xs text-[#57534E]">Recherches séquentielles programmées (12h00 &amp; 17h00 Europe/Paris) et auto-évaluation.</p>
+      </div>
+    </div>
+
+    <form id="form-settings-automation" class="flex flex-col gap-4">
+      <!-- Métiers cibles bilingues -->
+      <div class="flex flex-col gap-1.5">
+        <label for="input-settings-queries" class="jp-label">Métiers cibles bilingues (séparés par des virgules)</label>
+        <input type="text" id="input-settings-queries" class="jp-input text-xs" placeholder="brand designer, graphiste, graphic designer, art director, directeur artistique">
+        <span class="text-xs text-[#78716C]">Chaque métier est exécuté séquentiellement pour contourner le filtre restrictif des moteurs de recherche.</span>
+      </div>
+
+      <!-- Horaires programmés -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="flex flex-col gap-1.5">
+          <label for="input-settings-times" class="jp-label">Horaires de veille (Europe/Paris)</label>
+          <input type="text" id="input-settings-times" class="jp-input text-xs" placeholder="12:00, 17:00">
+          <span class="text-xs text-[#78716C]">Créneaux quotidiens d'exécution automatique (fuseau horaire Paris garanti).</span>
+        </div>
+
+        <!-- Clé API Gemini -->
+        <div class="flex flex-col gap-1.5">
+          <label for="input-settings-gemini-key" class="jp-label">Clé API Google AI Studio (Gemini)</label>
+          <input type="password" id="input-settings-gemini-key" class="jp-input text-xs font-mono" placeholder="AIzaSy... (laisser vide pour conserver la clé actuelle)">
+          <div id="gemini-key-status" class="text-xs text-[#78716C]">Vérification de la clé...</div>
+        </div>
+      </div>
+
+      <!-- Actions paramètres & Chasse immédiate -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#E7E5E4]">
+        <button type="submit" id="btn-save-settings" class="jp-btn-primary text-xs">
+          Enregistrer les paramètres
+        </button>
+
+        <button type="button" id="btn-run-automation-now" class="jp-btn-secondary text-xs flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <span>Exécuter la chasse maintenant</span>
+        </button>
+      </div>
+    </form>
+
+    <div id="automation-run-feedback" class="hidden text-xs p-3 rounded"></div>
   </div>
 </section>

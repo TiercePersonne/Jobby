@@ -37,6 +37,20 @@ class JobbyConfig(BaseModel):
     ai_model: Optional[str] = Field(default="gemini-flash-latest", description="Custom model name")
     filter_candidate_posts: bool = Field(default=False, description="Filter out posts where candidates seek alternances or jobs")
 
+    # Automated scheduled hunting (12:00 & 17:00 Europe/Paris)
+    auto_search_enabled: bool = Field(default=True, description="Enable automated scheduled hunting")
+    auto_search_times: List[str] = Field(default_factory=lambda: ["12:00", "17:00"], description="Scheduled hunting times (Europe/Paris)")
+    auto_search_queries: List[str] = Field(
+        default_factory=lambda: [
+            "brand designer",
+            "graphiste",
+            "graphic designer",
+            "art director",
+            "directeur artistique",
+        ],
+        description="Bilingual target roles and queries searched sequentially",
+    )
+
     # Storage & paths
     database_path: str = Field(default="_bmad-output/jobby.db")
     digest_output_path: str = Field(default="_bmad-output/latest_digest.md")

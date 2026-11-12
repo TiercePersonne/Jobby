@@ -4189,3 +4189,178 @@ def test_cover_letter_modal_e2e_flow(browser, live_server_url):
         context.close()
 
 
+def test_settings_view_connectors_linkedin_and_automation_e2e(browser, live_server_url):
+    """Playwright E2E: Validates Settings view, connector status table, LinkedIn cookie save/test, and automation settings."""
+    context, page = _new_isolated_page(browser)
+
+    settings_state = {
+        "linkedin_connected": False,
+        "queries": ["brand designer", "art director"],
+        "times": ["12:00", "17:00"],
+    }
+
+    def handle_settings_status(route):
+        body = {
+            "connectors": [
+                {"id": "wttj", "name": "Welcome to the Jungle", "type": "public", "status": "ready", "label": "Prêt (public, sans compte)"},
+                {"id": "linkedin_jobs", "name": "LinkedIn Offres", "type": "public", "status": "ready", "label": "Prêt (public, sans compte)"},
+                {
+                    "id": "linkedin_posts",
+                    "name": "LinkedIn Posts Réseau",
+                    "type": "authenticated",
+                    "status": "active" if settings_state["linkedin_connected"] else "missing",
+                    "label": "Connecté (cookie li_at actif)" if settings_state["linkedin_connected"] else "Non configuré (cookie li_at requis)",
+                },
+                {"id": "glassdoor", "name": "Glassdoor", "type": "restricted", "status": "inactive", "label": "Inactif (Cloudflare VPS)"},
+            ],
+            "linkedin_connected": settings_state["linkedin_connected"],
+            "ai_provider": "gemini",
+            "has_gemini_key": True,
+            "gemini_key_masked": "AIzaSy...456",
+            "auto_search_enabled": True,
+            "auto_search_times": settings_state["times"],
+            "auto_search_queries": settings_state["queries"],
+        }
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+
+    def handle_save_cookie(route):
+        req_data = json.loads(route.request.post_data or "{}")
+        if req_data.get("li_at"):
+            settings_state["linkedin_connected"] = True
+            route.fulfill(status=200, content_type="application/json", body='{"status":"saved","linkedin_connected":true}')
+        else:
+            route.fulfill(status=400, content_type="application/json", body='{"detail":"Cookie manquant"}')
+
+    def handle_test_linkedin(route):
+        if settings_state["linkedin_connected"]:
+            body = {"valid": True, "status": "active", "message": "Connexion LinkedIn active et session valide !"}
+        else:
+            body = {"valid": False, "status": "missing", "message": "Aucun cookie li_at configuré."}
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+
+    def handle_run_automation(route):
+        body = {
+            "status": "success",
+            "total_queries": len(settings_state["queries"]),
+            "total_found": 8,
+            "new_count": 3,
+            "message": "Chasse terminée : 2 requêtes exécutées, 3 nouvelles opportunités.",
+        }
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+
+    def handle_config_put(route):
+        if route.request.method in ("PUT", "POST"):
+            req_data = json.loads(route.request.post_data or "{}")
+            if "auto_search_queries" in req_data:
+                settings_state["queries"] = req_data["auto_search_queries"]
+            if "auto_search_times" in req_data:
+                settings_state["times"] = req_data["auto_search_times"]
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "status": "saved",
+                    "config": {
+                        "target_roles": settings_state["queries"],
+                        "auto_search_queries": settings_state["queries"],
+                        "auto_search_times": settings_state["times"],
+                        "ai_provider": "gemini",
+                    },
+                }),
+            )
+        else:
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "target_roles": settings_state["queries"],
+                    "auto_search_queries": settings_state["queries"],
+                    "auto_search_times": settings_state["times"],
+                    "ai_provider": "gemini",
+                }),
+            )
+
+    _mock_base_apis(
+        page,
+        config={
+            "target_roles": settings_state["queries"],
+            "auto_search_queries": settings_state["queries"],
+            "auto_search_times": settings_state["times"],
+            "ai_provider": "gemini",
+        },
+    )
+
+    page.route("**/api/settings/status", handle_settings_status)
+    page.route("**/api/auth/linkedin-cookie", handle_save_cookie)
+    page.route("**/api/auth/test-linkedin", handle_test_linkedin)
+    page.route("**/api/automation/run-now", handle_run_automation)
+    page.route("**/api/config", handle_config_put)
+
+    errors = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+
+    try:
+        page.goto(live_server_url, wait_until="networkidle")
+
+        # 1. Navigate to Settings
+        page.click("#nav-settings")
+        assert page.locator("#view-settings").is_visible()
+        assert not page.locator("#view-feed").is_visible()
+
+        # Summary line
+        summary = page.locator("#settings-shell-summary")
+        assert "rôle" in summary.inner_text()
+        assert "Fournisseur IA" in summary.inner_text()
+
+        # 2. Connectors table
+        table = page.locator("#connectors-table-body")
+        assert "Welcome to the Jungle" in table.inner_text()
+        assert "LinkedIn Offres" in table.inner_text()
+        assert "LinkedIn Posts Réseau" in table.inner_text()
+        assert "Glassdoor" in table.inner_text()
+        assert "Inactif (Cloudflare VPS)" in table.inner_text()
+
+        # LinkedIn badge initially not configured
+        li_badge = page.locator("#linkedin-status-badge")
+        assert "Non configuré" in li_badge.inner_text()
+
+        # 3. Test LinkedIn before connecting
+        page.click("#btn-test-linkedin")
+        page.wait_for_selector("#linkedin-test-feedback:not(.hidden)")
+        assert "Aucun cookie" in page.locator("#linkedin-test-feedback").inner_text()
+
+        # 4. Manual cookie drawer toggle
+        manual_drawer = page.locator("#linkedin-manual-drawer")
+        assert not manual_drawer.is_visible()
+        page.click("#btn-toggle-manual-cookie")
+        assert manual_drawer.is_visible()
+
+        # Fill and save cookie
+        page.fill("#input-linkedin-li-at", "AQEDATrValidCookie123456")
+        page.click("#btn-save-linkedin-cookie")
+
+        # Verify badge updated
+        page.wait_for_selector("#linkedin-status-badge:has-text('Connecté')")
+        assert "Connecté" in li_badge.inner_text()
+
+        # Test LinkedIn again after connecting
+        page.click("#btn-test-linkedin")
+        page.wait_for_selector("#linkedin-test-feedback:has-text('active')")
+        assert "active et session valide" in page.locator("#linkedin-test-feedback").inner_text()
+
+        # 5. Automation settings form
+        page.fill("#input-settings-queries", "motion designer, creative technologist")
+        page.fill("#input-settings-times", "10:00, 16:00")
+        page.click("#btn-save-settings")
+
+        # 6. Run automation now
+        page.click("#btn-run-automation-now")
+        page.wait_for_selector("#automation-run-feedback:not(.hidden)")
+        assert "Chasse terminée" in page.locator("#automation-run-feedback").inner_text()
+
+        assert not errors, f"Unexpected JS errors: {errors}"
+    finally:
+        context.close()
+
+
+

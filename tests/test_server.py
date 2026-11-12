@@ -1270,6 +1270,75 @@ def test_cover_letter_force_regenerate_and_cache(tmp_path, monkeypatch):
         assert call_count["count"] == 1
 
 
+def test_settings_status_and_linkedin_cookie_flow(tmp_path, monkeypatch):
+    """Verifies GET /api/settings/status, POST /api/auth/linkedin-cookie, and POST /api/auth/test-linkedin."""
+    from jobby.config import JobbyConfig, save_config
+
+    db_path = tmp_path / "settings_test.db"
+    cfg_path = tmp_path / "jobby.json"
+    save_config(
+        JobbyConfig(
+            database_path=str(db_path),
+            ai_api_key="AIzaSyDummySecretKey123456",
+            auto_search_queries=["brand designer", "art director"],
+            auto_search_times=["12:00", "17:00"],
+        ),
+        config_path=cfg_path,
+    )
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+
+    with TestClient(app) as test_client:
+        # 1. GET /api/settings/status
+        res = test_client.get("/api/settings/status")
+        assert res.status_code == 200
+        data = res.json()
+        assert "connectors" in data
+        connector_ids = [c["id"] for c in data["connectors"]]
+        assert "wttj" in connector_ids
+        assert "linkedin_posts" in connector_ids
+        assert "glassdoor" in connector_ids
+        assert data["has_gemini_key"] is True
+        assert "AIzaSy..." in data["gemini_key_masked"]
+        assert data["linkedin_connected"] is False
+
+        # 2. POST /api/auth/test-linkedin without cookie
+        test_res1 = test_client.post("/api/auth/test-linkedin")
+        assert test_res1.status_code == 200
+        test_data1 = test_res1.json()
+        assert test_data1["valid"] is False
+        assert test_data1["status"] == "missing"
+
+        # 3. POST /api/auth/linkedin-cookie validation error on empty
+        err_res = test_client.post("/api/auth/linkedin-cookie", json={"li_at": "   "})
+        assert err_res.status_code == 400
+
+        # 4. POST /api/auth/linkedin-cookie with valid value
+        set_res = test_client.post("/api/auth/linkedin-cookie", json={"li_at": "AQEDATrFakeSessionCookie123"})
+        assert set_res.status_code == 200
+        assert set_res.json()["linkedin_connected"] is True
+
+        # Verify reflected in settings status
+        res_after = test_client.get("/api/settings/status")
+        assert res_after.json()["linkedin_connected"] is True
+        li_post_connector = next(c for c in res_after.json()["connectors"] if c["id"] == "linkedin_posts")
+        assert li_post_connector["status"] == "active"
+
+        # 5. PUT /api/config
+        cfg_update = test_client.put(
+            "/api/config",
+            json={
+                "auto_search_queries": ["motion designer", "creative technologist"],
+                "auto_search_times": ["09:00", "18:00"],
+            },
+        )
+        assert cfg_update.status_code == 200
+        updated_data = test_client.get("/api/settings/status").json()
+        assert updated_data["auto_search_queries"] == ["motion designer", "creative technologist"]
+        assert updated_data["auto_search_times"] == ["09:00", "18:00"]
+
+
+
 
 
 
