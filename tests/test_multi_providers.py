@@ -78,3 +78,47 @@ def test_jobbygather_parser():
     assert len(items) == 1
     assert items[0].opportunity_type == OpportunityType.POST
     assert items[0].author_name == "Marc"
+
+
+def test_relevance_and_location_filters_for_creative_roles():
+    from jobby.providers.glassdoor import _build_glassdoor_search_url
+    from jobby.providers.relevance import is_location_compatible, is_relevant_job_offer
+
+    kw = ["Brand Designer"]
+
+    # Genuine creative & design roles must pass
+    assert is_relevant_job_offer("Senior Brand Designer (H/F)", "", kw) is True
+    assert is_relevant_job_offer("BALENCIAGA - Studio Graphic Designer (F/M)", "", kw) is True
+    assert is_relevant_job_offer("CDI - Directeur artistique Senior (H/F)", "", kw) is True
+    assert is_relevant_job_offer("DA / GRAPHISTE", "", kw) is True
+    assert is_relevant_job_offer("Brand Design Manager", "", kw) is True
+
+    # Off-topic roles and false friends must be rejected
+    assert is_relevant_job_offer("Senior Developer", "", kw) is False
+    assert is_relevant_job_offer("Développeur(se) Chaussures / Footwear Product Developer", "", kw) is False
+    assert is_relevant_job_offer("Facilities Associate", "", kw) is False
+    assert is_relevant_job_offer("RESPONSABLE RESSOURCES HUMAINES", "", kw) is False
+    assert is_relevant_job_offer("Supply planner f/h", "", kw) is False
+    assert is_relevant_job_offer("Stage (6 mois) – Assistant Chef de Marque (H/F)", "", kw) is False
+    assert is_relevant_job_offer("Store Director M - F - Luxury Brand", "", kw) is False
+    assert is_relevant_job_offer("Devenez Évaluateur de Marques de Luxe à Paris", "", kw) is False
+    assert is_relevant_job_offer("Interior Designer | Intermediate", "", kw) is False
+    assert is_relevant_job_offer("Freelance Fashion Designer", "", kw) is False
+    assert is_relevant_job_offer("Vehicle Motion Development Engineer", "", kw) is False
+    assert is_relevant_job_offer("Creative Project Manager", "", kw) is False
+    assert is_relevant_job_offer("Executive Assistant du Directeur Artistique H/F", "", kw) is False
+
+    # Location compatibility for French searches
+    assert is_location_compatible("Paris (75)", None, "Paris") is True
+    assert is_location_compatible("Paris 2e - 75", None, "Paris") is True
+    assert is_location_compatible("Neuilly-sur-Seine (92)", None, "Paris") is True
+    assert is_location_compatible("Télétravail", "full", "Paris") is True
+    assert is_location_compatible("Denver", None, "Paris") is False
+    assert is_location_compatible("New York", None, "Paris") is False
+    assert is_location_compatible("Göteborg, Sweden", None, "Paris") is False
+    assert is_location_compatible("Remote (United States)", "full", "Paris") is False
+
+    # Canonical Glassdoor SRCH URL for Paris
+    gd_url = _build_glassdoor_search_url("https://www.glassdoor.fr", "Brand Designer", "Paris")
+    assert "paris-brand-designer-jobs-SRCH_IL.0,5_IC2881970_KO6,20.htm" in gd_url
+

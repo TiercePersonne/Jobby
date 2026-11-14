@@ -383,6 +383,50 @@ class Storage:
             conn.commit()
             return cur.rowcount
 
+    def purge_irrelevant_new_opportunities(
+        self,
+        keywords: List[str],
+        target_location: Optional[str] = None,
+    ) -> int:
+        """Delete untriaged ('new') offers that do not match the active creative role/location filters."""
+        from jobby.providers.relevance import (
+            is_creative_design_search,
+            is_location_compatible,
+            is_relevant_job_offer,
+        )
+
+        if not is_creative_design_search(keywords):
+            return 0
+
+        to_delete: List[str] = []
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM opportunities
+                WHERE LOWER(TRIM(status)) = 'new'
+                  AND opportunity_type = 'offer'
+                  AND id NOT IN (SELECT opportunity_id FROM applications)
+                """
+            ).fetchall()
+            for row in rows:
+                opp = self._row_to_opportunity(row)
+                if isinstance(opp.raw_metadata, dict) and "ai_match" in opp.raw_metadata:
+                    continue
+                if not is_relevant_job_offer(opp.title, opp.description, keywords) or not is_location_compatible(
+                    opp.location, opp.remote_policy, target_location
+                ):
+                    to_delete.append(opp.id)
+
+            if to_delete:
+                placeholders = ",".join("?" for _ in to_delete)
+                conn.execute(
+                    f"DELETE FROM opportunities WHERE id IN ({placeholders})",
+                    to_delete,
+                )
+                conn.commit()
+
+        return len(to_delete)
+
     def get_stats(self) -> Dict[str, Any]:
         with self._connection() as conn:
             total = conn.execute("SELECT COUNT(*) FROM opportunities").fetchone()[0]

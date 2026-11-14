@@ -11,8 +11,14 @@ import httpx
 from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 
+from jobby.config import load_config
 from jobby.models import JobOpportunity, OpportunityType, SearchParams
 from jobby.providers.base import JobSourceProvider
+from jobby.providers.relevance import (
+    expand_creative_queries,
+    is_location_compatible,
+    is_relevant_job_offer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +44,7 @@ class WTTJProvider(JobSourceProvider):
         if not params.include_offers:
             return []
 
-        # Collect distinct search terms to query individually
-        queries: List[str] = []
-        if params.keywords:
-            for kw in params.keywords:
-                cleaned = kw.strip()
-                if cleaned and cleaned not in queries:
-                    queries.append(cleaned)
-        if not queries:
-            queries = ["Brand Designer"]
+        queries = expand_creative_queries(params.keywords, max_queries=5)
 
         headers = {
             "User-Agent": random.choice(USER_AGENTS),
@@ -55,19 +53,21 @@ class WTTJProvider(JobSourceProvider):
             "Origin": "https://www.welcometothejungle.com",
         }
 
-        # If user connected their WTTJ account
-        if self.auth_token:
-            headers["Authorization"] = f"Bearer {self.auth_token}"
-        if self.session_cookie:
-            headers["Cookie"] = self.session_cookie
+        cfg = load_config()
+        auth_token = self.auth_token or cfg.wttj_auth_token
+        session_cookie = self.session_cookie or cfg.wttj_session_cookie
+
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        if session_cookie:
+            headers["Cookie"] = session_cookie
 
         results: List[JobOpportunity] = []
         seen_keys: set[str] = set()
-        max_to_fetch = max(params.max_results, 100)
-        max_to_fetch = min(max_to_fetch, 200)
+        max_to_fetch = max(params.max_results, 80)
+        max_to_fetch = min(max_to_fetch, 150)
 
-        # Allow deep pagination: up to 15 pages (150 jobs) if 1 query, or up to 8 pages per query if multiple
-        max_pages_per_query = 15 if len(queries) == 1 else max(5, 20 // len(queries))
+        max_pages_per_query = 12 if len(queries) == 1 else 6
 
         async with httpx.AsyncClient(headers=headers, timeout=12.0) as client:
             for query in queries:
@@ -95,9 +95,13 @@ class WTTJProvider(JobSourceProvider):
 
                         parsed_page = self._parse_jobs(jobs_data)
                         for opp in parsed_page:
-                            # Optional client-side remote filter if needed
                             if params.remote_only and opp.remote_policy != "full":
                                 continue
+                            if not is_relevant_job_offer(opp.title, opp.description, params.keywords):
+                                continue
+                            if not is_location_compatible(opp.location, opp.remote_policy, params.location):
+                                continue
+
                             dedup_ref = (opp.raw_metadata or {}).get("wttj_reference") or opp.url
                             if dedup_ref in seen_keys:
                                 continue
@@ -112,7 +116,7 @@ class WTTJProvider(JobSourceProvider):
                             break
 
                         page += 1
-                        await asyncio.sleep(0.08)
+                        await asyncio.sleep(0.06)
 
                     except Exception as e:
                         logger.error(f"Error querying WTTJ API for '{query}' page {page}: {e}")
@@ -254,6 +258,18 @@ class WTTJProvider(JobSourceProvider):
             resp = await client.get(url, timeout=10.0)
             if resp.status_code == 200:
                 job_data = resp.json().get("job", {})
+                if not opp.location:
+                    office = job_data.get("office") or {}
+                    city = office.get("city") if isinstance(office, dict) else None
+                    country = office.get("country") if isinstance(office, dict) else None
+                    if not city and isinstance(job_data.get("offices"), list) and job_data["offices"]:
+                        first_off = job_data["offices"][0]
+                        if isinstance(first_off, dict):
+                            city = first_off.get("city")
+                            country = first_off.get("country")
+                    loc_parts = [p for p in [city, country] if p]
+                    if loc_parts:
+                        opp.location = ", ".join(loc_parts)
                 sections: List[str] = []
 
                 # Company presentation

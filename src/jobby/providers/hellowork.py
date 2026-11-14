@@ -7,7 +7,7 @@ import json
 import logging
 import random
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 import httpx
@@ -15,6 +15,11 @@ from bs4 import BeautifulSoup
 
 from jobby.models import JobOpportunity, OpportunityType, SearchParams
 from jobby.providers.base import JobSourceProvider
+from jobby.providers.relevance import (
+    expand_creative_queries,
+    is_location_compatible,
+    is_relevant_job_offer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,16 +42,8 @@ class HelloWorkProvider(JobSourceProvider):
         if not params.include_offers:
             return []
 
-        keywords_str = " ".join(params.keywords) if params.keywords else "developpeur"
+        queries = expand_creative_queries(params.keywords, max_queries=4)
         location_str = params.location or "France"
-
-        query_params: Dict[str, Any] = {
-            "k": keywords_str,
-            "l": location_str,
-        }
-
-        if params.remote_only:
-            query_params["tf"] = "full"
 
         headers = {
             "User-Agent": random.choice(USER_AGENTS),
@@ -55,18 +52,50 @@ class HelloWorkProvider(JobSourceProvider):
         }
 
         url = f"{self.BASE_URL}{self.SEARCH_PATH}"
+        results: List[JobOpportunity] = []
+        seen_keys: set[str] = set()
+
         try:
             async with httpx.AsyncClient(headers=headers, timeout=15.0, follow_redirects=True) as client:
-                resp = await client.get(url, params=query_params)
-                if resp.status_code != 200:
-                    logger.warning(f"HelloWork search returned status {resp.status_code}")
-                    return []
+                for query in queries:
+                    if len(results) >= params.max_results:
+                        break
 
-                results = self._parse_html(resp.text, limit=params.max_results)
+                    query_params: Dict[str, Any] = {
+                        "k": query,
+                        "l": location_str,
+                    }
+                    if params.remote_only:
+                        query_params["tf"] = "full"
+
+                    try:
+                        resp = await client.get(url, params=query_params)
+                        if resp.status_code != 200:
+                            logger.warning(f"HelloWork search returned status {resp.status_code} for '{query}'")
+                            continue
+
+                        parsed = self._parse_html(resp.text, limit=params.max_results * 2)
+                        for opp in parsed:
+                            if not is_relevant_job_offer(opp.title, opp.description, params.keywords):
+                                continue
+                            if not is_location_compatible(opp.location, opp.remote_policy, location_str):
+                                continue
+
+                            dedup_sig = f"{(opp.company or '').strip().lower()}::{opp.title.strip().lower()}"
+                            if opp.url in seen_keys or dedup_sig in seen_keys:
+                                continue
+                            seen_keys.add(opp.url)
+                            seen_keys.add(dedup_sig)
+                            results.append(opp)
+                            if len(results) >= params.max_results:
+                                break
+                    except Exception as q_err:
+                        logger.warning(f"HelloWork query error for '{query}': {q_err}")
 
                 # Concurrently enrich job descriptions from public job pages
                 if results:
                     sem = asyncio.Semaphore(5)
+
                     async def sem_enrich(opp: JobOpportunity):
                         async with sem:
                             await self._enrich_job_description(client, opp)
@@ -85,14 +114,13 @@ class HelloWorkProvider(JobSourceProvider):
         results: List[JobOpportunity] = []
         seen_urls = set()
 
-        # Find all h3 headings that contain job links
         h3_elements = soup.find_all("h3")
 
         for h3 in h3_elements:
             if len(results) >= limit:
                 break
 
-            card = h3.find_parent(["li", "article", "div"])
+            card = h3.find_parent(["li", "article"]) or h3.find_parent("div")
             if not card:
                 continue
 
@@ -106,47 +134,95 @@ class HelloWorkProvider(JobSourceProvider):
                 continue
             seen_urls.add(job_url)
 
-            raw_title = h3.get_text(strip=True)
-            title = raw_title.split("\n")[0].strip()
-
-            # Company name extraction
-            company = None
-            company_elem = card.find(class_=re.compile(r"company|recruiter", re.I))
-            if company_elem:
-                company = company_elem.get_text(strip=True)
+            # Extract clean title and company from h3 spans (modern HelloWork markup) or fallback
+            h3_spans = h3.find_all("span")
+            company: Optional[str] = None
+            if h3_spans:
+                title = h3_spans[0].get_text(strip=True)
+                if len(h3_spans) >= 2:
+                    company = h3_spans[1].get_text(strip=True)
             else:
-                all_text = [t.strip() for t in card.stripped_strings if len(t.strip()) > 1]
-                if len(all_text) >= 2:
-                    candidate = all_text[1]
-                    if "favoris" not in candidate.lower() and "candidature" not in candidate.lower():
-                        company = candidate
+                raw_title = h3.get_text(" ", strip=True)
+                title = raw_title.split("\n")[0].strip()
 
-            location = None
-            loc_elem = card.find(class_=re.compile(r"location|city|town", re.I))
-            if loc_elem:
-                location = loc_elem.get_text(strip=True)
-            else:
-                for span in card.find_all(["span", "p", "div"]):
-                    stext = span.get_text(strip=True)
-                    if re.search(r"\b(75\d{3}|69\d{3}|13\d{3}|33\d{3}|44\d{3}|31\d{3}|59\d{3}|\d{2}\s\d{3})\b", stext) or any(city in stext.lower() for city in ["paris", "lyon", "bordeaux", "marseille", "nantes", "toulouse", "lille", "remote", "télétravail"]):
-                        if len(stext) < 40 and not any(w in stext.lower() for w in ["candidature", "publiée", "sauvegarder", "postuler", "salaire", "offre"]):
-                            location = stext
+            if not company:
+                company_elem = card.find(class_=re.compile(r"company|recruiter", re.I))
+                if company_elem:
+                    company = company_elem.get_text(strip=True)
+                else:
+                    all_text = [t.strip() for t in card.stripped_strings if len(t.strip()) > 1]
+                    for candidate in all_text:
+                        if (
+                            candidate != title
+                            and "favoris" not in candidate.lower()
+                            and "candidature" not in candidate.lower()
+                            and "voir l" not in candidate.lower()
+                        ):
+                            company = candidate
                             break
 
+            # Location extraction: prioritize explicit data-cy="localisationCard"
+            location: Optional[str] = None
+            loc_cy = card.find(attrs={"data-cy": "localisationCard"})
+            if loc_cy:
+                location = loc_cy.get_text(strip=True)
+            else:
+                loc_elem = card.find(class_=re.compile(r"location|city|town", re.I))
+                if loc_elem:
+                    location = loc_elem.get_text(strip=True)
+                else:
+                    for span in card.find_all(["span", "p", "div"]):
+                        stext = span.get_text(strip=True)
+                        if stext == title or stext == company:
+                            continue
+                        if re.search(
+                            r"\b(75\d{0,3}|92\d{0,3}|93\d{0,3}|94\d{0,3}|69\d{0,3}|13\d{0,3}|33\d{0,3}|44\d{0,3}|31\d{0,3}|59\d{0,3}|\d{2}\s\d{3})\b",
+                            stext,
+                        ) or any(
+                            city in stext.lower()
+                            for city in ["paris", "lyon", "bordeaux", "marseille", "nantes", "toulouse", "lille", "remote", "télétravail"]
+                        ):
+                            if len(stext) < 40 and not any(
+                                w in stext.lower()
+                                for w in ["candidature", "publiée", "sauvegarder", "postuler", "salaire", "offre", "favoris"]
+                            ):
+                                location = stext
+                                break
+
+            # Contract & Salary extraction
             tags: List[str] = []
-            card_text_lower = card.get_text().lower()
-            if "cdi" in card_text_lower:
+            contract_cy = card.find(attrs={"data-cy": "contractCard"})
+            if contract_cy and contract_cy.get_text(strip=True):
+                tags.append(contract_cy.get_text(strip=True))
+
+            card_text_lower = card.get_text(" ", strip=True).lower()
+            if "cdi" in card_text_lower and "CDI" not in tags:
                 tags.append("CDI")
-            if "télétravail" in card_text_lower or "remote" in card_text_lower:
+            if ("télétravail" in card_text_lower or "remote" in card_text_lower) and "Remote" not in tags:
                 tags.append("Remote")
 
-            # Rich description extraction for expandable card
-            paragraphs = [p.get_text(strip=True) for p in card.find_all(["p", "span", "div"]) if len(p.get_text(strip=True)) > 25]
-            cleaned_paras = [p for p in paragraphs if "favoris" not in p.lower() and "candidature" not in p.lower()]
-            if cleaned_paras:
-                description = "\n\n".join(dict.fromkeys(cleaned_paras))
-            else:
-                description = card.get_text(" | ", strip=True)
+            salary_raw: Optional[str] = None
+            for s_str in card.stripped_strings:
+                if "€" in s_str and len(s_str) < 45:
+                    salary_raw = s_str.replace("\u202f", " ").strip()
+                    break
+
+            remote_policy = None
+            if "télétravail complet" in card_text_lower or "100% télétravail" in card_text_lower:
+                remote_policy = "full"
+            elif "télétravail" in card_text_lower or "remote" in card_text_lower:
+                remote_policy = "hybrid"
+
+            desc_lines = [
+                f"🏢 Entreprise : {company or 'Entreprise'}",
+                f"📍 Localisation : {location or 'France'}",
+            ]
+            if tags:
+                desc_lines.append(f"📄 Contrat : {', '.join(tags)}")
+            if salary_raw:
+                desc_lines.append(f"💰 Rémunération : {salary_raw}")
+
+            description = "\n".join(desc_lines)
 
             opp = JobOpportunity(
                 source=self.name,
@@ -154,6 +230,8 @@ class HelloWorkProvider(JobSourceProvider):
                 title=title,
                 company=company,
                 location=location,
+                salary_raw=salary_raw,
+                remote_policy=remote_policy,
                 url=job_url,
                 tags=tags,
                 description=description,

@@ -467,6 +467,18 @@ def mark_all_opportunities_seen() -> Dict[str, Any]:
     return {"status": "updated", "updated_count": updated_count}
 
 
+@app.post("/api/opportunities/purge-irrelevant")
+def purge_irrelevant_opportunities() -> Dict[str, Any]:
+    config = load_config()
+    storage = Storage(config.database_path)
+    target_loc = config.preferred_locations[0] if config.preferred_locations else "France"
+    deleted_count = storage.purge_irrelevant_new_opportunities(
+        config.target_roles,
+        target_location=target_loc,
+    )
+    return {"status": "purged", "deleted_count": deleted_count}
+
+
 @app.post("/api/search")
 async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
     if req.sources is not None and len(req.sources) == 0:
@@ -498,6 +510,10 @@ async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
 
     # Concurrent search across providers
     raw_results = await registry.search_all(params, source_names=req.sources)
+
+    # Clean up any stale untriaged ('new') off-topic offers from earlier searches
+    if req.sources is None or len(req.sources) > 1:
+        storage.purge_irrelevant_new_opportunities(params.keywords, target_location=params.location)
 
     # Deduplicate & Sort by scraping date (most recent first)
     deduped = DeduplicationEngine.deduplicate(raw_results)

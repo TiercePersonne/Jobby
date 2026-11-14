@@ -25,6 +25,11 @@ from jobby.ai_analyzer import analyze_post_heuristic, detect_remote_policy
 from jobby.config import load_config
 from jobby.models import JobOpportunity, OpportunityType, SearchParams
 from jobby.providers.base import JobSourceProvider
+from jobby.providers.relevance import (
+    expand_creative_queries,
+    is_location_compatible,
+    is_relevant_job_offer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,19 +86,8 @@ class LinkedInProvider(JobSourceProvider):
     async def _search_official_jobs(self, params: SearchParams) -> List[JobOpportunity]:
         """Search official LinkedIn job postings via the public guest API."""
         url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
-        keywords_str = " ".join(params.keywords) if params.keywords else "developer"
+        queries = expand_creative_queries(params.keywords, max_queries=2)
         location_str = params.location or "France"
-
-        query_params: Dict[str, Any] = {
-            "keywords": keywords_str,
-            "location": location_str,
-            "f_TPR": f"r{params.posted_within_days * 86400}",
-            "start": 0,
-        }
-
-        # LinkedIn remote filter (2 = Remote)
-        if params.remote_only:
-            query_params["f_WT"] = "2"
 
         headers = {
             "User-Agent": random.choice(USER_AGENTS),
@@ -102,42 +96,61 @@ class LinkedInProvider(JobSourceProvider):
         }
 
         opportunities: List[JobOpportunity] = []
+        seen_urls: set[str] = set()
         max_to_fetch = min(params.max_results, 50)
-        start = 0
 
         async with httpx.AsyncClient(headers=headers, timeout=15.0, follow_redirects=True) as client:
-            while len(opportunities) < max_to_fetch and start < max_to_fetch:
-                query_params["start"] = start
-                try:
-                    resp = await client.get(url, params=query_params)
-                    if resp.status_code != 200:
-                        logger.warning(f"LinkedIn public jobs responded with status {resp.status_code}")
-                        break
-
-                    cards = self._parse_job_cards(resp.text)
-                    if not cards:
-                        break
-
-                    for card in cards:
-                        if len(opportunities) >= max_to_fetch:
-                            break
-                        opportunities.append(card)
-
-                    start += len(cards)
-                    # Gentle delay to avoid rate limit
-                    await asyncio.sleep(random.uniform(0.5, 1.2))
-
-                except Exception as e:
-                    logger.error(f"Error fetching LinkedIn jobs at offset {start}: {e}")
+            for query in queries:
+                if len(opportunities) >= max_to_fetch:
                     break
+                start = 0
+                while len(opportunities) < max_to_fetch and start < max_to_fetch:
+                    query_params: Dict[str, Any] = {
+                        "keywords": query,
+                        "location": location_str,
+                        "f_TPR": f"r{params.posted_within_days * 86400}",
+                        "start": start,
+                    }
+                    if params.remote_only:
+                        query_params["f_WT"] = "2"
 
-            # Enrich descriptions for fetched cards concurrently
+                    try:
+                        resp = await client.get(url, params=query_params)
+                        if resp.status_code != 200:
+                            logger.warning(f"LinkedIn public jobs responded with status {resp.status_code}")
+                            break
+
+                        cards = self._parse_job_cards(resp.text)
+                        if not cards:
+                            break
+
+                        for card in cards:
+                            if len(opportunities) >= max_to_fetch:
+                                break
+                            if card.url in seen_urls:
+                                continue
+                            if not is_relevant_job_offer(card.title, card.description, params.keywords):
+                                continue
+                            if not is_location_compatible(card.location, card.remote_policy, location_str):
+                                continue
+                            seen_urls.add(card.url)
+                            opportunities.append(card)
+
+                        start += len(cards)
+                        await asyncio.sleep(random.uniform(0.4, 0.8))
+
+                    except Exception as e:
+                        logger.error(f"Error fetching LinkedIn jobs at offset {start}: {e}")
+                        break
+
+            # Enrich descriptions for fetched cards with gentle concurrency to avoid HTTP 429
             if opportunities:
-                sem = asyncio.Semaphore(5)
+                sem = asyncio.Semaphore(2)
+
                 async def sem_enrich(opp: JobOpportunity):
                     async with sem:
                         await self._enrich_job_description(client, opp)
-                        await asyncio.sleep(0.15)
+                        await asyncio.sleep(random.uniform(0.3, 0.5))
 
                 await asyncio.gather(*(sem_enrich(opp) for opp in opportunities), return_exceptions=True)
 
@@ -172,7 +185,7 @@ class LinkedInProvider(JobSourceProvider):
                         opp.description = "\n\n".join(parts)
                         return
                 elif resp.status_code == 429:
-                    # Rate limit hit on first endpoint, fall back to view_url
+                    await asyncio.sleep(0.8)
                     continue
             except Exception as e:
                 logger.debug(f"Could not enrich LinkedIn job {job_id} via {target_url}: {e}")

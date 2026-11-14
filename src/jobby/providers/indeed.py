@@ -1,19 +1,28 @@
 """Indeed Provider for Jobby.
 
-Extracts real job offers from Indeed (indeed.fr / indeed.com).
-Uses direct Playwright navigation with robust fallback to avoid anti-bot shielding.
+Extracts real job offers from Indeed (fr.indeed.com / indeed.com).
+Uses quoted multi-word queries, mosaic provider JSON + DOM extraction, and strict relevance filtering.
 """
 
 from __future__ import annotations
 
 import asyncio
+import html
+import json
 import logging
 import re
 from typing import Any, Dict, List
 from urllib.parse import quote, urljoin
 
+from bs4 import BeautifulSoup
+
 from jobby.models import JobOpportunity, OpportunityType, SearchParams
 from jobby.providers.base import JobSourceProvider
+from jobby.providers.relevance import (
+    expand_creative_queries,
+    is_location_compatible,
+    is_relevant_job_offer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +35,17 @@ class IndeedProvider(JobSourceProvider):
 
     async def search(self, params: SearchParams) -> List[JobOpportunity]:
         """Search Indeed job postings."""
-        keywords_str = " ".join(params.keywords) if params.keywords else "developer"
+        if not params.include_offers:
+            return []
+
+        queries = expand_creative_queries(params.keywords, max_queries=2)
         location_str = params.location or "France"
 
-        return await asyncio.to_thread(self._fetch_sync, keywords_str, location_str, params)
+        return await asyncio.to_thread(self._fetch_sync, queries, location_str, params)
 
-    def _fetch_sync(self, keywords: str, location: str, params: SearchParams) -> List[JobOpportunity]:
+    def _fetch_sync(self, queries: List[str], location: str, params: SearchParams) -> List[JobOpportunity]:
         results: List[JobOpportunity] = []
+        seen_urls: set[str] = set()
         try:
             from playwright.sync_api import sync_playwright
 
@@ -43,9 +56,11 @@ class IndeedProvider(JobSourceProvider):
                 except Exception:
                     browser = p.chromium.launch(headless=True, args=launch_args)
 
-                # Select appropriate domain based on location
                 loc_lower = location.lower()
-                is_us = any(term in loc_lower for term in ["usa", "united states", "états-unis", "california", "new york", "san francisco", "austin"])
+                is_us = any(
+                    term in loc_lower
+                    for term in ["usa", "united states", "états-unis", "california", "new york", "san francisco", "austin"]
+                )
                 base_domain = "https://www.indeed.com" if is_us else "https://fr.indeed.com"
 
                 context = browser.new_context(
@@ -55,94 +70,189 @@ class IndeedProvider(JobSourceProvider):
                 )
                 page = context.new_page()
 
-                search_url = f"{base_domain}/jobs?q={quote(keywords)}&l={quote(location)}"
-                logger.info(f"Navigating to Indeed: {search_url}")
-                page.goto(search_url, timeout=25000, wait_until="domcontentloaded")
-                page.wait_for_timeout(3000)
-
-                # Look for Indeed job cards
-                cards = page.query_selector_all("div.job_seen_beacon, div.cardOutline, tr.jobCard")
-                seen_urls = set()
-
-                for card in cards:
+                for raw_query in queries:
                     if len(results) >= params.max_results:
                         break
 
-                    link_el = card.query_selector("h2.jobTitle a, a.jcs-JobTitle, a[href*='/viewjob'], a[href*='/rc/clk']")
-                    if not link_el:
+                    # Quote multi-word English phrase "Brand Designer" on fr.indeed.com
+                    # to prevent Indeed from expanding "Designer Brand" into luxury retail stores.
+                    q_formatted = f'"{raw_query}"' if raw_query.strip().lower() == "brand designer" else raw_query
+                    search_url = f"{base_domain}/jobs?q={quote(q_formatted)}&l={quote(location)}"
+                    logger.info(f"Navigating to Indeed: {search_url}")
+                    try:
+                        page.goto(search_url, timeout=25000, wait_until="domcontentloaded")
+                        page.wait_for_timeout(2500)
+                    except Exception as nav_err:
+                        logger.warning(f"Indeed navigation timeout/error for '{raw_query}': {nav_err}")
                         continue
 
-                    raw_href = link_el.get_attribute("href") or ""
-                    if not raw_href:
-                        continue
-                    full_url = raw_href if raw_href.startswith("http") else urljoin(base_domain, raw_href)
+                    page_html = page.content()
 
-                    # Deduplicate based on URL
-                    job_key = full_url.split("?")[0]
-                    if "jk=" in full_url:
-                        jk_match = re.search(r"jk=([a-zA-Z0-9]+)", full_url)
-                        if jk_match:
-                            job_key = jk_match.group(1)
-
-                    if job_key in seen_urls:
-                        continue
-                    seen_urls.add(job_key)
-
-                    title = link_el.inner_text().strip()
-                    title = re.sub(r"^new\s+", "", title, flags=re.I).strip()
-
-                    comp_el = card.query_selector('[data-testid="company-name"], span.companyName, [data-testid="companyName"]')
-                    company = comp_el.inner_text().strip() if comp_el else "Entreprise (Indeed)"
-
-                    loc_el = card.query_selector('[data-testid="text-location"], div.companyLocation')
-                    card_location = loc_el.inner_text().strip() if loc_el else location
-
-                    salary_el = card.query_selector("div.salary-snippet-container, div.metadata.salary-snippet-container")
-                    salary = salary_el.inner_text().strip() if salary_el else None
-
-                    snip_el = card.query_selector('div.job-snippet, [data-testid="job-snippet"]')
-                    snippet = snip_el.inner_text().strip() if snip_el else ""
-
-                    card_raw_text = card.inner_text().strip()
-                    card_lines = [l.strip() for l in card_raw_text.split("\n") if l.strip()]
-                    meaningful_lines = [
-                        l for l in card_lines
-                        if l not in [title, company, card_location, salary]
-                        and len(l) > 3
-                        and not any(x in l.lower() for x in ["rechercher les salaires", "consulter les questions", "voir toutes les offres", "postulez via", "sauvegarder l'offre"])
-                    ]
-                    clean_snippet = "\n• ".join(dict.fromkeys(meaningful_lines)) if meaningful_lines else snippet
-
-                    description = (
-                        f"Offre d'emploi Indeed : {title}\n"
-                        f"Entreprise : {company}\n"
-                        f"Localisation : {card_location}\n"
+                    # 1. Try extracting structured job cards from window.mosaic.providerData
+                    m_mosaic = re.search(
+                        r'window\.mosaic\.providerData\["mosaic-provider-jobcards"\]\s*=\s*(\{.*?\});',
+                        page_html,
+                        re.S,
                     )
-                    if salary:
-                        description += f"💰 Rémunération : {salary}\n"
-                    if clean_snippet:
-                        description += f"\n📝 Détails de l'offre :\n• {clean_snippet}\n"
-                    description += "\nConsultez l'annonce sur Indeed pour la fiche de poste détaillée et postuler."
+                    mosaic_items: List[Dict[str, Any]] = []
+                    if m_mosaic:
+                        try:
+                            mosaic_json = json.loads(m_mosaic.group(1))
+                            mosaic_items = (
+                                mosaic_json.get("metaData", {})
+                                .get("mosaicProviderJobCardsModel", {})
+                                .get("results", [])
+                            )
+                        except Exception:
+                            mosaic_items = []
 
-                    # Remote policy detection
-                    remote_policy = None
-                    full_text = f"{title} {card_location} {snippet}".lower()
-                    if "télétravail" in full_text or "remote" in full_text:
-                        remote_policy = "full" if ("100%" in full_text or "total" in full_text) else "hybrid"
+                    for item in mosaic_items:
+                        if len(results) >= params.max_results:
+                            break
+                        jk = item.get("jobkey")
+                        if not jk or jk in seen_urls:
+                            continue
 
-                    opp = JobOpportunity(
-                        source=self.name,
-                        opportunity_type=OpportunityType.OFFER,
-                        title=title,
-                        company=company,
-                        location=card_location,
-                        salary_raw=salary,
-                        remote_policy=remote_policy,
-                        url=full_url,
-                        description=description,
-                        tags=["indeed", "emploi"],
-                    )
-                    results.append(opp)
+                        title = html.unescape(item.get("title") or item.get("displayTitle") or "").strip()
+                        if not title:
+                            continue
+
+                        company = html.unescape(item.get("company") or "Entreprise").strip()
+                        card_location = html.unescape(item.get("formattedLocation") or location).strip()
+                        raw_snippet = item.get("snippet") or ""
+                        clean_snippet = BeautifulSoup(raw_snippet, "html.parser").get_text("\n• ", strip=True)
+
+                        if not is_relevant_job_offer(title, clean_snippet, params.keywords):
+                            continue
+
+                        remote_policy = None
+                        full_text = f"{title} {card_location} {clean_snippet}".lower()
+                        if item.get("remoteLocation") or "télétravail" in full_text or "remote" in full_text:
+                            remote_policy = "full" if ("100%" in full_text or "total" in full_text or "complet" in full_text) else "hybrid"
+
+                        if params.remote_only and remote_policy != "full":
+                            continue
+                        if not is_location_compatible(card_location, remote_policy, location):
+                            continue
+
+                        seen_urls.add(jk)
+
+                        salary_info = (item.get("salarySnippet") or {}).get("text")
+                        tags = ["Indeed"]
+                        for taxo in item.get("taxonomyAttributes") or []:
+                            for attr in taxo.get("attributes") or []:
+                                lbl = attr.get("label")
+                                if lbl and lbl not in tags and len(tags) < 5:
+                                    tags.append(lbl)
+
+                        full_url = f"{base_domain}/viewjob?jk={jk}"
+                        desc_lines = [
+                            f"🏢 Entreprise : {company}",
+                            f"📍 Localisation : {card_location}",
+                        ]
+                        if len(tags) > 1:
+                            desc_lines.append(f"📄 Contrat : {', '.join(tags[1:])}")
+                        if salary_info:
+                            desc_lines.append(f"💰 Rémunération : {salary_info}")
+                        if clean_snippet:
+                            desc_lines.append(f"\n📝 Détails de l'offre :\n• {clean_snippet}")
+
+                        opp = JobOpportunity(
+                            source=self.name,
+                            opportunity_type=OpportunityType.OFFER,
+                            title=title,
+                            company=company,
+                            location=card_location,
+                            salary_raw=salary_info,
+                            remote_policy=remote_policy,
+                            url=full_url,
+                            description="\n".join(desc_lines),
+                            tags=tags,
+                        )
+                        results.append(opp)
+
+                    # 2. Fallback to DOM card parsing if mosaic JSON was not present
+                    cards = page.query_selector_all("div.job_seen_beacon, div.cardOutline, tr.jobCard")
+                    for card in cards:
+                        if len(results) >= params.max_results:
+                            break
+
+                        link_el = card.query_selector(
+                            "h2.jobTitle a, a.jcs-JobTitle, a[href*='/viewjob'], a[href*='/rc/clk']"
+                        )
+                        if not link_el:
+                            continue
+
+                        raw_href = link_el.get_attribute("href") or ""
+                        if not raw_href:
+                            continue
+                        full_url = raw_href if raw_href.startswith("http") else urljoin(base_domain, raw_href)
+
+                        job_key = full_url.split("?")[0]
+                        if "jk=" in full_url:
+                            jk_match = re.search(r"jk=([a-zA-Z0-9]+)", full_url)
+                            if jk_match:
+                                job_key = jk_match.group(1)
+
+                        if job_key in seen_urls:
+                            continue
+
+                        title = link_el.inner_text().strip()
+                        title = re.sub(r"^new\s+", "", title, flags=re.I).strip()
+
+                        comp_el = card.query_selector(
+                            '[data-testid="company-name"], span.companyName, [data-testid="companyName"]'
+                        )
+                        company = comp_el.inner_text().strip() if comp_el else "Entreprise"
+
+                        loc_el = card.query_selector('[data-testid="text-location"], div.companyLocation')
+                        card_location = loc_el.inner_text().strip() if loc_el else location
+
+                        salary_el = card.query_selector(
+                            "div.salary-snippet-container, div.metadata.salary-snippet-container"
+                        )
+                        salary = salary_el.inner_text().strip() if salary_el else None
+
+                        snip_el = card.query_selector('div.job-snippet, [data-testid="job-snippet"]')
+                        snippet = snip_el.inner_text().strip() if snip_el else ""
+
+                        if not is_relevant_job_offer(title, snippet, params.keywords):
+                            continue
+
+                        remote_policy = None
+                        full_text = f"{title} {card_location} {snippet}".lower()
+                        if "télétravail" in full_text or "remote" in full_text:
+                            remote_policy = "full" if ("100%" in full_text or "total" in full_text) else "hybrid"
+
+                        if params.remote_only and remote_policy != "full":
+                            continue
+                        if not is_location_compatible(card_location, remote_policy, location):
+                            continue
+
+                        seen_urls.add(job_key)
+
+                        description = (
+                            f"🏢 Entreprise : {company}\n"
+                            f"📍 Localisation : {card_location}\n"
+                        )
+                        if salary:
+                            description += f"💰 Rémunération : {salary}\n"
+                        if snippet:
+                            description += f"\n📝 Détails de l'offre :\n• {snippet}\n"
+
+                        opp = JobOpportunity(
+                            source=self.name,
+                            opportunity_type=OpportunityType.OFFER,
+                            title=title,
+                            company=company,
+                            location=card_location,
+                            salary_raw=salary,
+                            remote_policy=remote_policy,
+                            url=full_url,
+                            description=description,
+                            tags=["Indeed"],
+                        )
+                        results.append(opp)
 
                 browser.close()
         except Exception as e:

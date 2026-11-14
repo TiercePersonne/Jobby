@@ -11,14 +11,18 @@ import html
 import logging
 import re
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional
-from urllib.parse import quote, unquote
+from typing import List
+from urllib.parse import quote
 
 import httpx
-from bs4 import BeautifulSoup
 
 from jobby.models import JobOpportunity, OpportunityType, SearchParams
 from jobby.providers.base import JobSourceProvider
+from jobby.providers.relevance import (
+    expand_creative_queries,
+    is_location_compatible,
+    is_relevant_job_offer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +62,14 @@ class TeamtailorProvider(JobSourceProvider):
 
     async def search(self, params: SearchParams) -> List[JobOpportunity]:
         """Search Teamtailor jobs across company boards with ATS fallback."""
-        results: List[JobOpportunity] = []
-        seen_urls = set()
+        if not params.include_offers:
+            return []
 
-        keywords = params.keywords or ["developer"]
+        results: List[JobOpportunity] = []
+        seen_urls: set[str] = set()
+
+        keywords = params.keywords or ["Brand Designer"]
         location = params.location or "France"
-        kw_lower = [k.lower() for k in keywords]
-        loc_lower = location.lower()
 
         # 1. Fetch direct Teamtailor boards via official public XML/RSS feeds
         async with httpx.AsyncClient(timeout=4.5, follow_redirects=True) as client:
@@ -88,13 +93,14 @@ class TeamtailorProvider(JobSourceProvider):
                         if not link or link in seen_urls:
                             continue
 
-                        title = item.findtext("title") or ""
+                        title = (item.findtext("title") or "").strip()
                         desc_raw = item.findtext("description") or ""
-                        # Strip HTML
-                        desc_text = html.unescape(re.sub(r"<[^>]+>", " ", desc_raw)).strip()
-                        desc_text = re.sub(r"\s+", " ", desc_text)
+                        desc_text = html.unescape(re.sub(r"<[^>]+>", "\n", desc_raw)).strip()
+                        desc_text = re.sub(r"\n{3,}", "\n\n", desc_text)
 
-                        # Extract location and remote status from XML namespaces
+                        if not is_relevant_job_offer(title, desc_text, keywords):
+                            continue
+
                         locations_found = []
                         for loc_el in item.findall(".//{https://teamtailor.com/locations}location"):
                             city = loc_el.findtext("{https://teamtailor.com/locations}city")
@@ -112,43 +118,45 @@ class TeamtailorProvider(JobSourceProvider):
                         elif "hybrid" in remote_status:
                             remote_policy = "hybrid"
 
-                        # Filter by keywords & location
-                        full_content = f"{title} {desc_text}".lower()
-                        matches_kw = any(k in full_content for k in kw_lower) if kw_lower else True
+                        if params.remote_only and remote_policy != "full":
+                            continue
+                        if not is_location_compatible(job_location, remote_policy, location):
+                            continue
 
-                        if matches_kw:
-                            seen_urls.add(link)
-                            clean_desc = (
-                                f"Offre d'emploi Teamtailor : {title}\n"
-                                f"Entreprise : {comp_name}\n"
-                                f"Localisation : {job_location}\n\n"
-                                f"Descriptif :\n{desc_text[:600]}...\n\n"
-                                f"Postuler directement sur le site carrière Teamtailor de l'entreprise."
-                            )
+                        seen_urls.add(link)
+                        clean_desc = (
+                            f"🏢 Entreprise : {comp_name}\n"
+                            f"📍 Localisation : {job_location}\n\n"
+                            f"📝 Descriptif du poste :\n{desc_text[:4000]}"
+                        )
 
-                            opp = JobOpportunity(
-                                source=self.name,
-                                opportunity_type=OpportunityType.OFFER,
-                                title=title,
-                                company=comp_name,
-                                location=job_location,
-                                remote_policy=remote_policy,
-                                url=link,
-                                description=clean_desc,
-                                tags=["teamtailor", "ats", "scaleup"],
-                            )
-                            results.append(opp)
+                        opp = JobOpportunity(
+                            source=self.name,
+                            opportunity_type=OpportunityType.OFFER,
+                            title=title,
+                            company=comp_name,
+                            location=job_location,
+                            remote_policy=remote_policy,
+                            url=link,
+                            description=clean_desc,
+                            tags=["Teamtailor", "Scaleup"],
+                        )
+                        results.append(opp)
                 except Exception as e:
                     logger.debug(f"Error parsing Teamtailor feed for {slug}: {e}")
 
-        # 2. If needed, query European tech scaleup ATS feed (Arbeitnow)
+        # 2. Query European tech scaleup ATS feed (Arbeitnow) per keyword
         if len(results) < params.max_results:
+            queries = expand_creative_queries(keywords, max_queries=2)
             try:
-                search_q = "+".join(keywords)
-                async with httpx.AsyncClient(timeout=4.0) as client:
-                    api_url = f"https://www.arbeitnow.com/api/job-board-api?search={quote(search_q)}"
-                    res = await client.get(api_url)
-                    if res.status_code == 200:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    for query in queries:
+                        if len(results) >= params.max_results:
+                            break
+                        api_url = f"https://www.arbeitnow.com/api/job-board-api?search={quote(query)}"
+                        res = await client.get(api_url)
+                        if res.status_code != 200:
+                            continue
                         data = res.json().get("data", [])
                         for job in data:
                             if len(results) >= params.max_results:
@@ -157,29 +165,30 @@ class TeamtailorProvider(JobSourceProvider):
                             job_url = job.get("url")
                             if not job_url or job_url in seen_urls:
                                 continue
-                            seen_urls.add(job_url)
 
-                            title = job.get("title") or "Offre Tech Scaleup"
-                            comp_name = job.get("company_name") or "Scaleup Tech"
-                            job_loc = job.get("location") or location
+                            title = (job.get("title") or "").strip()
+                            comp_name = (job.get("company_name") or "Scaleup Tech").strip()
+                            job_loc = (job.get("location") or location).strip()
                             raw_desc = job.get("description") or ""
-                            desc_text = html.unescape(re.sub(r"<[^>]+>", " ", raw_desc)).strip()
-                            desc_text = re.sub(r"\s+", " ", desc_text)
+                            desc_text = html.unescape(re.sub(r"<[^>]+>", "\n", raw_desc)).strip()
+                            desc_text = re.sub(r"\n{3,}", "\n\n", desc_text)
 
-                            # Verify that the job actually matches the requested search keywords
-                            full_content = f"{title} {desc_text}".lower()
-                            if kw_lower and not any(k in full_content for k in kw_lower):
+                            if not is_relevant_job_offer(title, desc_text, keywords):
                                 continue
 
-                            is_remote = job.get("remote", False)
+                            is_remote = bool(job.get("remote", False))
                             rem_policy = "full" if is_remote else None
 
+                            if params.remote_only and rem_policy != "full":
+                                continue
+                            if not is_location_compatible(job_loc, rem_policy, location):
+                                continue
+
+                            seen_urls.add(job_url)
                             clean_desc = (
-                                f"Offre d'emploi ATS & Scaleup : {title}\n"
-                                f"Entreprise : {comp_name}\n"
-                                f"Localisation : {job_loc}\n\n"
-                                f"Descriptif :\n{desc_text[:600]}...\n\n"
-                                f"Consultez l'offre pour postuler."
+                                f"🏢 Entreprise : {comp_name}\n"
+                                f"📍 Localisation : {job_loc}\n\n"
+                                f"📝 Descriptif du poste :\n{desc_text[:4000]}"
                             )
 
                             opp = JobOpportunity(
@@ -191,7 +200,7 @@ class TeamtailorProvider(JobSourceProvider):
                                 remote_policy=rem_policy,
                                 url=job_url,
                                 description=clean_desc,
-                                tags=["teamtailor", "ats", "scaleup"],
+                                tags=["Teamtailor", "Scaleup"],
                             )
                             results.append(opp)
             except Exception as e:
