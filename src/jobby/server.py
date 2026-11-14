@@ -230,15 +230,238 @@ class LinkedInCookieRequest(BaseModel):
     li_at: str
 
 
+class LinkedInLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class LinkedInVerifyRequest(BaseModel):
+    session_id: str
+    code: str = ""
+
+
+_LINKEDIN_LOGIN_SESSIONS: Dict[str, Dict[str, Any]] = {}
+
+
+def _extract_clean_li_at(raw_input: str) -> str:
+    """Extracts the clean li_at cookie value even if user pastes a full Cookie header or key=value."""
+    import re
+    val = (raw_input or "").strip()
+    if not val:
+        return ""
+    m = re.search(r"li_at\s*[=:]\s*[\"']?([A-Za-z0-9_\-\.]{15,})", val)
+    if m:
+        return m.group(1).strip()
+    val = val.strip("\"' ;")
+    return val
+
+
+async def _cleanup_linkedin_session(session_id: str, delay: float = 0.0) -> None:
+    if delay > 0:
+        await asyncio.sleep(delay)
+    sess = _LINKEDIN_LOGIN_SESSIONS.pop(session_id, None)
+    if not sess:
+        return
+    for key in ("context", "browser", "playwright"):
+        obj = sess.get(key)
+        if obj is not None:
+            try:
+                if key == "playwright":
+                    await obj.stop()
+                else:
+                    await obj.close()
+            except Exception:
+                pass
+
+
 @app.post("/api/auth/linkedin-cookie")
 def set_linkedin_cookie(req: LinkedInCookieRequest) -> Dict[str, Any]:
-    cookie_val = (req.li_at or "").strip()
+    cookie_val = _extract_clean_li_at(req.li_at)
     if not cookie_val:
         raise HTTPException(status_code=400, detail="Le cookie li_at ne peut pas être vide.")
     config = load_config()
     config.linkedin_li_at = cookie_val
     save_config(config)
     return {"status": "saved", "linkedin_connected": True, "message": "Cookie LinkedIn li_at enregistré avec succès."}
+
+
+@app.post("/api/auth/linkedin-login")
+async def login_linkedin_automated(req: LinkedInLoginRequest) -> Dict[str, Any]:
+    email = (req.email or "").strip()
+    password = req.password or ""
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Veuillez renseigner votre email et mot de passe LinkedIn.")
+
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Playwright n'est pas disponible sur ce serveur.")
+
+    pw = await async_playwright().start()
+    browser = None
+    context = None
+    try:
+        browser = await pw.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+        )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            locale="fr-FR",
+            viewport={"width": 1280, "height": 800},
+        )
+        page = await context.new_page()
+        await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=20000)
+        await page.fill("#username", email)
+        await page.fill("#password", password)
+        await page.click('button[type="submit"]')
+
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=10000)
+        except Exception:
+            pass
+        await asyncio.sleep(2.5)
+
+        cookies = await context.cookies()
+        li_at = next((c["value"] for c in cookies if c.get("name") == "li_at" and c.get("value")), "")
+        if li_at:
+            config = load_config()
+            config.linkedin_li_at = li_at
+            save_config(config)
+            await context.close()
+            await browser.close()
+            await pw.stop()
+            return {
+                "status": "connected",
+                "linkedin_connected": True,
+                "message": "Connexion LinkedIn réussie ! Votre token li_at a été récupéré et activé automatiquement.",
+            }
+
+        current_url = page.url.lower()
+        content_lower = (await page.content()).lower()
+
+        # Check for invalid credentials
+        err_el = await page.query_selector("#error-for-password, #error-for-username, .alert-content")
+        if err_el:
+            err_text = (await err_el.inner_text()).strip()
+            if err_text and "checkpoint" not in current_url:
+                await context.close()
+                await browser.close()
+                await pw.stop()
+                return {
+                    "status": "error",
+                    "linkedin_connected": False,
+                    "message": f"LinkedIn a refusé les identifiants : {err_text}",
+                }
+
+        # Check if blocked by visual CAPTCHA challenge (never bypass or solve CAPTCHAs)
+        has_captcha = (
+            "captcha" in content_lower
+            or "arkose" in content_lower
+            or await page.query_selector('iframe[src*="captcha"], iframe[src*="arkose"], #captcha-internal') is not None
+        )
+        pin_input = await page.query_selector(
+            'input[name="pin"], input#input__email_verification_pin, input#input__phone_verification_pin, input[name="verificationCode"]'
+        )
+
+        if has_captcha and not pin_input:
+            await context.close()
+            await browser.close()
+            await pw.stop()
+            return {
+                "status": "captcha_blocked",
+                "linkedin_connected": False,
+                "message": "LinkedIn demande une vérification anti-robot visuelle sur l'IP du serveur. Utilisez le bouton « Ouvrir la popup LinkedIn.com » ci-dessous pour vous connecter depuis votre navigateur.",
+            }
+
+        # Keep session alive for 3 minutes so the user can enter their email/SMS PIN or approve on mobile
+        session_id = "li_" + uuid.uuid4().hex[:12]
+        _LINKEDIN_LOGIN_SESSIONS[session_id] = {
+            "playwright": pw,
+            "browser": browser,
+            "context": context,
+            "page": page,
+            "created_at": asyncio.get_event_loop().time(),
+        }
+        asyncio.create_task(_cleanup_linkedin_session(session_id, delay=180.0))
+
+        return {
+            "status": "verification_required",
+            "session_id": session_id,
+            "has_pin_input": pin_input is not None,
+            "linkedin_connected": False,
+            "message": "LinkedIn demande une validation de sécurité (code envoyé par email/SMS ou notification sur l'application LinkedIn). Entrez le code ci-dessous ou validez sur votre téléphone puis cliquez sur Continuer.",
+        }
+    except Exception as exc:
+        if context:
+            try:
+                await context.close()
+            except Exception:
+                pass
+        if browser:
+            try:
+                await browser.close()
+            except Exception:
+                pass
+        try:
+            await pw.stop()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la connexion LinkedIn : {exc}")
+
+
+@app.post("/api/auth/linkedin-verify")
+async def verify_linkedin_automated(req: LinkedInVerifyRequest) -> Dict[str, Any]:
+    session_id = (req.session_id or "").strip()
+    code = (req.code or "").strip()
+    sess = _LINKEDIN_LOGIN_SESSIONS.get(session_id)
+    if not sess:
+        raise HTTPException(
+            status_code=404,
+            detail="La session de vérification a expiré (3 min max). Veuillez relancer la connexion.",
+        )
+
+    page = sess["page"]
+    context = sess["context"]
+    try:
+        if code:
+            pin_selector = 'input[name="pin"], input#input__email_verification_pin, input#input__phone_verification_pin, input[name="verificationCode"], input[type="tel"], input[type="text"]'
+            pin_el = await page.query_selector(pin_selector)
+            if pin_el:
+                await pin_el.fill(code)
+                submit_el = await page.query_selector('button[type="submit"], #two-step-submit-button')
+                if submit_el:
+                    await submit_el.click()
+                else:
+                    await pin_el.press("Enter")
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                except Exception:
+                    pass
+
+        await asyncio.sleep(2.5)
+        cookies = await context.cookies()
+        li_at = next((c["value"] for c in cookies if c.get("name") == "li_at" and c.get("value")), "")
+        if li_at:
+            config = load_config()
+            config.linkedin_li_at = li_at
+            save_config(config)
+            await _cleanup_linkedin_session(session_id, delay=0.0)
+            return {
+                "status": "connected",
+                "linkedin_connected": True,
+                "message": "Vérification réussie ! Votre token LinkedIn li_at a été récupéré et enregistré automatiquement.",
+            }
+
+        return {
+            "status": "verification_required",
+            "session_id": session_id,
+            "linkedin_connected": False,
+            "message": "Session pas encore validée par LinkedIn. Vérifiez le code saisi ou validez la notification sur votre téléphone puis réessayez.",
+        }
+    except Exception as exc:
+        await _cleanup_linkedin_session(session_id, delay=0.0)
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la vérification LinkedIn : {exc}")
 
 
 @app.post("/api/auth/test-linkedin")

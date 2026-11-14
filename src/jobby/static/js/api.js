@@ -286,6 +286,26 @@ export function saveLinkedInCookie(liAt) {
   });
 }
 
+export function loginLinkedInAutomated(email, password) {
+  return request('/api/auth/linkedin-login', {
+    method: 'POST',
+    body: {
+      email: String(email || '').trim(),
+      password: String(password || ''),
+    },
+  });
+}
+
+export function verifyLinkedInAutomated(sessionId, code = '') {
+  return request('/api/auth/linkedin-verify', {
+    method: 'POST',
+    body: {
+      session_id: String(sessionId || '').trim(),
+      code: String(code || '').trim(),
+    },
+  });
+}
+
 export function testLinkedInConnection() {
   return request('/api/auth/test-linkedin', {
     method: 'POST',
