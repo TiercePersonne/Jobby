@@ -513,6 +513,9 @@ async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
         if is_new:
             new_count += 1
 
+    # Re-sort deduped by match score descending so best-matching offers appear first
+    deduped.sort(key=lambda x: (x.score or 0.0), reverse=True)
+
     # Update latest digest
     query_desc = f"{', '.join(params.keywords)} ({params.location})"
     Reporter.generate_markdown_digest(deduped, query_desc=query_desc, output_path=config.digest_output_path)
