@@ -13,7 +13,7 @@ import uuid
 
 import httpx
 from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -159,13 +159,26 @@ def get_manifest():
 @app.get("/sw.js")
 def get_service_worker():
     sw_path = STATIC_DIR / "sw.js"
-    return FileResponse(sw_path, media_type="application/javascript")
+    return FileResponse(
+        sw_path,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     config = load_config()
-    return templates.TemplateResponse(request=request, name="index.html", context={"config": config})
+    try:
+        storage = Storage(config.database_path)
+        coverage_audit = storage.get_coverage_audit(limit_filtered=80)
+    except Exception:
+        coverage_audit = None
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"config": config, "coverage_audit": coverage_audit},
+    )
 
 
 @app.get("/api/config")
@@ -489,11 +502,13 @@ def get_coverage_audit_endpoint(limit: int = 120) -> Dict[str, Any]:
 
 
 @app.post("/api/audit/rescue/{filtered_id}")
-def rescue_filtered_opportunity_endpoint(filtered_id: str) -> Dict[str, Any]:
+def rescue_filtered_opportunity_endpoint(filtered_id: str, redirect: int = 0):
     config = load_config()
     storage = Storage(config.database_path)
     item = storage.rescue_filtered_opportunity(filtered_id)
     if not item:
+        if redirect == 1:
+            return RedirectResponse(url="/", status_code=303)
         raise HTTPException(status_code=404, detail="Offre filtrée introuvable ou déjà repêchée.")
 
     opp = JobOpportunity(
@@ -511,6 +526,8 @@ def rescue_filtered_opportunity_endpoint(filtered_id: str) -> Dict[str, Any]:
     opp.score = max(score, 50.0)
     opp.score_reasons = ["Repêchée manuellement depuis l'audit"] + reasons
     _, saved_opp = storage.upsert_opportunity(opp)
+    if redirect == 1:
+        return RedirectResponse(url="/", status_code=303)
     return {
         "status": "rescued",
         "opportunity": saved_opp.model_dump(),

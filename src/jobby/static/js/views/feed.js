@@ -1669,14 +1669,21 @@ let cachedCoverageAudit = null;
 
 function setCoverageDrawerOpen(open) {
   coverageExpanded = Boolean(open);
+  const boxEl = document.getElementById('coverage-audit-box');
   const toggleBtn = document.getElementById('coverage-toggle-btn');
   const drawerEl = document.getElementById('coverage-audit-drawer');
   const toggleTextEl = document.getElementById('coverage-toggle-text');
+  if (boxEl && boxEl.tagName === 'DETAILS') {
+    if (coverageExpanded) {
+      boxEl.setAttribute('open', '');
+    } else {
+      boxEl.removeAttribute('open');
+    }
+  } else if (drawerEl) {
+    drawerEl.classList.toggle('hidden', !coverageExpanded);
+  }
   if (toggleBtn) {
     toggleBtn.setAttribute('aria-expanded', coverageExpanded ? 'true' : 'false');
-  }
-  if (drawerEl) {
-    drawerEl.classList.toggle('hidden', !coverageExpanded);
   }
   if (toggleTextEl) {
     toggleTextEl.textContent = coverageExpanded ? 'Replier' : 'Voir les écartées & bilan';
@@ -1786,8 +1793,24 @@ function renderCoverageAuditDom(data) {
 }
 
 function bindCoverageAuditEvents() {
+  const boxEl = document.getElementById('coverage-audit-box');
   const toggleBtn = document.getElementById('coverage-toggle-btn');
-  if (toggleBtn) {
+  const toggleTextEl = document.getElementById('coverage-toggle-text');
+
+  if (boxEl && boxEl.tagName === 'DETAILS') {
+    boxEl.addEventListener('toggle', () => {
+      coverageExpanded = boxEl.hasAttribute('open');
+      if (toggleBtn) {
+        toggleBtn.setAttribute('aria-expanded', coverageExpanded ? 'true' : 'false');
+      }
+      if (toggleTextEl) {
+        toggleTextEl.textContent = coverageExpanded ? 'Replier' : 'Voir les écartées & bilan';
+      }
+      if (coverageExpanded && !cachedCoverageAudit) {
+        refreshCoverageAudit();
+      }
+    });
+  } else if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
       const next = !coverageExpanded;
       setCoverageDrawerOpen(next);
@@ -1802,6 +1825,7 @@ function bindCoverageAuditEvents() {
     filteredListEl.addEventListener('click', async (event) => {
       const btn = event.target.closest('[data-action="rescue-filtered"]');
       if (!btn) return;
+      event.preventDefault();
       const filteredId = btn.getAttribute('data-rescue-id');
       if (!filteredId) return;
 

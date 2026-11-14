@@ -1,4 +1,5 @@
 const CACHE_NAME = 'jobby-v4';
+const SW_BUILD = '2026-11-14-radar-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -8,8 +9,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      );
+        keys.map((key) => caches.delete(key))
+      ).then(() => caches.open(CACHE_NAME));
     })
   );
   self.clients.claim();
@@ -40,14 +41,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: Stale while revalidate
+  // Static assets: Network FIRST, fallback to cache so deploys take effect immediately
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
+    fetch(event.request)
+      .then((networkResponse) => {
+        const clone = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         return networkResponse;
-      }).catch(() => cached);
-      return cached || fetchPromise;
-    })
+      })
+      .catch(() => caches.match(event.request))
   );
 });

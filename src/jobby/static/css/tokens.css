@@ -516,8 +516,18 @@ body {
 [data-view-panel].hidden,
 .jp-modal-backdrop.hidden,
 .jp-popover.hidden,
+.jp-brief-drawer.hidden,
 #brief-drawer.hidden,
+#coverage-audit-drawer.hidden,
 #sources-active-count.hidden {
+  display: none;
+}
+
+details.jp-brief-box > summary {
+  list-style: none;
+}
+
+details.jp-brief-box > summary::-webkit-details-marker {
   display: none;
 }
 
