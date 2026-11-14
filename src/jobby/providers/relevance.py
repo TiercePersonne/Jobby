@@ -2,9 +2,124 @@
 
 from __future__ import annotations
 
+import contextvars
+import hashlib
 import re
 import unicodedata
-from typing import Iterable, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, List, Optional
+
+
+_CURRENT_AUDIT_SOURCE: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "current_audit_source", default=None
+)
+
+# In-memory audit store for the latest search run (also persisted to SQLite by Storage)
+_AUDIT_SOURCE_STATS: Dict[str, Dict[str, Any]] = {}
+_AUDIT_REJECTED_OFFERS: Dict[str, Dict[str, Any]] = {}
+
+
+def set_current_audit_source(source: Optional[str]) -> contextvars.Token[Optional[str]]:
+    return _CURRENT_AUDIT_SOURCE.set(source.lower() if source else None)
+
+
+def reset_current_audit_source(token: contextvars.Token[Optional[str]]) -> None:
+    _CURRENT_AUDIT_SOURCE.reset(token)
+
+
+def reset_search_audit(sources: Optional[Iterable[str]] = None) -> None:
+    """Reset the in-memory audit counters for a new search session."""
+    _AUDIT_REJECTED_OFFERS.clear()
+    if sources:
+        for src in sources:
+            s_key = (src or "").lower().strip()
+            if s_key:
+                _AUDIT_SOURCE_STATS[s_key] = {
+                    "source": s_key,
+                    "scanned_count": 0,
+                    "kept_count": 0,
+                    "filtered_count": 0,
+                    "status": "ok",
+                    "note": "",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+    else:
+        _AUDIT_SOURCE_STATS.clear()
+
+
+def _ensure_source_stat(source: str) -> Dict[str, Any]:
+    s_key = (source or "unknown").lower().strip()
+    if s_key not in _AUDIT_SOURCE_STATS:
+        _AUDIT_SOURCE_STATS[s_key] = {
+            "source": s_key,
+            "scanned_count": 0,
+            "kept_count": 0,
+            "filtered_count": 0,
+            "status": "ok",
+            "note": "",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    return _AUDIT_SOURCE_STATS[s_key]
+
+
+def record_provider_audit_result(
+    source: str,
+    kept_count: int,
+    status: str = "ok",
+    note: str = "",
+) -> None:
+    """Record the final outcome for a provider after search completes."""
+    stat = _ensure_source_stat(source)
+    stat["kept_count"] = max(int(kept_count), 0)
+    if stat["scanned_count"] < stat["kept_count"] + stat["filtered_count"]:
+        stat["scanned_count"] = stat["kept_count"] + stat["filtered_count"]
+    if status != "ok" or not stat.get("status") or stat.get("status") == "ok":
+        stat["status"] = status
+    if note:
+        stat["note"] = note
+    stat["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+
+def record_filtered_offer(
+    source: Optional[str],
+    title: str,
+    reason: str,
+    company: Optional[str] = None,
+    location: Optional[str] = None,
+    url: Optional[str] = None,
+    description: str = "",
+) -> None:
+    """Record an offer rejected by relevance or location filtering."""
+    active_source = (source or _CURRENT_AUDIT_SOURCE.get() or "").lower().strip()
+    if not active_source or not title or not title.strip():
+        return
+
+    stat = _ensure_source_stat(active_source)
+    dedup_raw = f"{active_source}|{title.strip().lower()}|{(company or '').strip().lower()}|{(location or '').strip().lower()}"
+    item_id = "flt_" + hashlib.sha1(dedup_raw.encode("utf-8")).hexdigest()[:12]
+
+    if item_id not in _AUDIT_REJECTED_OFFERS:
+        stat["filtered_count"] += 1
+        stat["scanned_count"] += 1
+        _AUDIT_REJECTED_OFFERS[item_id] = {
+            "id": item_id,
+            "source": active_source,
+            "title": title.strip(),
+            "company": (company or "Entreprise").strip(),
+            "location": (location or "Non précisée").strip(),
+            "url": (url or "").strip(),
+            "description": (description or "").strip()[:1500],
+            "reject_reason": reason,
+            "rejected_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+def get_search_audit_snapshot() -> Dict[str, Any]:
+    """Return current in-memory audit stats and rejected offers."""
+    return {
+        "sources": list(_AUDIT_SOURCE_STATS.values()),
+        "filtered_offers": list(_AUDIT_REJECTED_OFFERS.values()),
+    }
 
 
 def _strip_accents(text: str) -> str:
@@ -47,6 +162,7 @@ CREATIVE_SEARCH_INDICATORS = (
 CREATIVE_TITLE_REGEX = re.compile(
     r"\b("
     r"design|designer|designers|"
+    r"ai\s+designer|designer\s+ia|creative\s+ai|ai\s+creative|ai\s+artist|creative\s+technologist|prompt\s+designer|"
     r"graphiste|graphistes|graphisme|graphique|graphiques|graphic|"
     r"directeur\s+artistique|directrice\s+artistique|directeurs\s+artistiques|direction\s+artistique|"
     r"directeur\(rice\)\s+artistique|directrice\.eur\s+artistique|directeur\.rice\s+artistique|"
@@ -225,36 +341,36 @@ def is_creative_design_search(keywords: Optional[Iterable[str]]) -> bool:
     return any(ind in joined for ind in CREATIVE_SEARCH_INDICATORS)
 
 
-def is_relevant_job_offer(
+def explain_job_rejection(
     title: str,
     description: str = "",
     keywords: Optional[Iterable[str]] = None,
-) -> bool:
-    """Return True only if the job offer is genuinely relevant to the searched keywords."""
+) -> Optional[str]:
+    """Return None if the offer is relevant, or a French explanation if it should be filtered out."""
     if not title or not title.strip():
-        return False
+        return "Intitulé vide"
 
     norm_title = _norm(title)
     kw_list = [k.strip() for k in (keywords or []) if k and k.strip()]
     if not kw_list:
-        return True
+        return None
 
     if is_creative_design_search(kw_list):
         joined_kw = _norm(" ".join(kw_list))
         ff_match = CREATIVE_FALSE_FRIENDS_REGEX.search(norm_title)
         if ff_match and ff_match.group(0).lower() not in joined_kw:
-            return False
+            return f"Terme hors-cible exclu : « {ff_match.group(0)} »"
 
         # Reject non-design manager/producer/copywriter roles unless a core design word is also in title
         for mgr_role in NON_DESIGN_MANAGER_ROLES:
             if mgr_role in norm_title and mgr_role not in joined_kw:
                 if not CORE_DESIGN_ROLE_REGEX.search(norm_title):
-                    return False
+                    return f"Rôle hors design visuel : « {mgr_role} »"
 
         if not CREATIVE_TITLE_REGEX.search(norm_title):
-            return False
+            return "Intitulé sans mot-clé design / direction artistique"
 
-        return True
+        return None
 
     # Non-creative generic keyword search:
     generic_modifiers = {
@@ -270,50 +386,104 @@ def is_relevant_job_offer(
         if not n_kw:
             continue
         if n_kw in norm_title:
-            return True
+            return None
         tokens = [t for t in re.split(r"\W+", n_kw) if len(t) >= 2 and t not in generic_modifiers]
         if tokens and all(t in norm_title for t in tokens):
-            return True
+            return None
         if tokens and any(t in norm_title for t in tokens) and n_kw in norm_desc:
-            return True
+            return None
 
-    return False
+    return f"Aucun mot-clé recherché trouvé ({', '.join(kw_list[:3])})"
+
+
+def is_relevant_job_offer(
+    title: str,
+    description: str = "",
+    keywords: Optional[Iterable[str]] = None,
+    *,
+    source: Optional[str] = None,
+    company: Optional[str] = None,
+    location: Optional[str] = None,
+    url: Optional[str] = None,
+) -> bool:
+    """Return True only if the job offer is genuinely relevant to the searched keywords."""
+    reason = explain_job_rejection(title, description, keywords)
+    if reason is not None:
+        record_filtered_offer(
+            source=source,
+            title=title,
+            reason=reason,
+            company=company,
+            location=location,
+            url=url,
+            description=description,
+        )
+        return False
+    return True
+
+
+def explain_location_rejection(
+    job_location: Optional[str],
+    remote_policy: Optional[str],
+    target_location: Optional[str],
+) -> Optional[str]:
+    """Return None if compatible, or a French explanation if the job location is outside the target."""
+    if not target_location or not target_location.strip():
+        return None
+
+    norm_target = _norm(target_location)
+    is_fr_target = any(ind in norm_target for ind in FRENCH_TARGET_INDICATORS)
+    if not is_fr_target:
+        return None
+
+    if not job_location or not job_location.strip():
+        return f"Localisation absente (cible : {target_location})"
+
+    norm_loc = _norm(job_location)
+
+    # 1. Explicit French city, region, country, or postal/department code
+    if any(ind in norm_loc for ind in FRENCH_TARGET_INDICATORS) or FRENCH_DEPT_REGEX.search(norm_loc):
+        return None
+
+    # 2. Pure remote or Europe/France/Global remote (rejecting US/Asia/LATAM/UK-only remote)
+    if norm_loc in ("remote", "teletravail", "100% teletravail / remote") or any(
+        allowed in norm_loc for allowed in ALLOWED_REMOTE_REGIONS_FOR_FR
+    ):
+        return None
+
+    return f"Localisation hors France : « {job_location} »"
 
 
 def is_location_compatible(
     job_location: Optional[str],
     remote_policy: Optional[str],
     target_location: Optional[str],
+    *,
+    source: Optional[str] = None,
+    title: Optional[str] = None,
+    company: Optional[str] = None,
+    url: Optional[str] = None,
+    description: str = "",
 ) -> bool:
     """Ensure international (US/UK/DE/Sweden/Asia/etc.) jobs don't pollute French searches."""
-    if not target_location or not target_location.strip():
-        return True
-
-    norm_target = _norm(target_location)
-    is_fr_target = any(ind in norm_target for ind in FRENCH_TARGET_INDICATORS)
-    if not is_fr_target:
-        return True
-
-    if not job_location or not job_location.strip():
+    reason = explain_location_rejection(job_location, remote_policy, target_location)
+    if reason is not None:
+        if title:
+            record_filtered_offer(
+                source=source,
+                title=title,
+                reason=reason,
+                company=company,
+                location=job_location,
+                url=url,
+                description=description,
+            )
         return False
-
-    norm_loc = _norm(job_location)
-
-    # 1. Explicit French city, region, country, or postal/department code
-    if any(ind in norm_loc for ind in FRENCH_TARGET_INDICATORS) or FRENCH_DEPT_REGEX.search(norm_loc):
-        return True
-
-    # 2. Pure remote or Europe/France/Global remote (rejecting US/Asia/LATAM/UK-only remote)
-    if norm_loc in ("remote", "teletravail", "100% teletravail / remote") or any(
-        allowed in norm_loc for allowed in ALLOWED_REMOTE_REGIONS_FOR_FR
-    ):
-        return True
-
-    return False
+    return True
 
 
-def expand_creative_queries(keywords: Optional[Iterable[str]], max_queries: int = 4) -> List[str]:
-    """Expand a creative search with essential French/English equivalents for broader recall."""
+def expand_creative_queries(keywords: Optional[Iterable[str]], max_queries: int = 5) -> List[str]:
+    """Expand a creative search with essential French/English/AI equivalents for broader recall."""
     base: List[str] = []
     for k in keywords or []:
         cleaned = k.strip()
@@ -321,7 +491,13 @@ def expand_creative_queries(keywords: Optional[Iterable[str]], max_queries: int 
             base.append(cleaned)
 
     if not base:
-        return ["Brand Designer", "Designer Graphique", "Directeur Artistique", "Graphiste"][:max_queries]
+        return [
+            "Brand Designer",
+            "AI Designer",
+            "Designer Graphique",
+            "Directeur Artistique",
+            "Graphiste",
+        ][:max_queries]
 
     if not is_creative_design_search(base):
         return base[:max_queries]
@@ -329,6 +505,7 @@ def expand_creative_queries(keywords: Optional[Iterable[str]], max_queries: int 
     existing_lower = {b.lower() for b in base}
     equivalents = [
         "Brand Designer",
+        "AI Designer",
         "Designer Graphique",
         "Directeur Artistique",
         "Graphic Designer",

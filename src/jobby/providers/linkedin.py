@@ -129,9 +129,26 @@ class LinkedInProvider(JobSourceProvider):
                                 break
                             if card.url in seen_urls:
                                 continue
-                            if not is_relevant_job_offer(card.title, card.description, params.keywords):
+                            if not is_relevant_job_offer(
+                                card.title,
+                                card.description,
+                                params.keywords,
+                                source=self.name,
+                                company=card.company,
+                                location=card.location,
+                                url=card.url,
+                            ):
                                 continue
-                            if not is_location_compatible(card.location, card.remote_policy, location_str):
+                            if not is_location_compatible(
+                                card.location,
+                                card.remote_policy,
+                                location_str,
+                                source=self.name,
+                                title=card.title,
+                                company=card.company,
+                                url=card.url,
+                                description=card.description,
+                            ):
                                 continue
                             seen_urls.add(card.url)
                             opportunities.append(card)

@@ -1,8 +1,10 @@
 import {
+  fetchCoverageAudit,
   fetchOpportunities,
   markAllOpportunitiesSeen,
   markOpportunitySeen,
   rankOpportunitiesByBrief,
+  rescueFilteredOpportunity,
   saveProfileBrief,
   updateOpportunityStatus,
 } from '../api.js';
@@ -1629,14 +1631,17 @@ export function initFeedView() {
   }
 
   bindBriefDrawerEvents();
+  bindCoverageAuditEvents();
   bindFilterBarEvents();
   bindFeedEscapeKey();
+  refreshCoverageAudit();
 
   let prev = getState();
   subscribe((snapshot) => {
     if (snapshot.activeView !== prev.activeView && snapshot.activeView !== 'feed') {
       setSourcesPopoverOpen(false);
       setBriefDrawerOpen(false);
+      setCoverageDrawerOpen(false);
     }
     if (snapshot.feedFilters !== prev.feedFilters) {
       transientOnlyNewOpenIds.clear();
@@ -1657,4 +1662,169 @@ export function initFeedView() {
   });
 
   renderFeedView(getState());
+}
+
+let coverageExpanded = false;
+let cachedCoverageAudit = null;
+
+function setCoverageDrawerOpen(open) {
+  coverageExpanded = Boolean(open);
+  const toggleBtn = document.getElementById('coverage-toggle-btn');
+  const drawerEl = document.getElementById('coverage-audit-drawer');
+  const toggleTextEl = document.getElementById('coverage-toggle-text');
+  if (toggleBtn) {
+    toggleBtn.setAttribute('aria-expanded', coverageExpanded ? 'true' : 'false');
+  }
+  if (drawerEl) {
+    drawerEl.classList.toggle('hidden', !coverageExpanded);
+  }
+  if (toggleTextEl) {
+    toggleTextEl.textContent = coverageExpanded ? 'Replier' : 'Voir les écartées & bilan';
+  }
+}
+
+export async function refreshCoverageAudit(prefetchedData = null) {
+  try {
+    const data = prefetchedData || (await fetchCoverageAudit(120));
+    if (data && typeof data === 'object') {
+      cachedCoverageAudit = data;
+      renderCoverageAuditDom(data);
+    }
+  } catch {
+    // Non-blocking audit fetch
+  }
+}
+
+function renderCoverageAuditDom(data) {
+  const previewEl = document.getElementById('coverage-preview-text');
+  const sourcesGridEl = document.getElementById('coverage-sources-grid');
+  const filteredCountEl = document.getElementById('coverage-filtered-count');
+  const filteredListEl = document.getElementById('coverage-filtered-list');
+  if (!previewEl || !sourcesGridEl || !filteredListEl) return;
+
+  const sources = Array.isArray(data?.sources) ? data.sources : [];
+  const filteredOffers = Array.isArray(data?.filtered_offers) ? data.filtered_offers : [];
+  const totalFiltered = Number(data?.total_filtered ?? filteredOffers.length);
+
+  const activeSources = sources.filter((s) => Number(s.db_total || 0) > 0 || Number(s.kept_count || 0) > 0);
+  const totalDb = sources.reduce((acc, s) => acc + Number(s.db_total || 0), 0);
+  const cloudflareSources = sources.filter((s) => s.status === 'cloudflare');
+
+  let summaryText = `${activeSources.length}/${sources.length || 7} plateformes actives • ${totalDb} offres retenues • ${totalFiltered} hors-cible écartée${totalFiltered > 1 ? 's' : ''}`;
+  if (cloudflareSources.length > 0) {
+    summaryText += ` • ⚠️ ${cloudflareSources.map((s) => formatSourceLabel(s.source)).join(', ')} protégé par Cloudflare sur VPS`;
+  }
+  previewEl.textContent = summaryText;
+
+  if (filteredCountEl) {
+    filteredCountEl.textContent = String(totalFiltered);
+  }
+
+  sourcesGridEl.innerHTML = sources
+    .map((s) => {
+      const label = formatSourceLabel(s.source);
+      const dbTotal = Number(s.db_total || 0);
+      const filteredCount = Number(s.filtered_count || 0);
+      const isCloudflare = s.status === 'cloudflare';
+      const badgeClass = isCloudflare
+        ? 'bg-[#FEFCE8] text-[#B45309] border-[#FEF08A]'
+        : dbTotal > 0
+          ? 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0]'
+          : 'bg-[#F5F5F4] text-[#78716C] border-[#E7E5E4]';
+      const badgeText = isCloudflare ? 'Cloudflare VPS' : dbTotal > 0 ? `${dbTotal} actives` : '0 active';
+
+      return `
+        <div class="p-2 rounded border border-[#E7E5E4] bg-[#FAF9F6] flex flex-col gap-1 text-xs">
+          <div class="flex items-center justify-between gap-1">
+            <span class="font-semibold text-[#1C1917] truncate">${escapeHtml(label)}</span>
+            <span class="px-1.5 py-0.5 rounded text-xs font-medium border ${badgeClass}">${escapeHtml(badgeText)}</span>
+          </div>
+          <div class="text-xs text-[#57534E]">
+            ${filteredCount > 0 ? `${filteredCount} écartée${filteredCount > 1 ? 's' : ''} par filtre` : '0 écartée'}
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  if (filteredOffers.length === 0) {
+    filteredListEl.innerHTML = `
+      <div class="text-xs text-[#78716C] py-3 text-center bg-[#FAF9F6] rounded border border-[#E7E5E4]">
+        Aucune annonce écartée enregistrée pour le moment. Lancez une chasse pour voir le détail du filtrage en direct.
+      </div>
+    `;
+    return;
+  }
+
+  filteredListEl.innerHTML = filteredOffers
+    .map((item) => {
+      const safeUrl = sanitizeUrl(item.url);
+      const titleHtml = safeUrl
+        ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" class="font-medium text-[#1C1917] hover:underline">${escapeHtml(item.title || 'Annonce')}</a>`
+        : `<span class="font-medium text-[#1C1917]">${escapeHtml(item.title || 'Annonce')}</span>`;
+
+      return `
+        <div class="p-2.5 rounded border border-[#E7E5E4] bg-[#FFFFFF] flex flex-wrap items-center justify-between gap-2 text-xs" data-filtered-id="${escapeHtml(item.id)}">
+          <div class="flex flex-col gap-0.5 min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="jp-pill">${escapeHtml(formatSourceLabel(item.source))}</span>
+              ${titleHtml}
+              <span class="text-[#57534E]">· ${escapeHtml(item.company || 'Entreprise')}</span>
+              <span class="text-[#78716C]">(${escapeHtml(item.location || 'Non précisée')})</span>
+            </div>
+            <div class="text-xs text-[#B45309]">
+              Motif d'exclusion : ${escapeHtml(item.reject_reason || 'Hors critères')}
+            </div>
+          </div>
+          <button type="button" class="jp-btn-secondary text-xs shrink-0" data-action="rescue-filtered" data-rescue-id="${escapeHtml(item.id)}">
+            Repêcher dans le flux
+          </button>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function bindCoverageAuditEvents() {
+  const toggleBtn = document.getElementById('coverage-toggle-btn');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const next = !coverageExpanded;
+      setCoverageDrawerOpen(next);
+      if (next && !cachedCoverageAudit) {
+        refreshCoverageAudit();
+      }
+    });
+  }
+
+  const filteredListEl = document.getElementById('coverage-filtered-list');
+  if (filteredListEl) {
+    filteredListEl.addEventListener('click', async (event) => {
+      const btn = event.target.closest('[data-action="rescue-filtered"]');
+      if (!btn) return;
+      const filteredId = btn.getAttribute('data-rescue-id');
+      if (!filteredId) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Repêchage...';
+      try {
+        const res = await rescueFilteredOpportunity(filteredId);
+        if (res?.opportunity) {
+          const current = getState().opportunities || [];
+          setOpportunities([res.opportunity, ...current.filter((o) => o.id !== res.opportunity.id)]);
+        }
+        if (res?.coverage_audit) {
+          cachedCoverageAudit = res.coverage_audit;
+          renderCoverageAuditDom(res.coverage_audit);
+        } else {
+          await refreshCoverageAudit();
+        }
+        showToast('Offre repêchée et ajoutée en haut de votre flux !', 'success');
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Repêcher dans le flux';
+        showToast(err.message || 'Impossible de repêcher cette offre.', 'error');
+      }
+    });
+  }
 }

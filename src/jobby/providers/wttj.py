@@ -97,9 +97,26 @@ class WTTJProvider(JobSourceProvider):
                         for opp in parsed_page:
                             if params.remote_only and opp.remote_policy != "full":
                                 continue
-                            if not is_relevant_job_offer(opp.title, opp.description, params.keywords):
+                            if not is_relevant_job_offer(
+                                opp.title,
+                                opp.description,
+                                params.keywords,
+                                source=self.name,
+                                company=opp.company,
+                                location=opp.location,
+                                url=opp.url,
+                            ):
                                 continue
-                            if not is_location_compatible(opp.location, opp.remote_policy, params.location):
+                            if not is_location_compatible(
+                                opp.location,
+                                opp.remote_policy,
+                                params.location,
+                                source=self.name,
+                                title=opp.title,
+                                company=opp.company,
+                                url=opp.url,
+                                description=opp.description,
+                            ):
                                 continue
 
                             dedup_ref = (opp.raw_metadata or {}).get("wttj_reference") or opp.url

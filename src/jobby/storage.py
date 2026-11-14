@@ -183,6 +183,33 @@ class Storage:
                     "cover_letter_fallback_reason": "TEXT",
                 },
             )
+
+            # Audit tables for coverage tracking and filtered-out offers
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS search_coverage_audit (
+                    source TEXT PRIMARY KEY,
+                    scanned_count INTEGER NOT NULL DEFAULT 0,
+                    kept_count INTEGER NOT NULL DEFAULT 0,
+                    filtered_count INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'ok',
+                    note TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS filtered_opportunities (
+                    id TEXT PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    company TEXT,
+                    location TEXT,
+                    url TEXT,
+                    description TEXT,
+                    reject_reason TEXT NOT NULL,
+                    rejected_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_filtered_rejected_at ON filtered_opportunities (rejected_at)")
             conn.commit()
 
     @staticmethod
@@ -412,8 +439,23 @@ class Storage:
                 opp = self._row_to_opportunity(row)
                 if isinstance(opp.raw_metadata, dict) and "ai_match" in opp.raw_metadata:
                     continue
-                if not is_relevant_job_offer(opp.title, opp.description, keywords) or not is_location_compatible(
-                    opp.location, opp.remote_policy, target_location
+                if not is_relevant_job_offer(
+                    opp.title,
+                    opp.description,
+                    keywords,
+                    source=opp.source,
+                    company=opp.company,
+                    location=opp.location,
+                    url=opp.url,
+                ) or not is_location_compatible(
+                    opp.location,
+                    opp.remote_policy,
+                    target_location,
+                    source=opp.source,
+                    title=opp.title,
+                    company=opp.company,
+                    url=opp.url,
+                    description=opp.description,
                 ):
                     to_delete.append(opp.id)
 
@@ -426,6 +468,143 @@ class Storage:
                 conn.commit()
 
         return len(to_delete)
+
+    def save_search_audit_snapshot(self, audit_snapshot: Dict[str, Any]) -> None:
+        """Persist source coverage statistics and recently filtered offers to SQLite."""
+        sources_list = audit_snapshot.get("sources") or []
+        filtered_list = audit_snapshot.get("filtered_offers") or []
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        with self._connection() as conn:
+            for s in sources_list:
+                src_name = (s.get("source") or "").strip().lower()
+                if not src_name:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO search_coverage_audit (
+                        source, scanned_count, kept_count, filtered_count, status, note, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source) DO UPDATE SET
+                        scanned_count = excluded.scanned_count,
+                        kept_count = excluded.kept_count,
+                        filtered_count = excluded.filtered_count,
+                        status = excluded.status,
+                        note = excluded.note,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        src_name,
+                        int(s.get("scanned_count") or 0),
+                        int(s.get("kept_count") or 0),
+                        int(s.get("filtered_count") or 0),
+                        str(s.get("status") or "ok"),
+                        str(s.get("note") or ""),
+                        str(s.get("updated_at") or now_iso),
+                    ),
+                )
+
+            for item in filtered_list:
+                item_id = (item.get("id") or "").strip()
+                if not item_id:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO filtered_opportunities (
+                        id, source, title, company, location, url, description, reject_reason, rejected_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        reject_reason = excluded.reject_reason,
+                        rejected_at = excluded.rejected_at
+                    """,
+                    (
+                        item_id,
+                        str(item.get("source") or "unknown"),
+                        str(item.get("title") or ""),
+                        str(item.get("company") or "Entreprise"),
+                        str(item.get("location") or "Non précisée"),
+                        str(item.get("url") or ""),
+                        str(item.get("description") or ""),
+                        str(item.get("reject_reason") or "Filtrée"),
+                        str(item.get("rejected_at") or now_iso),
+                    ),
+                )
+
+            # Keep at most the 250 most recent filtered offers
+            conn.execute(
+                """
+                DELETE FROM filtered_opportunities
+                WHERE id NOT IN (
+                    SELECT id FROM filtered_opportunities ORDER BY rejected_at DESC LIMIT 250
+                )
+                """
+            )
+            conn.commit()
+
+    def get_coverage_audit(self, limit_filtered: int = 120) -> Dict[str, Any]:
+        """Return per-source coverage stats (merged with DB counts) and recent filtered offers."""
+        known_sources = ["wttj", "linkedin", "glassdoor", "hellowork", "jobgether", "indeed", "teamtailor"]
+        with self._connection() as conn:
+            db_counts = dict(
+                conn.execute("SELECT lower(source), COUNT(*) FROM opportunities GROUP BY lower(source)").fetchall()
+            )
+            audit_rows = {
+                r["source"]: dict(r)
+                for r in conn.execute("SELECT * FROM search_coverage_audit").fetchall()
+            }
+            filtered_counts_by_src = dict(
+                conn.execute("SELECT lower(source), COUNT(*) FROM filtered_opportunities GROUP BY lower(source)").fetchall()
+            )
+            total_filtered = conn.execute("SELECT COUNT(*) FROM filtered_opportunities").fetchone()[0]
+            filtered_rows = conn.execute(
+                "SELECT * FROM filtered_opportunities ORDER BY rejected_at DESC LIMIT ?",
+                (limit_filtered,),
+            ).fetchall()
+
+        sources_summary = []
+        all_src_keys = list(dict.fromkeys(known_sources + list(db_counts.keys()) + list(audit_rows.keys())))
+        for src in all_src_keys:
+            if src == "jobbygather":
+                continue
+            row = audit_rows.get(src, {})
+            db_total = int(db_counts.get(src, 0))
+            kept_last = int(row.get("kept_count", db_total))
+            filt_last = int(row.get("filtered_count", filtered_counts_by_src.get(src, 0)))
+            scanned_last = max(int(row.get("scanned_count", 0)), kept_last + filt_last)
+            status = row.get("status") or ("ok" if db_total > 0 else "idle")
+            note = row.get("note") or ""
+            sources_summary.append(
+                {
+                    "source": src,
+                    "db_total": db_total,
+                    "scanned_count": scanned_last,
+                    "kept_count": kept_last,
+                    "filtered_count": filt_last,
+                    "status": status,
+                    "note": note,
+                    "updated_at": row.get("updated_at"),
+                }
+            )
+
+        return {
+            "sources": sources_summary,
+            "total_filtered": int(total_filtered),
+            "filtered_offers": [dict(r) for r in filtered_rows],
+        }
+
+    def rescue_filtered_opportunity(self, filtered_id: str) -> Optional[Dict[str, Any]]:
+        """Pop a filtered opportunity by ID so it can be restored into the main feed."""
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM filtered_opportunities WHERE id = ?",
+                (filtered_id,),
+            ).fetchone()
+            if not row:
+                return None
+            data = dict(row)
+            conn.execute("DELETE FROM filtered_opportunities WHERE id = ?", (filtered_id,))
+            conn.commit()
+            return data
 
     def get_stats(self) -> Dict[str, Any]:
         with self._connection() as conn:

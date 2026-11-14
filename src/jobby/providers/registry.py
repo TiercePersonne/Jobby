@@ -8,6 +8,12 @@ from typing import Dict, List, Optional, Type
 
 from jobby.models import JobOpportunity, SearchParams
 from jobby.providers.base import JobSourceProvider
+from jobby.providers.relevance import (
+    record_provider_audit_result,
+    reset_current_audit_source,
+    reset_search_audit,
+    set_current_audit_source,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +73,7 @@ class ProviderRegistry:
             logger.warning("No providers available for search.")
             return []
 
+        reset_search_audit([p.name for p in selected_providers])
         tasks = [self._safe_search(provider, params, fail_silently) for provider in selected_providers]
         results = await asyncio.gather(*tasks)
 
@@ -83,13 +90,19 @@ class ProviderRegistry:
         params: SearchParams,
         fail_silently: bool
     ) -> List[JobOpportunity]:
+        token = set_current_audit_source(provider.name)
         try:
-            return await provider.search(params)
+            res = await provider.search(params)
+            record_provider_audit_result(provider.name, len(res), status="ok")
+            return res
         except Exception as e:
             logger.error(f"Error querying provider {provider.name}: {e}")
+            record_provider_audit_result(provider.name, 0, status="error", note=str(e)[:120])
             if not fail_silently:
                 raise
             return []
+        finally:
+            reset_current_audit_source(token)
 
 
 # Global singleton instance

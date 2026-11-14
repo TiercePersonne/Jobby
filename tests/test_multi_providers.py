@@ -122,3 +122,58 @@ def test_relevance_and_location_filters_for_creative_roles():
     gd_url = _build_glassdoor_search_url("https://www.glassdoor.fr", "Brand Designer", "Paris")
     assert "paris-brand-designer-jobs-SRCH_IL.0,5_IC2881970_KO6,20.htm" in gd_url
 
+
+def test_ai_designer_expansion_and_coverage_audit(tmp_path):
+    from jobby.providers.relevance import (
+        expand_creative_queries,
+        get_search_audit_snapshot,
+        is_location_compatible,
+        is_relevant_job_offer,
+        record_provider_audit_result,
+        reset_search_audit,
+    )
+    from jobby.storage import Storage
+
+    expanded = expand_creative_queries(["Brand Designer"], max_queries=5)
+    assert "AI Designer" in expanded
+    assert is_relevant_job_offer("AI Designer (H/F)", "", ["Brand Designer"]) is True
+    assert is_relevant_job_offer("Creative AI Specialist", "", ["Brand Designer"]) is True
+
+    reset_search_audit(["wttj", "glassdoor"])
+    assert is_relevant_job_offer(
+        "Senior Backend Developer",
+        "",
+        ["Brand Designer"],
+        source="wttj",
+        company="Acme",
+        location="Paris",
+        url="https://example.com/1",
+    ) is False
+    assert is_location_compatible(
+        "Göteborg, Sweden",
+        None,
+        "Paris",
+        source="glassdoor",
+        title="Brand Designer",
+        company="NordicCo",
+        url="https://example.com/2",
+    ) is False
+    record_provider_audit_result("wttj", 12, status="ok")
+    record_provider_audit_result("glassdoor", 0, status="cloudflare", note="Cloudflare VPS")
+
+    snap = get_search_audit_snapshot()
+    assert len(snap["filtered_offers"]) == 2
+
+    storage = Storage(str(tmp_path / "audit_test.db"))
+    storage.save_search_audit_snapshot(snap)
+    cov = storage.get_coverage_audit()
+    assert cov["total_filtered"] == 2
+    gd_stat = next(s for s in cov["sources"] if s["source"] == "glassdoor")
+    assert gd_stat["status"] == "cloudflare"
+
+    first_id = cov["filtered_offers"][0]["id"]
+    rescued = storage.rescue_filtered_opportunity(first_id)
+    assert rescued is not None
+    assert storage.get_coverage_audit()["total_filtered"] == 1
+
+

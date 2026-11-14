@@ -98,7 +98,15 @@ class TeamtailorProvider(JobSourceProvider):
                         desc_text = html.unescape(re.sub(r"<[^>]+>", "\n", desc_raw)).strip()
                         desc_text = re.sub(r"\n{3,}", "\n\n", desc_text)
 
-                        if not is_relevant_job_offer(title, desc_text, keywords):
+                        if not is_relevant_job_offer(
+                            title,
+                            desc_text,
+                            keywords,
+                            source=self.name,
+                            company=comp_name,
+                            location=location,
+                            url=link,
+                        ):
                             continue
 
                         locations_found = []
@@ -120,7 +128,16 @@ class TeamtailorProvider(JobSourceProvider):
 
                         if params.remote_only and remote_policy != "full":
                             continue
-                        if not is_location_compatible(job_location, remote_policy, location):
+                        if not is_location_compatible(
+                            job_location,
+                            remote_policy,
+                            location,
+                            source=self.name,
+                            title=title,
+                            company=comp_name,
+                            url=link,
+                            description=desc_text,
+                        ):
                             continue
 
                         seen_urls.add(link)
@@ -173,7 +190,15 @@ class TeamtailorProvider(JobSourceProvider):
                             desc_text = html.unescape(re.sub(r"<[^>]+>", "\n", raw_desc)).strip()
                             desc_text = re.sub(r"\n{3,}", "\n\n", desc_text)
 
-                            if not is_relevant_job_offer(title, desc_text, keywords):
+                            if not is_relevant_job_offer(
+                                title,
+                                desc_text,
+                                keywords,
+                                source=self.name,
+                                company=comp_name,
+                                location=job_loc,
+                                url=job_url,
+                            ):
                                 continue
 
                             is_remote = bool(job.get("remote", False))
@@ -181,7 +206,16 @@ class TeamtailorProvider(JobSourceProvider):
 
                             if params.remote_only and rem_policy != "full":
                                 continue
-                            if not is_location_compatible(job_loc, rem_policy, location):
+                            if not is_location_compatible(
+                                job_loc,
+                                rem_policy,
+                                location,
+                                source=self.name,
+                                title=title,
+                                company=comp_name,
+                                url=job_url,
+                                description=desc_text,
+                            ):
                                 continue
 
                             seen_urls.add(job_url)

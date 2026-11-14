@@ -320,3 +320,15 @@ export function triggerSearch({
     },
   });
 }
+
+export function fetchCoverageAudit(limit = 120) {
+  return request(`/api/audit/coverage?limit=${encodeURIComponent(limit)}`, {
+    silentError: true,
+  });
+}
+
+export function rescueFilteredOpportunity(filteredId) {
+  return request(`/api/audit/rescue/${encodeURIComponent(filteredId)}`, {
+    method: 'POST',
+  });
+}

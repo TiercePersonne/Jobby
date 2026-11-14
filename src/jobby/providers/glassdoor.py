@@ -20,6 +20,7 @@ from jobby.providers.relevance import (
     expand_creative_queries,
     is_location_compatible,
     is_relevant_job_offer,
+    record_provider_audit_result,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,12 @@ class GlassdoorProvider(JobSourceProvider):
                         logger.warning(
                             "Glassdoor Cloudflare challenge encountered. Configure GLASSDOOR_PROXY if blocked."
                         )
+                        record_provider_audit_result(
+                            self.name,
+                            len(results),
+                            status="cloudflare",
+                            note="Protégé par Cloudflare sur l'IP serveur VPS",
+                        )
                         break
 
                     # Extract full description of the pre-selected first card if rendered in right pane
@@ -187,7 +194,15 @@ class GlassdoorProvider(JobSourceProvider):
                         snippet = snippet.replace("&hellip;", "…")
 
                         # Strict relevance check against search keywords
-                        if not is_relevant_job_offer(title, snippet, params.keywords):
+                        if not is_relevant_job_offer(
+                            title,
+                            snippet,
+                            params.keywords,
+                            source=self.name,
+                            company=company,
+                            location=card_location,
+                            url=full_url,
+                        ):
                             continue
 
                         # Remote policy detection
@@ -199,7 +214,16 @@ class GlassdoorProvider(JobSourceProvider):
                         if params.remote_only and remote_policy != "full":
                             continue
 
-                        if not is_location_compatible(card_location, remote_policy, location):
+                        if not is_location_compatible(
+                            card_location,
+                            remote_policy,
+                            location,
+                            source=self.name,
+                            title=title,
+                            company=company,
+                            url=full_url,
+                            description=snippet,
+                        ):
                             continue
 
                         seen_urls.add(dedup_key)

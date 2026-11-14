@@ -123,7 +123,10 @@ async def execute_sequential_hunt(
             )
 
             try:
+                from jobby.providers.relevance import get_search_audit_snapshot
+
                 raw_results = await registry.search_all(params)
+                storage.save_search_audit_snapshot(get_search_audit_snapshot())
                 deduped = DeduplicationEngine.deduplicate(raw_results)
 
                 for opp in deduped:

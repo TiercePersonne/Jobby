@@ -112,6 +112,13 @@ export function renderSettingsView(snapshot = getState()) {
   const provider = cfg.ai_provider || 'auto';
   summaryEl.textContent = `${rolesCount} rôle${rolesCount > 1 ? 's' : ''} configuré${rolesCount > 1 ? 's' : ''} • Fournisseur IA : ${provider}`;
 
+  const queries =
+    Array.isArray(cfg.auto_search_queries) && cfg.auto_search_queries.length > 0
+      ? cfg.auto_search_queries
+      : Array.isArray(cfg.target_roles)
+        ? cfg.target_roles
+        : ['brand designer', 'ai designer', 'graphiste', 'graphic designer', 'art director', 'directeur artistique'];
+
   // Fill form inputs if not dirty
   const inputQueries = document.getElementById('input-settings-queries');
   if (inputQueries && !inputQueries.matches(':focus')) {

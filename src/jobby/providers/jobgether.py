@@ -130,7 +130,15 @@ class JobgetherProvider(JobSourceProvider):
                 if any(curr in token for curr in ("$", "€", "£")) and any(ch.isdigit() for ch in token) and len(token) < 35:
                     salary_raw = token
 
-            if not is_relevant_job_offer(title, " ".join(strings), params.keywords):
+            if not is_relevant_job_offer(
+                title,
+                " ".join(strings),
+                params.keywords,
+                source=self.name,
+                company=company,
+                location=location,
+                url=full_url,
+            ):
                 continue
 
             desc_lines = [

@@ -21,7 +21,7 @@ import {
   subscribe,
 } from './state.js';
 import { showToast } from './utils.js';
-import { initFeedView } from './views/feed.js';
+import { initFeedView, refreshCoverageAudit } from './views/feed.js';
 import { initKanbanView } from './views/kanban.js';
 import { initProfileView } from './views/profile.js';
 import { initSettingsView } from './views/settings.js';
@@ -228,6 +228,8 @@ async function handleHuntSubmit() {
     if (getState().activeModal === 'modal-hunt') {
       closeActiveModal();
     }
+
+    refreshCoverageAudit(searchResult?.coverage_audit || null);
 
     const totalFound = Number(searchResult?.total_found ?? 0);
     const newCount = Number(searchResult?.new_count ?? 0);

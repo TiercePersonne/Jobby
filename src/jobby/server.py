@@ -34,8 +34,9 @@ from jobby.ai_analyzer import (
 from jobby.config import JobbyConfig, load_config, save_config
 from jobby.cv_parser import extract_text_from_cv
 from jobby.engine import DeduplicationEngine, ScoringEngine
-from jobby.models import Application, ApplicationStatus, MatchEvaluation, OpportunityType, SearchParams, User, UserProfile
+from jobby.models import Application, ApplicationStatus, JobOpportunity, MatchEvaluation, OpportunityType, SearchParams, User, UserProfile
 from jobby.providers import registry
+from jobby.providers.relevance import get_search_audit_snapshot
 from jobby.reporter import Reporter
 from jobby.storage import Storage, normalize_opportunity_status
 from contextlib import asynccontextmanager
@@ -476,7 +477,45 @@ def purge_irrelevant_opportunities() -> Dict[str, Any]:
         config.target_roles,
         target_location=target_loc,
     )
+    storage.save_search_audit_snapshot(get_search_audit_snapshot())
     return {"status": "purged", "deleted_count": deleted_count}
+
+
+@app.get("/api/audit/coverage")
+def get_coverage_audit_endpoint(limit: int = 120) -> Dict[str, Any]:
+    config = load_config()
+    storage = Storage(config.database_path)
+    return storage.get_coverage_audit(limit_filtered=max(1, min(limit, 250)))
+
+
+@app.post("/api/audit/rescue/{filtered_id}")
+def rescue_filtered_opportunity_endpoint(filtered_id: str) -> Dict[str, Any]:
+    config = load_config()
+    storage = Storage(config.database_path)
+    item = storage.rescue_filtered_opportunity(filtered_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Offre filtrée introuvable ou déjà repêchée.")
+
+    opp = JobOpportunity(
+        source=item.get("source") or "wttj",
+        opportunity_type=OpportunityType.OFFER,
+        title=item.get("title") or "Offre repêchée",
+        company=item.get("company") or "Entreprise",
+        location=item.get("location") or "France",
+        url=item.get("url") or f"https://jobby.local/rescued/{filtered_id}",
+        description=item.get("description") or f"🏢 Entreprise : {item.get('company')}\n📍 Localisation : {item.get('location')}",
+        tags=["Repêchée"],
+    )
+    scoring = ScoringEngine(config)
+    score, reasons = scoring.score_opportunity(opp, active_keywords=config.target_roles)
+    opp.score = max(score, 50.0)
+    opp.score_reasons = ["Repêchée manuellement depuis l'audit"] + reasons
+    _, saved_opp = storage.upsert_opportunity(opp)
+    return {
+        "status": "rescued",
+        "opportunity": saved_opp.model_dump(),
+        "coverage_audit": storage.get_coverage_audit(limit_filtered=80),
+    }
 
 
 @app.post("/api/search")
@@ -515,6 +554,9 @@ async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
     if req.sources is None or len(req.sources) > 1:
         storage.purge_irrelevant_new_opportunities(params.keywords, target_location=params.location)
 
+    # Persist filter & coverage audit snapshot
+    storage.save_search_audit_snapshot(get_search_audit_snapshot())
+
     # Deduplicate & Sort by scraping date (most recent first)
     deduped = DeduplicationEngine.deduplicate(raw_results)
     deduped.sort(key=lambda x: x.discovered_at, reverse=True)
@@ -540,6 +582,7 @@ async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
         "total_found": len(deduped),
         "new_count": new_count,
         "opportunities": [o.model_dump() for o in deduped],
+        "coverage_audit": storage.get_coverage_audit(limit_filtered=80),
     }
 
 

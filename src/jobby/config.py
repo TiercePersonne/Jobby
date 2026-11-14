@@ -63,6 +63,7 @@ class JobbyConfig(BaseModel):
     auto_search_queries: List[str] = Field(
         default_factory=lambda: [
             "brand designer",
+            "ai designer",
             "graphiste",
             "graphic designer",
             "art director",

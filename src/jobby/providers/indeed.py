@@ -122,7 +122,16 @@ class IndeedProvider(JobSourceProvider):
                         raw_snippet = item.get("snippet") or ""
                         clean_snippet = BeautifulSoup(raw_snippet, "html.parser").get_text("\n• ", strip=True)
 
-                        if not is_relevant_job_offer(title, clean_snippet, params.keywords):
+                        full_url = f"{base_domain}/viewjob?jk={jk}"
+                        if not is_relevant_job_offer(
+                            title,
+                            clean_snippet,
+                            params.keywords,
+                            source=self.name,
+                            company=company,
+                            location=card_location,
+                            url=full_url,
+                        ):
                             continue
 
                         remote_policy = None
@@ -132,7 +141,16 @@ class IndeedProvider(JobSourceProvider):
 
                         if params.remote_only and remote_policy != "full":
                             continue
-                        if not is_location_compatible(card_location, remote_policy, location):
+                        if not is_location_compatible(
+                            card_location,
+                            remote_policy,
+                            location,
+                            source=self.name,
+                            title=title,
+                            company=company,
+                            url=full_url,
+                            description=clean_snippet,
+                        ):
                             continue
 
                         seen_urls.add(jk)
@@ -216,7 +234,15 @@ class IndeedProvider(JobSourceProvider):
                         snip_el = card.query_selector('div.job-snippet, [data-testid="job-snippet"]')
                         snippet = snip_el.inner_text().strip() if snip_el else ""
 
-                        if not is_relevant_job_offer(title, snippet, params.keywords):
+                        if not is_relevant_job_offer(
+                            title,
+                            snippet,
+                            params.keywords,
+                            source=self.name,
+                            company=company,
+                            location=card_location,
+                            url=full_url,
+                        ):
                             continue
 
                         remote_policy = None
@@ -226,7 +252,16 @@ class IndeedProvider(JobSourceProvider):
 
                         if params.remote_only and remote_policy != "full":
                             continue
-                        if not is_location_compatible(card_location, remote_policy, location):
+                        if not is_location_compatible(
+                            card_location,
+                            remote_policy,
+                            location,
+                            source=self.name,
+                            title=title,
+                            company=company,
+                            url=full_url,
+                            description=snippet,
+                        ):
                             continue
 
                         seen_urls.add(job_key)

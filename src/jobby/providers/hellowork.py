@@ -76,9 +76,26 @@ class HelloWorkProvider(JobSourceProvider):
 
                         parsed = self._parse_html(resp.text, limit=params.max_results * 2)
                         for opp in parsed:
-                            if not is_relevant_job_offer(opp.title, opp.description, params.keywords):
+                            if not is_relevant_job_offer(
+                                opp.title,
+                                opp.description,
+                                params.keywords,
+                                source=self.name,
+                                company=opp.company,
+                                location=opp.location,
+                                url=opp.url,
+                            ):
                                 continue
-                            if not is_location_compatible(opp.location, opp.remote_policy, location_str):
+                            if not is_location_compatible(
+                                opp.location,
+                                opp.remote_policy,
+                                location_str,
+                                source=self.name,
+                                title=opp.title,
+                                company=opp.company,
+                                url=opp.url,
+                                description=opp.description,
+                            ):
                                 continue
 
                             dedup_sig = f"{(opp.company or '').strip().lower()}::{opp.title.strip().lower()}"
