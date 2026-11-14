@@ -157,9 +157,9 @@ export function initSettingsView() {
     });
   }
 
-  // 2. Bascule du tiroir de saisie manuelle cookie + Popup "Se connecter à LinkedIn"
-  const openConnectModalBtn = document.getElementById('btn-open-linkedin-connect');
+  // 2. Popup "Se connecter à LinkedIn" (Option 1 : Connexion directe 100% automatique)
   const closeConnectModalBtn = document.getElementById('btn-close-linkedin-connect');
+  const cancelConnectModalBtn = document.getElementById('btn-cancel-linkedin-connect');
   const connectModal = document.getElementById('linkedin-connect-modal');
   const connectModalFeedback = document.getElementById('linkedin-connect-modal-feedback');
   const verifyStepEl = document.getElementById('linkedin-verify-step');
@@ -167,9 +167,6 @@ export function initSettingsView() {
   const verifyCodeInput = document.getElementById('input-linkedin-verify-code');
   const verifySubmitBtn = document.getElementById('btn-submit-linkedin-verify');
   const autoLoginForm = document.getElementById('form-linkedin-auto-login');
-  const windowOpenBtn = document.getElementById('btn-window-open-linkedin');
-  const popupCookieInput = document.getElementById('input-popup-linkedin-cookie');
-  const popupSaveCookieBtn = document.getElementById('btn-popup-save-cookie');
   let activeLinkedInSessionId = null;
 
   function showConnectModalFeedback(msg, tone = 'info') {
@@ -185,19 +182,22 @@ export function initSettingsView() {
     connectModalFeedback.textContent = msg;
   }
 
-  if (openConnectModalBtn && connectModal) {
-    openConnectModalBtn.addEventListener('click', () => {
+  document.querySelectorAll('[data-open-linkedin-connect]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!connectModal) return;
       connectModal.classList.remove('hidden');
       if (connectModalFeedback) connectModalFeedback.classList.add('hidden');
       document.getElementById('input-linkedin-email')?.focus();
     });
-  }
+  });
 
-  if (closeConnectModalBtn && connectModal) {
-    closeConnectModalBtn.addEventListener('click', () => {
-      connectModal.classList.add('hidden');
-    });
-  }
+  [closeConnectModalBtn, cancelConnectModalBtn].forEach((btn) => {
+    if (btn && connectModal) {
+      btn.addEventListener('click', () => {
+        connectModal.classList.add('hidden');
+      });
+    }
+  });
 
   if (connectModal) {
     connectModal.addEventListener('click', (event) => {
@@ -224,7 +224,7 @@ export function initSettingsView() {
       try {
         if (submitBtn) {
           submitBtn.disabled = true;
-          submitBtn.textContent = 'Connexion à LinkedIn en cours...';
+          submitBtn.textContent = 'Connexion en cours...';
         }
         if (connectModalFeedback) connectModalFeedback.classList.add('hidden');
 
@@ -241,14 +241,14 @@ export function initSettingsView() {
           if (verifyMessageEl && res.message) verifyMessageEl.textContent = res.message;
           verifyCodeInput?.focus();
         } else {
-          showConnectModalFeedback(res.message || 'Impossible de finaliser la connexion automatique.', 'warning');
+          showConnectModalFeedback(res.message || 'Impossible de finaliser la connexion.', 'warning');
         }
       } catch (err) {
         showConnectModalFeedback(err.message || 'Erreur lors de la connexion à LinkedIn.', 'error');
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Se connecter & récupérer le token';
+          submitBtn.textContent = 'Se connecter à LinkedIn';
         }
       }
     });
@@ -275,43 +275,7 @@ export function initSettingsView() {
         showConnectModalFeedback(err.message || 'Erreur lors de la vérification du code.', 'error');
       } finally {
         verifySubmitBtn.disabled = false;
-        verifySubmitBtn.textContent = 'Valider la connexion';
-      }
-    });
-  }
-
-  if (windowOpenBtn) {
-    windowOpenBtn.addEventListener('click', () => {
-      window.open(
-        'https://www.linkedin.com/login',
-        'jobby_linkedin_popup',
-        'width=520,height=680,left=180,top=100,noopener'
-      );
-      popupCookieInput?.focus();
-    });
-  }
-
-  if (popupSaveCookieBtn && popupCookieInput) {
-    popupSaveCookieBtn.addEventListener('click', async () => {
-      const val = popupCookieInput.value.trim();
-      if (!val) {
-        showConnectModalFeedback('Collez votre token li_at dans le champ.', 'warning');
-        return;
-      }
-      try {
-        popupSaveCookieBtn.disabled = true;
-        popupSaveCookieBtn.textContent = 'Activation...';
-        await saveLinkedInCookie(val);
-        popupCookieInput.value = '';
-        showConnectModalFeedback('Token LinkedIn li_at enregistré et activé !', 'success');
-        showToast('Cookie LinkedIn li_at enregistré !', 'success');
-        await fetchAndRenderStatus();
-        setTimeout(() => connectModal?.classList.add('hidden'), 1000);
-      } catch (err) {
-        showConnectModalFeedback(err.message || 'Erreur lors de la sauvegarde du token.', 'error');
-      } finally {
-        popupSaveCookieBtn.disabled = false;
-        popupSaveCookieBtn.textContent = 'Activer';
+        verifySubmitBtn.textContent = 'Valider le code';
       }
     });
   }

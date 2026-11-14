@@ -1,5 +1,5 @@
 const CACHE_NAME = 'jobby-v4';
-const SW_BUILD = '2026-11-14-linkedin-popup-v3';
+const SW_BUILD = '2026-11-14-linkedin-opt1-v4';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
