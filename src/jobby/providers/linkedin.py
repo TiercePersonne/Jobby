@@ -310,7 +310,13 @@ class LinkedInProvider(JobSourceProvider):
     async def _search_posts_with_voyager(self, params: SearchParams, li_at: str) -> List[JobOpportunity]:
         """Direct authenticated query to LinkedIn Voyager Content Search."""
         triggers = " OR ".join(HIRING_TRIGGERS_FR[:3] + HIRING_TRIGGERS_EN[:2])
-        keywords = " ".join([f'"{k}"' for k in params.keywords]) if params.keywords else "developer"
+        clean_kws = [k.strip() for k in (params.keywords or []) if k and k.strip()]
+        if len(clean_kws) > 1:
+            keywords = "(" + " OR ".join(f'"{k}"' for k in clean_kws) + ")"
+        elif len(clean_kws) == 1:
+            keywords = f'"{clean_kws[0]}"'
+        else:
+            keywords = "developer"
         query_string = f"({triggers}) {keywords}"
         if params.location:
             query_string += f" {params.location}"
@@ -402,7 +408,13 @@ class LinkedInProvider(JobSourceProvider):
 
         profile_dir = Path("_bmad-output/browser_profiles/linkedin")
         triggers = '("on recrute" OR "nous recrutons" OR "cherche" OR "hiring")'
-        keywords_str = " ".join([f'"{k}"' for k in params.keywords]) if params.keywords else "developer"
+        clean_kws = [k.strip() for k in (params.keywords or []) if k and k.strip()]
+        if len(clean_kws) > 1:
+            keywords_str = "(" + " OR ".join(f'"{k}"' for k in clean_kws) + ")"
+        elif len(clean_kws) == 1:
+            keywords_str = f'"{clean_kws[0]}"'
+        else:
+            keywords_str = "developer"
         location_str = params.location or "France"
         query_string = f"{triggers} {keywords_str} {location_str}"
         search_url = f"https://www.linkedin.com/search/results/content/?keywords={quote(query_string)}&sortBy=%22date_posted%22"

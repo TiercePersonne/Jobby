@@ -484,25 +484,26 @@ async def test_linkedin_connection() -> Dict[str, Any]:
         "x-restli-protocol-version": "2.0.0",
     }
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=False) as client:
             resp = await client.get("https://www.linkedin.com/voyager/api/me", headers=headers)
-            if resp.status_code == 200:
+            set_cookies = " ".join(resp.headers.get_list("set-cookie")).lower()
+            if resp.status_code == 200 and "delete me" not in set_cookies:
                 return {
                     "valid": True,
                     "status": "active",
                     "message": "Connexion LinkedIn active et session valide !",
                 }
-            elif resp.status_code in (401, 403):
+            elif resp.status_code in (301, 302, 303, 307, 308, 401, 403) or "delete me" in set_cookies:
                 return {
                     "valid": False,
                     "status": "expired",
-                    "message": "Session LinkedIn expirée ou cookie invalide.",
+                    "message": "Session LinkedIn expirée ou révoquée par LinkedIn (cookie invalide ou changement d'IP détecté).",
                 }
             else:
                 return {
-                    "valid": True,
-                    "status": "active",
-                    "message": f"Cookie vérifié (HTTP {resp.status_code}).",
+                    "valid": False,
+                    "status": "warning",
+                    "message": f"Réponse inattendue de LinkedIn (HTTP {resp.status_code}).",
                 }
     except Exception as e:
         return {
