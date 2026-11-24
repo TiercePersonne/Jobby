@@ -200,6 +200,12 @@ async function handleHuntSubmit() {
         sources: selectedSources,
         include_posts: includePosts,
         include_offers: true,
+        onProgress: (status) => {
+          if (submitBtn && status?.status === 'running') {
+            const elapsed = Math.max(1, Math.round(Number(status.elapsed_seconds || 0)));
+            submitBtn.textContent = `Chasse en cours... (${elapsed}s)`;
+          }
+        },
       });
     } catch {
       // Error toast emitted by api.js; keep modal open so user can retry or cancel.

@@ -8,7 +8,8 @@ import logging
 import os
 from pathlib import Path
 import secrets
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Coroutine, Dict, List, Optional
 import uuid
 
 import httpx
@@ -511,13 +512,85 @@ async def test_linkedin_connection() -> Dict[str, Any]:
         }
 
 
+_async_jobs: Dict[str, Dict[str, Any]] = {}
+_MAX_ASYNC_JOBS = 25
+
+
+def _prune_async_jobs() -> None:
+    if len(_async_jobs) <= _MAX_ASYNC_JOBS:
+        return
+    finished = sorted(
+        (
+            (jid, job.get("finished_at") or job.get("started_at", 0.0))
+            for jid, job in _async_jobs.items()
+            if job.get("status") != "running"
+        ),
+        key=lambda item: item[1],
+    )
+    for jid, _ in finished[: max(0, len(_async_jobs) - _MAX_ASYNC_JOBS)]:
+        _async_jobs.pop(jid, None)
+
+
+def _start_async_job(kind: str, coro: Coroutine[Any, Any, Dict[str, Any]]) -> str:
+    _prune_async_jobs()
+    job_id = f"{kind}_{uuid.uuid4().hex[:12]}"
+    _async_jobs[job_id] = {
+        "job_id": job_id,
+        "kind": kind,
+        "status": "running",
+        "started_at": time.monotonic(),
+        "finished_at": None,
+        "result": None,
+        "error": None,
+    }
+
+    async def _runner() -> None:
+        try:
+            res = await coro
+            _async_jobs[job_id]["status"] = "done"
+            _async_jobs[job_id]["result"] = res
+        except Exception as exc:
+            logger.exception("Async job %s (%s) failed: %s", job_id, kind, exc)
+            _async_jobs[job_id]["status"] = "error"
+            _async_jobs[job_id]["error"] = str(exc) or "Erreur interne lors de la chasse."
+        finally:
+            _async_jobs[job_id]["finished_at"] = time.monotonic()
+
+    asyncio.create_task(_runner())
+    return job_id
+
+
+def _get_async_job_status(job_id: str) -> Dict[str, Any]:
+    job = _async_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Tâche de chasse introuvable ou expirée.")
+    end_ts = job["finished_at"] if job["finished_at"] is not None else time.monotonic()
+    return {
+        "job_id": job["job_id"],
+        "status": job["status"],
+        "elapsed_seconds": round(max(0.0, end_ts - job["started_at"]), 1),
+        "result": job["result"],
+        "error": job["error"],
+    }
+
+
 @app.post("/api/automation/run-now")
-async def run_automation_now(request: Request) -> Dict[str, Any]:
+async def run_automation_now(request: Request) -> Any:
     config = load_config()
     storage = Storage(config.database_path)
     user = get_current_user_or_default(request, storage)
     from jobby.scheduler import execute_sequential_hunt
-    return await execute_sequential_hunt(config=config, storage=storage, user_id=user.id, inter_query_delay=0.1)
+
+    coro = execute_sequential_hunt(config=config, storage=storage, user_id=user.id, inter_query_delay=0.1)
+    if request.headers.get("x-jobby-async") == "1":
+        job_id = _start_async_job("automation", coro)
+        return JSONResponse(status_code=202, content={"status": "running", "job_id": job_id})
+    return await coro
+
+
+@app.get("/api/automation/status/{job_id}")
+def get_automation_status(job_id: str) -> Dict[str, Any]:
+    return _get_async_job_status(job_id)
 
 
 @app.get("/api/providers")
@@ -758,8 +831,7 @@ def rescue_filtered_opportunity_endpoint(filtered_id: str, redirect: int = 0):
     }
 
 
-@app.post("/api/search")
-async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
+async def _execute_search(req: SearchRequest) -> Dict[str, Any]:
     if req.sources is not None and len(req.sources) == 0:
         return {"total_found": 0, "new_count": 0, "opportunities": []}
 
@@ -824,6 +896,23 @@ async def trigger_search(req: SearchRequest) -> Dict[str, Any]:
         "opportunities": [o.model_dump() for o in deduped],
         "coverage_audit": storage.get_coverage_audit(limit_filtered=80),
     }
+
+
+@app.post("/api/search")
+async def trigger_search(req: SearchRequest, request: Request) -> Any:
+    if req.sources is not None and len(req.sources) == 0:
+        return {"total_found": 0, "new_count": 0, "opportunities": []}
+
+    if request.headers.get("x-jobby-async") == "1":
+        job_id = _start_async_job("search", _execute_search(req))
+        return JSONResponse(status_code=202, content={"status": "running", "job_id": job_id})
+
+    return await _execute_search(req)
+
+
+@app.get("/api/search/status/{job_id}")
+def get_search_status(job_id: str) -> Dict[str, Any]:
+    return _get_async_job_status(job_id)
 
 
 # ===================================================================

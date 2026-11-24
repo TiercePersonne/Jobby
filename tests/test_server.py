@@ -681,6 +681,91 @@ def test_search_endpoint_validation_and_scoring(client, monkeypatch, tmp_path):
     assert called_with_empty["called"] is False
 
 
+def test_async_search_job_polling_and_provider_timeout(monkeypatch, tmp_path):
+    import asyncio
+    import time
+    from jobby.config import JobbyConfig, save_config
+    from jobby.models import SearchParams
+    from jobby.providers import registry
+    from jobby.providers.base import JobSourceProvider
+
+    db_path = tmp_path / "async_search.db"
+    cfg_path = tmp_path / "async_config.yaml"
+    digest_path = tmp_path / "async_digest.md"
+    monkeypatch.setenv("JOBBY_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("JOBBY_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("JOBBY_DISABLE_SCHEDULER", "1")
+    save_config(
+        JobbyConfig(
+            target_roles=["Brand Designer"],
+            preferred_locations=["France"],
+            database_path=str(db_path),
+            digest_output_path=str(digest_path),
+        ),
+        config_path=cfg_path,
+    )
+
+    async def fake_async_search(params, source_names=None, fail_silently=True):
+        await asyncio.sleep(0.02)
+        return [
+            JobOpportunity(
+                id="async-opp-1",
+                source="wttj",
+                title="Senior Brand Designer",
+                company="Studio Async",
+                location="Paris, France",
+                url="https://wttj.co/jobs/async-1",
+                description="Identité de marque et direction artistique.",
+            )
+        ]
+
+    monkeypatch.setattr(registry, "search_all", fake_async_search)
+
+    with TestClient(app) as tc:
+        start_resp = tc.post(
+            "/api/search",
+            headers={"X-Jobby-Async": "1"},
+            json={"keywords": ["Brand Designer"], "location": "France", "sources": ["wttj"]},
+        )
+        assert start_resp.status_code == 202
+        start_data = start_resp.json()
+        assert start_data["status"] == "running"
+        job_id = start_data["job_id"]
+
+        final_status = None
+        for _ in range(30):
+            poll_resp = tc.get(f"/api/search/status/{job_id}")
+            assert poll_resp.status_code == 200
+            payload = poll_resp.json()
+            if payload["status"] == "done":
+                final_status = payload
+                break
+            time.sleep(0.05)
+
+        assert final_status is not None
+        assert final_status["result"]["total_found"] == 1
+        assert final_status["result"]["new_count"] == 1
+        assert final_status["result"]["opportunities"][0]["id"] == "async-opp-1"
+
+        # Unknown job returns 404
+        assert tc.get("/api/search/status/does_not_exist").status_code == 404
+
+    # Per-provider timeout in registry._safe_search prevents hanging forever
+    class SlowProvider(JobSourceProvider):
+        name = "slow_test"
+        display_name = "Slow Test"
+
+        async def search(self, params: SearchParams):
+            await asyncio.sleep(5)
+            return []
+
+    monkeypatch.setenv("JOBBY_PROVIDER_TIMEOUT", "0.05")
+    res = asyncio.run(
+        registry._safe_search(SlowProvider(), SearchParams(keywords=["Brand Designer"]), fail_silently=True)
+    )
+    assert res == []
+
+
 def test_webhook_trigger_search_persists_score_and_stats_merges_kept(client, monkeypatch, tmp_path):
     from jobby.config import JobbyConfig, save_config
     from jobby.providers import registry

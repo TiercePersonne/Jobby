@@ -57,7 +57,24 @@ async function parseErrorDetail(response) {
       if (payload && typeof payload.message === 'string') return payload.message;
     } else {
       const text = (await response.text()).trim();
-      if (text) return text.slice(0, 180);
+      if (text) {
+        const looksLikeHtml =
+          contentType.includes('text/html') || /^<!doctype\s+html|^<html[\s>]|^<head[\s>]|^<body[\s>]/i.test(text);
+        if (looksLikeHtml) {
+          const titleMatch = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+          const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : '';
+          if (response.status === 504 || response.status === 524) {
+            return 'Délai d’attente dépassé côté serveur/proxy (timeout). Réessayez ou réduisez le nombre de sources.';
+          }
+          if (response.status === 502 || response.status === 503) {
+            return `Serveur momentanément indisponible (${title || response.status}).`;
+          }
+          return title
+            ? `Réponse HTML inattendue du serveur (${title}).`
+            : `Réponse HTML inattendue du serveur (${response.status}).`;
+        }
+        return text.slice(0, 180);
+      }
     }
   } catch {
     // Ignore parse failure on error body and fall back to status text
@@ -312,13 +329,63 @@ export function testLinkedInConnection() {
   });
 }
 
-export function runAutomationNow() {
-  return request('/api/automation/run-now', {
-    method: 'POST',
+async function pollAsyncJob(statusPath, { intervalMs = 1500, maxWaitMs = 300000, onProgress = null } = {}) {
+  const startedAt = Date.now();
+  let consecutiveFailures = 0;
+  while (Date.now() - startedAt < maxWaitMs) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    let statusPayload;
+    try {
+      statusPayload = await request(statusPath, { method: 'GET', silent: true });
+      consecutiveFailures = 0;
+    } catch (pollErr) {
+      consecutiveFailures += 1;
+      const isTransient = pollErr?.status === 0 || pollErr?.status === 502 || pollErr?.status === 503 || pollErr?.status === 504;
+      if (isTransient && consecutiveFailures < 3) {
+        continue;
+      }
+      notifyError(pollErr);
+      throw pollErr;
+    }
+    if (typeof onProgress === 'function') {
+      onProgress(statusPayload);
+    }
+    if (statusPayload?.status === 'done') {
+      return statusPayload.result;
+    }
+    if (statusPayload?.status === 'error') {
+      const err = new ApiError(statusPayload.error || 'Erreur serveur lors de la chasse.', {
+        status: 500,
+        code: 'SERVER_ERROR',
+        detail: statusPayload.error || null,
+      });
+      notifyError(err);
+      throw err;
+    }
+  }
+  const timeoutErr = new ApiError('La chasse a dépassé le délai maximum autorisé.', {
+    status: 504,
+    code: 'SERVER_ERROR',
+    detail: 'client_poll_timeout',
   });
+  notifyError(timeoutErr);
+  throw timeoutErr;
 }
 
-export function triggerSearch({
+export async function runAutomationNow({ onProgress = null } = {}) {
+  const initial = await request('/api/automation/run-now', {
+    method: 'POST',
+    headers: { 'X-Jobby-Async': '1' },
+  });
+  if (initial && initial.status === 'running' && initial.job_id) {
+    return pollAsyncJob(`/api/automation/status/${encodeURIComponent(initial.job_id)}`, {
+      onProgress,
+    });
+  }
+  return initial;
+}
+
+export async function triggerSearch({
   keywords = [],
   location = null,
   remote_only = false,
@@ -326,9 +393,11 @@ export function triggerSearch({
   sources = null,
   include_posts = true,
   include_offers = true,
+  onProgress = null,
 } = {}) {
-  return request('/api/search', {
+  const initial = await request('/api/search', {
     method: 'POST',
+    headers: { 'X-Jobby-Async': '1' },
     body: {
       keywords: Array.isArray(keywords) ? keywords : [],
       location: location || null,
@@ -339,6 +408,12 @@ export function triggerSearch({
       include_offers: Boolean(include_offers),
     },
   });
+  if (initial && initial.status === 'running' && initial.job_id) {
+    return pollAsyncJob(`/api/search/status/${encodeURIComponent(initial.job_id)}`, {
+      onProgress,
+    });
+  }
+  return initial;
 }
 
 export function fetchCoverageAudit(limit = 120) {

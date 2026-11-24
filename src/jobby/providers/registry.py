@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Dict, List, Optional, Type
 
 from jobby.models import JobOpportunity, SearchParams
@@ -92,9 +93,27 @@ class ProviderRegistry:
     ) -> List[JobOpportunity]:
         token = set_current_audit_source(provider.name)
         try:
-            res = await provider.search(params)
+            timeout_s = float(os.environ.get("JOBBY_PROVIDER_TIMEOUT", "45"))
+        except ValueError:
+            timeout_s = 45.0
+        try:
+            if timeout_s > 0:
+                res = await asyncio.wait_for(provider.search(params), timeout=timeout_s)
+            else:
+                res = await provider.search(params)
             record_provider_audit_result(provider.name, len(res), status="ok")
             return res
+        except asyncio.TimeoutError as e:
+            logger.warning(f"Provider {provider.name} timed out after {timeout_s:.0f}s")
+            record_provider_audit_result(
+                provider.name,
+                0,
+                status="timeout",
+                note=f"Délai dépassé ({int(timeout_s)}s)",
+            )
+            if not fail_silently:
+                raise
+            return []
         except Exception as e:
             logger.error(f"Error querying provider {provider.name}: {e}")
             record_provider_audit_result(provider.name, 0, status="error", note=str(e)[:120])
