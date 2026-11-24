@@ -1,5 +1,5 @@
 const CACHE_NAME = 'jobby-v4';
-const SW_BUILD = '2026-11-24-async-hunt-v5';
+const SW_BUILD = '2026-11-24-linkedin-google-cookie-v6';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

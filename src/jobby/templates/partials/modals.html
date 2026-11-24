@@ -185,6 +185,35 @@
         </div>
 
         <div id="linkedin-connect-modal-feedback" class="hidden text-xs p-3 rounded"></div>
+
+        <!-- Repli pour comptes Google / Gmail ou CAPTCHA serveur -->
+        <details id="linkedin-google-fallback" class="rounded-[10px] border border-[#E7E5E4] bg-[#FAF9F6] p-3">
+          <summary class="text-xs font-medium text-[#1C1917] cursor-pointer select-none">
+            Compte connecté via Google / Gmail (sans mot de passe LinkedIn) ?
+          </summary>
+          <div class="mt-3 flex flex-col gap-2.5 text-xs text-[#57534E] leading-relaxed">
+            <p>
+              Google bloque la connexion automatique depuis un serveur. Pour relier votre compte LinkedIn connecté avec Gmail en 15 secondes :
+            </p>
+            <ol class="list-decimal pl-4 flex flex-col gap-1">
+              <li>
+                Ouvrez <a href="https://www.linkedin.com/feed/" target="_blank" rel="noopener noreferrer" class="underline text-[#1C1917] font-medium">linkedin.com</a> dans votre navigateur (connecté avec Google).
+              </li>
+              <li>
+                Appuyez sur <kbd class="px-1 py-0.5 rounded bg-[#E7E5E4] text-[#1C1917] font-mono text-[11px]">F12</kbd> → onglet <strong>Application</strong> (Chrome/Edge) ou <strong>Stockage</strong> (Firefox) → <strong>Cookies</strong> → <code>https://www.linkedin.com</code>.
+              </li>
+              <li>
+                Copiez la valeur du cookie <code class="font-mono text-[#1C1917]">li_at</code> et collez-la ci-dessous :
+              </li>
+            </ol>
+            <div class="flex gap-2 mt-1">
+              <input type="password" id="input-linkedin-modal-cookie" class="jp-input text-xs font-mono flex-1" placeholder="Collez votre cookie li_at ici..." autocomplete="off">
+              <button type="button" id="btn-save-linkedin-modal-cookie" class="jp-btn-primary text-xs shrink-0">
+                Activer
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="px-5 py-3 border-t border-[#E7E5E4] bg-[#F7F5F0] flex items-center justify-end gap-2 shrink-0">

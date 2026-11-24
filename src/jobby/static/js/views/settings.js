@@ -280,6 +280,39 @@ export function initSettingsView() {
     });
   }
 
+  const modalSaveCookieBtn = document.getElementById('btn-save-linkedin-modal-cookie');
+  const modalCookieInput = document.getElementById('input-linkedin-modal-cookie');
+  if (modalSaveCookieBtn && modalCookieInput) {
+    modalSaveCookieBtn.addEventListener('click', async () => {
+      const val = modalCookieInput.value.trim();
+      if (!val) {
+        showConnectModalFeedback('Veuillez coller la valeur du cookie li_at.', 'warning');
+        return;
+      }
+      try {
+        modalSaveCookieBtn.disabled = true;
+        modalSaveCookieBtn.textContent = 'Activation...';
+        const res = await saveLinkedInCookie(val);
+        modalCookieInput.value = '';
+        showConnectModalFeedback(
+          res.message || 'Cookie LinkedIn li_at enregistré avec succès !',
+          'success'
+        );
+        showToast('Compte LinkedIn connecté via cookie li_at !', 'success');
+        await fetchAndRenderStatus();
+        setTimeout(() => connectModal?.classList.add('hidden'), 1200);
+      } catch (err) {
+        showConnectModalFeedback(
+          err.message || "Erreur lors de l'enregistrement du cookie li_at.",
+          'error'
+        );
+      } finally {
+        modalSaveCookieBtn.disabled = false;
+        modalSaveCookieBtn.textContent = 'Activer';
+      }
+    });
+  }
+
   const toggleManualBtn = document.getElementById('btn-toggle-manual-cookie');
   const manualDrawer = document.getElementById('linkedin-manual-drawer');
   if (toggleManualBtn && manualDrawer) {

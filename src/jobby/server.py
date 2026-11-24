@@ -372,7 +372,7 @@ async def login_linkedin_automated(req: LinkedInLoginRequest) -> Dict[str, Any]:
             return {
                 "status": "captcha_blocked",
                 "linkedin_connected": False,
-                "message": "LinkedIn demande une vérification anti-robot visuelle sur l'IP du serveur. Utilisez le bouton « Ouvrir la popup LinkedIn.com » ci-dessous pour vous connecter depuis votre navigateur.",
+                "message": "LinkedIn demande une vérification anti-robot visuelle sur l'IP du serveur. Ouvrez la section « Compte connecté via Google / Gmail » ci-dessous pour coller votre cookie li_at en 15 secondes.",
             }
 
         # Keep session alive for 3 minutes so the user can enter their email/SMS PIN or approve on mobile
